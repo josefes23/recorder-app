@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "anthropic.claude-code",
+    "openai.chatgpt",
+    "github.copilot-chat",
+    "ms-python.python"
+  ]
+}

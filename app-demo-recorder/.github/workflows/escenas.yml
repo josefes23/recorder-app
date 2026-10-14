@@ -1,0 +1,117 @@
+# Graba las escenas reales contra staging, con la cuenta demo. Dos modos:
+#
+#   prueba  (todos los días hábiles, o a mano): voz de prueba, sin música,
+#           solo escritorio. Si falla, una escena se rompió porque cambió la app.
+#   final   (a mano): los videos para publicar. Todos salen del mismo entorno y
+#           cada uno trae su .json con el commit que lo generó.
+#
+# Secretos del repo (Settings → Secrets and variables → Actions):
+#   APP_URL, DEMO_EMAIL, DEMO_PASSWORD           obligatorios
+#   AZURE_SPEECH_KEY, AZURE_SPEECH_REGION        voz oficial para los finales
+#                                                (sin ellos, edge-tts)
+name: Escenas contra staging
+
+on:
+  schedule:
+    - cron: "0 9 * * 1-5"   # 6:00 en Argentina, de lunes a viernes
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "prueba (rápida, sin voz) o final (videos para publicar)"
+        type: choice
+        options: [prueba, final]
+        default: prueba
+      escenas:
+        description: "Escenas separadas por espacios (vacío = todas)"
+        required: false
+        default: ""
+      sistema:
+        description: "Máquina que graba"
+        type: choice
+        options: [ubuntu-latest, macos-latest]
+        default: ubuntu-latest
+
+# Una grabación a la vez: todas usan la misma cuenta demo y cada escena borra
+# lo que dejó la toma anterior.
+concurrency:
+  group: escenas-staging
+  cancel-in-progress: false
+
+jobs:
+  escenas:
+    runs-on: ${{ inputs.sistema || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    env:
+      MODO: ${{ inputs.modo || 'prueba' }}
+      ESCENAS: ${{ inputs.escenas }}
+      APP_URL: ${{ secrets.APP_URL }}
+      DEMO_EMAIL: ${{ secrets.DEMO_EMAIL }}
+      DEMO_PASSWORD: ${{ secrets.DEMO_PASSWORD }}
+      AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
+      AZURE_SPEECH_REGION: ${{ secrets.AZURE_SPEECH_REGION }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Revisar secretos
+        id: cfg
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$DEMO_EMAIL" ] || [ -z "$DEMO_PASSWORD" ]; then
+            echo "::warning::Faltan los secretos APP_URL, DEMO_EMAIL o DEMO_PASSWORD: no se graba nada."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.cfg.outputs.ok == 'true'
+      - uses: astral-sh/setup-uv@v6
+        if: steps.cfg.outputs.ok == 'true'
+
+      - name: ffmpeg (Linux)
+        if: steps.cfg.outputs.ok == 'true' && runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: ffmpeg (Mac)
+        if: steps.cfg.outputs.ok == 'true' && runner.os == 'macOS'
+        run: brew install ffmpeg   # sin libass: los subtítulos se dibujan con Pillow
+
+      - name: Chromium
+        if: steps.cfg.outputs.ok == 'true'
+        run: uv run playwright install --with-deps chromium
+
+      # La voz se guarda por frase: sin cambios en el guion, no se vuelve a pedir.
+      - uses: actions/cache@v4
+        if: steps.cfg.outputs.ok == 'true' && env.MODO == 'final'
+        with:
+          path: .cache/voz
+          key: voz-${{ hashFiles('escenas/**', 'config.py') }}
+          restore-keys: voz-
+
+      - name: Grabar
+        if: steps.cfg.outputs.ok == 'true'
+        run: |
+          if [ "$MODO" = "final" ]; then
+            if [ -n "$AZURE_SPEECH_KEY" ]; then
+              uv run --extra azure grabar.py $ESCENAS --proveedor-voz azure
+            else
+              echo "::warning::Sin AZURE_SPEECH_KEY: la voz sale de edge-tts."
+              uv run grabar.py $ESCENAS
+            fi
+          else
+            uv run grabar.py $ESCENAS --voz-prueba --sin-musica --perfil desktop
+          fi
+
+      - name: Hojas de cuadros
+        if: always() && steps.cfg.outputs.ok == 'true'
+        run: uv run grabar.py $ESCENAS --hoja || true
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.cfg.outputs.ok == 'true'
+        with:
+          name: escenas-${{ env.MODO }}-${{ github.sha }}
+          path: |
+            salida/
+            !salida/**/.work/raw.mp4
+            !salida/**/.work/fonts/
+          retention-days: ${{ env.MODO == 'final' && 90 || 7 }}
+          if-no-files-found: ignore

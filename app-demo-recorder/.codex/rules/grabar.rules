@@ -1,0 +1,34 @@
+# El grabador corre sin preguntar y fuera del sandbox: necesita red (voz de
+# edge-tts) y abrir Chromium.
+prefix_rule(
+    pattern = ["uv", "run", ["grabar.py", "instalar.py"]],
+    decision = "allow",
+    justification = "Grabador de demos del repo: necesita red y Chromium",
+    match = [
+        "uv run grabar.py --listar",
+        "uv run grabar.py configurar_cancha --perfil mobile",
+        "uv run instalar.py",
+    ],
+    not_match = ["uv run otro.py"],
+)
+
+# Lo mismo con la voz de Azure para los finales.
+prefix_rule(
+    pattern = ["uv", "run", "--extra", "azure", ["grabar.py", "instalar.py"]],
+    decision = "allow",
+    justification = "Grabador con la voz de Azure: necesita red y Chromium",
+    match = ["uv run --extra azure grabar.py configurar_cancha --proveedor-voz azure"],
+    not_match = ["uv run --extra azure otro.py"],
+)
+
+# .env tiene las credenciales de la cuenta demo (AGENTS.md: no se lee). Es una
+# barrera blanda: la protección real es que la cuenta demo tenga permisos
+# mínimos y solo exista en staging.
+prefix_rule(
+    pattern = [["cat", "head", "tail", "less", "more", "bat", "type", "Get-Content"],
+               [".env", "./.env"]],
+    decision = "forbidden",
+    justification = ".env tiene las credenciales de la cuenta demo: no se lee",
+    match = ["cat .env", "type .env", "head ./.env"],
+    not_match = ["cat .env.example", "cat README.md"],
+)

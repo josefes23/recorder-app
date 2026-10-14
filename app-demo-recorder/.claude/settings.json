@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run grabar.py)",
+      "Bash(uv run grabar.py *)",
+      "Bash(uv run instalar.py)",
+      "Bash(uv run --extra azure grabar.py *)",
+      "Bash(ffmpeg *)",
+      "Bash(ffprobe *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(**/.env)",
+      "Bash(* .env)",
+      "Bash(* .env *)",
+      "Bash(* ./.env)",
+      "Bash(* ./.env *)"
+    ]
+  }
+}
