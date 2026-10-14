@@ -23,8 +23,13 @@ hermana `../auto-video-generator`, así que las dos tienen que quedar juntas.
 
 ## Instalación
 
-Cada proyecto tiene su propio entorno y se instala por separado. Los pasos
-completos están en su README.
+```bash
+git clone https://github.com/josefes23/recorder-app.git CreacionContenido
+cd CreacionContenido
+```
+
+Cada proyecto tiene su propio entorno y se instala por separado, desde su
+carpeta. Los pasos completos están en su README.
 
 ```bash
 # Motor

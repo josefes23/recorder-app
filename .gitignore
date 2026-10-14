@@ -8,6 +8,8 @@ desktop.ini
 # Personal: credenciales y ajustes de cada uno
 .env
 .claude/settings.local.json
+/.vscode/
+/.idea/
 
 # Entornos de Python
 .venv/

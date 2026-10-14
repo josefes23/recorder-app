@@ -8,8 +8,8 @@ description: Genera un Reel/Short vertical (9:16, 1080x1920) con voz en español
 Convierte un tema en un video vertical terminado. Tú escribes el guion; `generate.py`
 se encarga de la voz, los subtítulos y el render.
 
-**Raíz del proyecto:** `/Users/josejurado/Documents/CreacionContenido/auto-video-generator`
-Haz `cd` a esa ruta antes de nada; todos los comandos de abajo son relativos a ella.
+**Raíz del proyecto:** la carpeta `auto-video-generator/` del monorepo.
+Haz `cd` a esa carpeta antes de nada; todos los comandos de abajo son relativos a ella.
 
 **Intérprete:** usa SIEMPRE `./.venv/bin/python` (nunca `python3` del sistema: las
 dependencias están en el entorno virtual del proyecto).
