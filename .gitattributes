@@ -9,3 +9,5 @@
 *.jpg binary
 *.ttf binary
 *.otf binary
+*.xlsx binary
+*.xls binary

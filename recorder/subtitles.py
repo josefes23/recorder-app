@@ -132,6 +132,9 @@ def build(timeline: list[dict], video_dur: float, max_chars: int, max_words: int
                         "text": " ".join(w["display"] for w in block),
                         "start": start + block[0]["start"],
                         "end": start + block[-1]["end"],
+                        # para resaltar la palabra que se está diciendo
+                        "words": [{"text": w["display"], "start": start + w["start"]}
+                                  for w in block],
                     })
         else:
             blocks = [{"text": c["text"], "start": start + c["start"], "end": start + c["end"]}
@@ -236,9 +239,122 @@ Style: Default,{font},{font_px},{prim},{prim},{back},{back},{bold},0,0,0,100,100
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
+    def esc(s: str) -> str:
+        return s.replace("\n", " ").replace("{", "(").replace("}", ")")
+
+    hl = _ass_color(style.get("highlight", "#FFD54A"))
     events = []
     for c in caps:
-        text = c["text"].replace("\n", " ").replace("{", "(").replace("}", ")")
+        palabras, activa = c.get("palabras"), c.get("activa")
+        if palabras is None or activa is None:
+            text = esc(c["text"])
+        else:
+            text = " ".join(f"{{\\c{hl}}}{esc(p)}{{\\c&HFFFFFF&}}" if i == activa else esc(p)
+                            for i, p in enumerate(palabras))
+        # Con karaoke, el bloque aparece y se va con fundido; los estados del medio, no.
+        fad = f"\\fad({120 if c.get('primero', True) else 0},{120 if c.get('ultimo', True) else 0})"
         events.append(f"Dialogue: 0,{_ass_time(c['start'])},{_ass_time(c['end'])},Default,,0,0,0,,"
-                      f"{{{pos}\\fad(120,120)}}{text}")
+                      f"{{{pos}{fad}}}{text}")
     path.write_text(header + "\n".join(events) + "\n", encoding="utf-8")
+
+
+def estados(caps: list[dict]) -> list[dict]:
+    """Subtítulos animados: un estado por palabra, con la que se está diciendo
+    resaltada. Los bloques sin tiempos por palabra (voz grabada) quedan igual."""
+    out = []
+    for c in caps:
+        ws = c.get("words")
+        if not ws:
+            out.append(c)
+            continue
+        palabras = [w["text"] for w in ws]
+        for j, w in enumerate(ws):
+            s = c["start"] if j == 0 else max(w["start"], c["start"])
+            e = min(ws[j + 1]["start"], c["end"]) if j + 1 < len(ws) else c["end"]
+            if e - s >= 0.02:
+                out.append({"text": c["text"], "palabras": palabras, "activa": j,
+                            "start": s, "end": e, "primero": j == 0, "ultimo": j + 1 == len(ws)})
+    return out
+
+
+def _ass_color(hex_: str) -> str:
+    h = hex_.lstrip("#")
+    return f"&H{h[4:6]}{h[2:4]}{h[0:2]}&".upper()
+
+
+def write_images(caps: list[dict], folder: Path, width: int, height: int, band: int,
+                 style: dict, fonts_dir: Path) -> list[dict]:
+    """Sin libass: cada bloque como PNG transparente para superponer con el
+    filtro overlay, que tiene cualquier ffmpeg. Misma geometría que write_ass
+    (height es el del video, sin la franja). Devuelve [{png, start, end, x, y}]."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    total = height + band
+    font_px = round(min(width, total) * style.get("font_ratio", 0.042))
+    font = _pil_font(ImageFont, style, font_px, fonts_dir)
+    max_w = width - 2 * round(width * 0.06)
+    line_h = round(font_px * 1.25)
+    in_band = style.get("placement") == "band"
+    pad = 0 if in_band else max(6, round(font_px * 0.32))
+    opacity = 255 - int(style.get("box_alpha", "50"), 16)   # alfa ASS: 00 opaco … FF transparente
+
+    h_rgb = style.get("highlight", "#FFD54A").lstrip("#")
+    resaltado = tuple(int(h_rgb[i:i + 2], 16) for i in (0, 2, 4)) + (255,)
+    blanco = (255, 255, 255, 255)
+    space = font.getlength(" ")
+
+    folder.mkdir(parents=True, exist_ok=True)
+    out = []
+    for i, c in enumerate(caps):
+        palabras = c.get("palabras") or c["text"].replace("\n", " ").split() or [""]
+        activa = c.get("activa")
+        lines = _wrap(palabras, font, max_w)
+        text_w = max(round(font.getlength(" ".join(palabras[k] for k in ln))) for ln in lines)
+        w, h = text_w + 2 * pad, line_h * len(lines) + 2 * pad
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        if not in_band:
+            draw.rectangle([0, 0, w, h], fill=(17, 17, 17, opacity))
+        for n, ln in enumerate(lines):
+            x = (w - font.getlength(" ".join(palabras[k] for k in ln))) / 2
+            for k in ln:                       # palabra por palabra: la que se dice, resaltada
+                draw.text((x, pad + line_h * n + line_h / 2), palabras[k], font=font,
+                          fill=resaltado if k == activa else blanco, anchor="lm")
+                x += font.getlength(palabras[k]) + space
+        png = folder / f"{i:03d}.png"
+        img.save(png)
+        if in_band:                                    # centrado en la franja
+            y = height + (band - h) // 2
+        elif style.get("position") == "top":
+            y = round(total * style.get("margin_bottom", 0.08))
+        else:
+            y = total - round(total * style.get("margin_bottom", 0.08)) - h
+        out.append({"png": png, "start": c["start"], "end": c["end"],
+                    "x": (width - w) // 2, "y": y})
+    return out
+
+
+def _pil_font(ImageFont, style: dict, size: int, fonts_dir: Path):
+    """La fuente de fonts/ ("Liberation Sans" → LiberationSans-Bold.ttf)."""
+    family = style.get("font", "").replace(" ", "")
+    weight = "Bold" if style.get("bold", True) else "Regular"
+    for f in (fonts_dir / f"{family}-{weight}.ttf", fonts_dir / f"{family}-Regular.ttf"):
+        if f.is_file():
+            return ImageFont.truetype(str(f), size)
+    try:
+        return ImageFont.truetype(style.get("font", "Arial"), size)   # fuente del sistema
+    except OSError:
+        return ImageFont.load_default(size=size)
+
+
+def _wrap(palabras: list[str], font, max_w: int) -> list[list[int]]:
+    """Reparte las palabras en líneas que entren en max_w (índices de palabra)."""
+    lines, cur = [], []
+    for k, word in enumerate(palabras):
+        cand = " ".join(palabras[j] for j in cur + [k])
+        if cur and font.getlength(cand) > max_w:
+            lines.append(cur)
+            cur = [k]
+        else:
+            cur.append(k)
+    return lines + [cur] if cur else lines or [[0]]

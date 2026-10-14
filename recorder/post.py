@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import json
 import random
+import shutil
 from pathlib import Path
 
-from . import ff, subtitles
+from . import animar, ff, subtitles
 
 ROOT = Path(__file__).resolve().parent.parent
+FONTS = ROOT / "fonts"
 AUDIO_EXTS = {".mp3", ".m4a", ".aac", ".wav", ".ogg", ".flac"}
 
 
@@ -48,7 +50,7 @@ def duck_filter(timeline: list[dict], level: float, attack: float = 0.3,
 
 
 def render(work: Path, out_dir: Path, name: str, cfg: dict, music: Path | None,
-           webm: bool = False) -> dict:
+           webm: bool = False, title: str = "") -> dict:
     data = json.loads((work / "timeline.json").read_text(encoding="utf-8"))
     raw = work / "raw.mp4"
     trim = data["trim_start"]
@@ -58,10 +60,24 @@ def render(work: Path, out_dir: Path, name: str, cfg: dict, music: Path | None,
     profile = data["profile"]
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # ---------- animaciones: zoom, transiciones, intro y cierre --------- #
+    anim, _ = animar.ajustes(cfg)
+    video_in, v_trim, total = raw, trim, dur
+    if animar.activo(anim):
+        comp = animar.componer(raw, trim, dur, work / "animado.mp4", data, cfg, title or name)
+        video_in, v_trim, total = work / "animado.mp4", 0.0, comp["total"]
+        # La intro corre todo lo que suena y se lee.
+        timeline = [{**it, "start": round(it["start"] + comp["intro"], 3)} for it in timeline]
+        dur_main = comp["intro"] + dur
+    else:
+        dur_main = dur
+
     # ---------- subtítulos + transcripción ------------------------------ #
     sub_cfg = cfg["SUBTITLES"]
     per = sub_cfg.get(profile) or sub_cfg.get("mobile" if height > width else "desktop", {})
-    caps = subtitles.build(timeline, dur, per.get("max_chars", 42), per.get("max_words", 8))
+    caps = subtitles.build(timeline, dur_main, per.get("max_chars", 42), per.get("max_words", 8))
+    # Quemados: resaltando la palabra que se dice. Los .vtt/.srt, por bloque.
+    burn_items = subtitles.estados(caps) if anim.get("subtitulos_palabra") else caps
     base = out_dir / f"{name}-{profile}"
     subtitles.write_srt(caps, base.with_suffix(".srt"))
     subtitles.write_vtt(caps, base.with_suffix(".vtt"))
@@ -69,11 +85,12 @@ def render(work: Path, out_dir: Path, name: str, cfg: dict, music: Path | None,
     ass = work / "subs.ass"
     style = {**sub_cfg.get("style", {}), **per}
     band = subtitles.band_height(width, height, style) if style.get("placement") == "band" else 0
-    subtitles.write_ass(caps, ass, width, height + band, style)
+    subtitles.write_ass(burn_items, ass, width, height + band, style)
+    dur = total
 
     # ---------- audio: voz + música con ducking ------------------------- #
     mcfg = cfg["MUSIC"]
-    inputs = ["-ss", f"{trim:.3f}", "-i", str(raw)]
+    inputs = ["-ss", f"{v_trim:.3f}", "-i", str(video_in)]
     filters, voice_labels = [], []
     for i, item in enumerate(timeline):
         inputs += ["-i", item["audio"]]
@@ -118,26 +135,51 @@ def render(work: Path, out_dir: Path, name: str, cfg: dict, music: Path | None,
     audio_args = (["-map", "[aout]", "-c:a", "aac", "-b:a", "160k"] if audio_out else ["-an"])
 
     clean = base.with_suffix(".mp4")
+    rec = data.get("grabacion", {})
+    tag = f"app-demo-recorder {rec.get('commit', '?')} {rec.get('fecha', '')}".strip()
     args = [*inputs, "-filter_complex", ";".join(filters + [f"[0:v]{video_f}[vout]"]),
-            "-map", "[vout]", *audio_args, *common_v, "-t", f"{dur}", str(clean)]
+            "-map", "[vout]", *audio_args, *common_v, "-metadata", f"comment={tag}",
+            "-t", f"{dur}", str(clean)]
     ff.run(args)
     outputs = {"video": clean}
 
     # ---------- versión con subtítulos quemados ------------------------- #
     if sub_cfg.get("burn", True) and caps:
+        burned = out_dir / f"{name}-{profile}-subs.mp4"
+        pad = (f"pad=iw:ih+{band}:0:0:color={style.get('band_color', '#111111').replace('#', '0x')}"
+               if band else "")
         if ff.has_filter("ass"):
-            burned = out_dir / f"{name}-{profile}-subs.mp4"
             # cwd = carpeta de trabajo: evita escapar rutas con ':' o espacios.
             vf = "ass=subs.ass"
-            if band:
-                color = style.get("band_color", "#111111").replace("#", "0x")
-                vf = f"pad=iw:ih+{band}:0:0:color={color}," + vf
+            if FONTS.is_dir():
+                # La fuente viaja con el repo: los subtítulos salen iguales en
+                # los tres sistemas, tengan o no instalada la fuente.
+                shutil.copytree(FONTS, work / "fonts", dirs_exist_ok=True,
+                                ignore=shutil.ignore_patterns("*.md", "*.txt"))
+                vf += ":fontsdir=fonts"
+            if pad:
+                vf = f"{pad},{vf}"
             ff.run(["-i", str(clean.resolve()), "-vf", vf, "-c:a", "copy",
                     *common_v, str(burned.resolve())], cwd=work)
-            outputs["video_subs"] = burned
         else:
-            print("   AVISO: tu ffmpeg no tiene libass; no se quemaron los subtítulos "
-                  f"(el .vtt sí está). Para quemarlos: {ff.install_hint()}")
+            # Sin libass (el ffmpeg de Homebrew; en Mac Intel no hay ffmpeg-full):
+            # cada bloque se dibuja como imagen con la fuente de fonts/ y se
+            # superpone con overlay, que tiene cualquier ffmpeg.
+            shutil.rmtree(work / "subs", ignore_errors=True)   # de una mezcla anterior
+            imgs = subtitles.write_images(burn_items, work / "subs", width, height, band, style,
+                                          FONTS)
+            inputs, chain, last = ["-i", str(clean.resolve())], [], "0:v"
+            if pad:
+                chain.append(f"[0:v]{pad}[p]")
+                last = "p"
+            for i, im in enumerate(imgs, 1):
+                inputs += ["-i", im["png"].relative_to(work).as_posix()]
+                chain.append(f"[{last}][{i}:v]overlay={im['x']}:{im['y']}:"
+                             f"enable='between(t,{im['start']:.3f},{im['end']:.3f})'[s{i}]")
+                last = f"s{i}"
+            ff.run([*inputs, "-filter_complex", ";".join(chain), "-map", f"[{last}]",
+                    "-map", "0:a?", "-c:a", "copy", *common_v, str(burned.resolve())], cwd=work)
+        outputs["video_subs"] = burned
 
     # ---------- webm opcional, póster ----------------------------------- #
     if webm:
@@ -152,7 +194,32 @@ def render(work: Path, out_dir: Path, name: str, cfg: dict, music: Path | None,
     outputs.update(poster=poster, srt=base.with_suffix(".srt"), vtt=base.with_suffix(".vtt"))
     outputs["duration"] = dur
     outputs["size"] = (width, height)
+
+    # ---------- con qué se hizo: va junto al video a la carpeta compartida #
+    info = {**rec, "musica": music.name if music else None,
+            "subtitulos_quemados": "video_subs" in outputs, "duracion": dur}
+    base.with_suffix(".json").write_text(json.dumps(info, ensure_ascii=False, indent=1),
+                                         encoding="utf-8")
+    outputs["info"] = base.with_suffix(".json")
     return outputs
+
+
+def contact_sheet(out_dir: Path, name: str, profile: str) -> tuple[Path, float] | None:
+    """Hoja de cuadros para revisar un video de un vistazo: hasta 16 cuadros
+    repartidos a lo largo de todo el video. Usa la versión con subtítulos si está."""
+    video = out_dir / f"{name}-{profile}-subs.mp4"
+    if not video.is_file():
+        video = out_dir / f"{name}-{profile}.mp4"
+    if not video.is_file():
+        return None
+    w, h = ff.size(video)
+    cols, rows, thumb = (8, 2, 240) if h > w else (4, 4, 480)
+    every = max(1.0, ff.duration(video) / 15)
+    sheet = out_dir / ".work" / f"hoja-{profile}.png"
+    sheet.parent.mkdir(parents=True, exist_ok=True)
+    ff.run(["-i", str(video), "-vf", f"fps=1/{every:.3f},scale={thumb}:-1,tile={cols}x{rows}",
+            "-frames:v", "1", str(sheet)])
+    return sheet, every
 
 
 def write_snippet(out_dir: Path, name: str, title: str, profiles: list[str]) -> Path:

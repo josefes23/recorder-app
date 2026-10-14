@@ -7,6 +7,7 @@ de la app (APP_URL) y dónde está su código en tu máquina (APP_DIR).
 """
 
 import os
+import re
 
 # --- App --------------------------------------------------------------- #
 # La app que se graba. Local por defecto; si no programás, poné en tu .env la
@@ -32,13 +33,40 @@ async def login(page, base_url, env):
 
     Ajustá los selectores a tu pantalla de login. DEMO_EMAIL / DEMO_PASSWORD
     salen del archivo .env.
+
+    Devuelve los datos de la sesión: "liga" para las rutas de las escenas
+    ("/league/{liga}/…"; cada entorno tiene sus propios IDs, así que no se
+    escriben en las escenas) y "sensibles", el nombre y el email de la cuenta,
+    que se blurean en los videos (OFUSCAR).
     """
+    usuario = {}
+
+    async def al_responder(resp):    # el login de la app devuelve el usuario
+        if resp.request.method == "POST" and resp.url.rstrip("/").endswith("/auth/login"):
+            try:
+                usuario.update((await resp.json()).get("user") or {})
+            except Exception:
+                pass
+
+    page.on("response", al_responder)
     await page.goto(base_url + "/login")
     # La pantalla trae dos formularios (layout celular y escritorio): usar el visible.
     await page.locator("input[name=email]:visible").fill(env["DEMO_EMAIL"])
     await page.locator("input[name=password]:visible").fill(env["DEMO_PASSWORD"])
     await page.locator("button[type=submit]:visible").click()
     await page.wait_for_url(lambda url: "/login" not in url, timeout=20000)
+    page.remove_listener("response", al_responder)
+    sensibles = [v for v in (usuario.get("name"), usuario.get("email")) if v]
+
+    # El login pasa por /dashboard, que redirige a una liga (la última visitada
+    # o la primera activa) cuando termina de cargarlas: hay que esperarla.
+    liga = re.compile(r"/league/(?!new\b)([^/?#]+)")
+    try:
+        await page.wait_for_url(liga, timeout=15000)
+    except Exception:
+        pass  # sin ligas activas se queda en la bienvenida
+    m = liga.search(page.url)
+    return {"sensibles": sensibles, **({"liga": m.group(1)} if m else {})}
 
 
 # --- Perfiles de grabación -------------------------------------------- #
@@ -46,9 +74,12 @@ async def login(page, base_url, env):
 #         (390x844 @2x → video 780x1688).
 # desktop: screencast a 60 cps (1440x900). Con "scale": 2 sale 2880x1800,
 #          más nítido pero con menos cuadros por segundo.
+# reel:    celular en 9:16 exacto (360x640 @2x → 720x1280), para reels y
+#          shorts; solo lo graban las escenas que lo piden en PROFILES.
 PROFILES = {
     "mobile": {"device": "iPhone 14", "viewport": {"width": 390, "height": 844}, "scale": 2},
     "desktop": {"viewport": {"width": 1440, "height": 900}, "scale": 1},
+    "reel": {"device": "iPhone 14", "viewport": {"width": 360, "height": 640}, "scale": 2},
 }
 LOCALE = "es-AR"
 TIMEZONE = "America/Argentina/Buenos_Aires"
@@ -72,7 +103,7 @@ PACE = 1.0         # >1 acciones más lentas, <1 más rápidas
 MUSIC = {
     "file": "auto",
     "folder": "musica",
-    "volume": 0.18,     # volumen base
+    "volume": 0.25,     # volumen base
     "duck": True,       # baja sola mientras habla la voz…
     "duck_level": 0.35, # …a este porcentaje del volumen base
     "voice_volume": 1.0,
@@ -82,7 +113,10 @@ MUSIC = {
 # --- Subtítulos -------------------------------------------------------- #
 SUBTITLES = {
     "burn": True,   # además del .vtt, genera *-subs.mp4 con subtítulos quemados
-    "style": {"font": "Arial", "bold": True, "box_alpha": "50", "position": "bottom"},
+    # La fuente sale de fonts/ (igual en los tres sistemas), no del sistema.
+    # highlight: color de la palabra que se está diciendo (ANIMACIONES["subtitulos_palabra"]).
+    "style": {"font": "Liberation Sans", "bold": True, "box_alpha": "50", "position": "bottom",
+              "highlight": "#FFD54A"},
     # placement "band": franja sólida debajo de la pantalla (nunca tapa la UI:
     #   ideal en celular, donde hay barras inferiores y bottom sheets).
     # placement "overlay": caja semitransparente encima; margin_bottom = distancia
@@ -94,10 +128,55 @@ SUBTITLES = {
 }
 
 
+# --- Datos sensibles --------------------------------------------------- #
+# Se blurean en la página antes de capturarse: nunca llegan al video. En un
+# texto se blurea solo el dato ("Hola, <nombre> · Organizador" deja el resto
+# nítido). Se detectan solos, en el texto y en los campos: emails, teléfonos
+# (8+ cifras) y documentos (DNI de 7-8 cifras, CUIT). "cuenta": el nombre y el
+# email de la cuenta con la que se graba (salen del login). Además:
+# "textos" (se blurea cada aparición) y "selectores" (se blurea el elemento
+# entero, ej. "[data-testid=player-dni]"). "activo": False apaga todo.
+OFUSCAR = {
+    "emails": True,
+    "telefonos": True,
+    "documentos": True,
+    "cuenta": True,
+    "textos": [],
+    "selectores": [],
+    "blur": 9,   # intensidad en píxeles (crece sola con letras grandes)
+}
+
+
 # --- Video ------------------------------------------------------------- #
 ACCENT = "#4F7CFF"   # color del toque, el cursor al hacer clic y los resaltados
 CRF = 22             # calidad final (menor = mejor y más pesado)
 LEAD_IN = 0.6        # segundos quietos al empezar
 TAIL = 1.2           # segundos quietos al terminar
-POSTER_AT = 1.0      # segundo del que se saca el póster .jpg
+POSTER_AT = 1.0      # segundo del que se saca el póster .jpg (con intro, la placa)
 KEEP_WORK = True     # conserva la grabación cruda para poder --remezclar
+
+
+# --- Animaciones (postproducción: --remezclar las rehace sin regrabar) --- #
+# Intro y cierre con la marca van siempre (también si falta algo acá: los
+# valores por defecto están en recorder/animar.py). 0 apaga cada uno.
+ANIMACIONES = {
+    # Zoom solo donde hace falta: si alrededor del toque hay al menos `vecinos`
+    # controles juntos (zona confusa) o el objetivo ocupa menos de `area` de la
+    # pantalla. En la escena se fuerza con d.click(..., zoom=True) o zoom=False.
+    "zoom": {"mobile": 1.25, "desktop": 1.5},   # acercamiento máximo; 1 = nunca
+    "zoom_si": {"vecinos": 6, "area": 0.002},
+    "transicion": 0.35,          # fundido al cambiar de pantalla (s); 0 = sin
+    "subtitulos_palabra": True,  # resalta la palabra que se está diciendo
+    "intro": 1.8,                # placa con ícono y título de la escena (s)
+    "cierre": 2.6,               # placa con la llamada a la acción (s)
+}
+
+# Placas de intro y cierre.
+MARCA = {
+    "icono": "marca/icono.png",          # ícono de la app (de public/icons de la PWA)
+    "nombre": "TuLigaPro",               # debajo del título, en la intro
+    "color": "#1a6e3c",                  # verde de la app (--color-primary)
+    "color_oscuro": "#0f3d22",
+    "cierre": "Organizá tu liga con TuLigaPro",
+    "cierre_sub": "",                    # ej. la URL de la app; vacío = sin línea
+}

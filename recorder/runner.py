@@ -3,24 +3,61 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import importlib.util
 import json
 import os
+import platform
 import re
 import shutil
 import signal
 import subprocess
 import time
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 from . import capture as cap_mod
 from . import post
-from .demo import Demo
+from .demo import Demo, completar_ruta
 from .voice import Voice
 
 ROOT = Path(__file__).resolve().parent.parent
 OVERLAY = (Path(__file__).parent / "overlay.js").read_text(encoding="utf-8")
+OFUSCAR_JS = (Path(__file__).parent / "ofuscar.js").read_text(encoding="utf-8")
+OFUSCAR_DEFECTO = {"emails": True, "telefonos": True, "documentos": True, "cuenta": True,
+                   "textos": [], "selectores": [], "blur": 9}
+
+
+CUENTAS = ("organizador", "delegado", "jugador", "veedor")
+
+
+def cuenta_env(scene_mod) -> dict:
+    """Las variables de entorno con la cuenta de la escena como DEMO_EMAIL y
+    DEMO_PASSWORD: CUENTA = "delegado" entra con DEMO_DELEGADO_EMAIL y
+    DEMO_DELEGADO_PASSWORD. Sin CUENTA (u "organizador"), la de siempre."""
+    cuenta = (getattr(scene_mod, "CUENTA", "") or "").lower()
+    env = dict(os.environ)
+    if cuenta and cuenta != "organizador":
+        pref = f"DEMO_{cuenta.upper()}_"
+        if not (env.get(pref + "EMAIL") and env.get(pref + "PASSWORD")):
+            raise SystemExit(f"ERROR: la escena entra como {cuenta!r}: faltan {pref}EMAIL y "
+                             f"{pref}PASSWORD en tu .env (ver .env.example).")
+        env["DEMO_EMAIL"], env["DEMO_PASSWORD"] = env[pref + "EMAIL"], env[pref + "PASSWORD"]
+    return env
+
+
+def ofuscar_js(cfg: dict, datos: dict, env=os.environ) -> str | None:
+    """Script que blurea los datos sensibles (ver OFUSCAR en config.py)."""
+    o = {**OFUSCAR_DEFECTO, **(cfg.get("OFUSCAR") or {})}
+    if o.get("activo") is False:
+        return None
+    textos = list(o.get("textos") or [])
+    if o.get("cuenta"):   # nombre y email de la cuenta con la que se graba
+        textos += list(datos.get("sensibles") or []) + [env.get("DEMO_EMAIL", "")]
+    conf = {k: o[k] for k in ("emails", "telefonos", "documentos", "selectores", "blur")}
+    conf["textos"] = [t.strip() for t in textos if t and len(t.strip()) >= 3]
+    return OFUSCAR_JS.replace("__CONFIG__", json.dumps(conf, ensure_ascii=False))
 
 
 def load_module(path: Path, name: str):
@@ -35,6 +72,21 @@ def list_scenes(scenes_dir: Path) -> dict[str, Path]:
 
 
 # ---------------------------------------------------------------------- #
+def _commit() -> str:
+    """Commit del grabador, con "+cambios" si lo que afecta al video no está
+    commiteado: ata cada video a la versión de la escena que lo generó."""
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True,
+                              encoding="utf-8", check=True).stdout.strip()
+    try:
+        sha = git("rev-parse", "--short", "HEAD")
+        dirty = git("status", "--porcelain", "--", "escenas", "recorder", "config.py",
+                    "fonts", "musica")
+        return sha + ("+cambios" if dirty else "")
+    except (OSError, subprocess.CalledProcessError):
+        return "sin git"
+
+
 def _up(url: str) -> bool:
     try:
         urllib.request.urlopen(url, timeout=2)
@@ -124,13 +176,19 @@ async def record_one(browser, p, cfg: dict, scene_mod, scene_name: str, profile:
     base = cfg["BASE_URL"].rstrip("/")
 
     try:
-        # 1) Login fuera de cámara: la captura aún no empezó.
+        # 1) Login fuera de cámara: la captura aún no empezó. Lo que devuelve
+        #    (ej. {"liga": "…"}) completa las rutas de la escena: "/league/{liga}/…".
+        datos = {}
+        env = cuenta_env(scene_mod)
         if getattr(scene_mod, "LOGIN", True) and cfg.get("login"):
-            await cfg["login"](page, base, os.environ)
+            datos = await cfg["login"](page, base, env) or {}
+        # Desde la próxima carga, los datos sensibles se blurean antes de capturarse.
+        if script := ofuscar_js(cfg, datos, env):
+            await ctx.add_init_script(script)
 
         # 2) Página inicial de la escena.
         d = Demo(page, profile=profile, mobile=mobile, base_url=base, voice=voice,
-                 pace=cfg.get("PACE", 1.0), gap=cfg.get("VOICE_GAP", 0.35))
+                 pace=cfg.get("PACE", 1.0), gap=cfg.get("VOICE_GAP", 0.35), datos=datos)
         await d.goto(getattr(scene_mod, "START", "/"))
         if hasattr(scene_mod, "prepare"):
             await scene_mod.prepare(d)       # ajustes previos, también fuera de cámara
@@ -145,6 +203,7 @@ async def record_one(browser, p, cfg: dict, scene_mod, scene_name: str, profile:
                               quality=cfg.get("JPEG_QUALITY", 85))
         d.input_lock = cap.input_lock
         d.t0 = await cap.start()
+        d.events = []   # lo de prepare() no se ve: el zoom solo sigue lo que se grabó
         await asyncio.sleep(cfg.get("LEAD_IN", 0.6))
         try:
             await scene_mod.run(d)
@@ -152,6 +211,13 @@ async def record_one(browser, p, cfg: dict, scene_mod, scene_name: str, profile:
         finally:
             await d._voice_free.wait()
             t_end = await cap.stop()
+            # 4) Fuera de cámara otra vez: deshacer lo que la toma creó y no
+            #    se puede borrar antes de la próxima. Corre aunque run() falle.
+            if hasattr(scene_mod, "cleanup"):
+                try:
+                    await scene_mod.cleanup(d)
+                except Exception as e:
+                    print(f"   AVISO: cleanup() de la escena falló: {e}")
         elapsed = t_end - d.t0
         fps_in = cap.frames_in / elapsed if elapsed else 0
         print(f"   {elapsed:.1f} s grabados · {cap.frames_in} cuadros ({fps_in:.0f}/s, modo {mode})")
@@ -162,6 +228,18 @@ async def record_one(browser, p, cfg: dict, scene_mod, scene_name: str, profile:
         (work / "timeline.json").write_text(json.dumps({
             "scene": scene_name, "profile": profile, "trim_start": 0.0,
             "timeline": d.timeline,
+            "events": d.events, "viewport": vp,   # para el zoom de postproducción
+            # Con qué se grabó: postproducción lo deja junto al video (.json).
+            "grabacion": {
+                "fecha": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "commit": _commit(),
+                "escena_sha1": hashlib.sha1(Path(scene_mod.__file__).read_bytes()).hexdigest()[:12],
+                "app": base,
+                "sistema": platform.platform(),
+                "chromium": browser.version,
+                "voz": f"{voice.provider}:{voice.voice}",
+                "cps": round(fps_in, 1),
+            },
         }, ensure_ascii=False, indent=1), encoding="utf-8")
     finally:
         await ctx.close()
@@ -221,7 +299,11 @@ async def run(cfg: dict, scenes: list[str], profiles: list[str], *, headed: bool
             print(f"● {name} [{prof}] postproducción…")
             music = post.pick_music(music_cfg)
             o = await asyncio.to_thread(post.render, work, out_dir, name,
-                                        {**cfg, "MUSIC": music_cfg}, music, webm)
+                                        {**cfg, "MUSIC": music_cfg,
+                                         # la escena puede ajustar sus animaciones
+                                         "ANIMACIONES": {**(cfg.get("ANIMACIONES") or {}),
+                                                         **getattr(mod, "ANIMACIONES", {})}},
+                                        music, webm, title)
             done.append(prof)
             results.append((name, prof, o, music))
         if done:
@@ -305,9 +387,11 @@ async def inspect_route(cfg: dict, route: str, profiles: list[str], headed: bool
                 for profile in profiles:
                     ctx = await browser.new_context(**context_options(p, cfg["PROFILES"][profile], cfg))
                     page = await ctx.new_page()
+                    datos = {}
                     if cfg.get("login"):
-                        await cfg["login"](page, base, os.environ)
-                    await page.goto(route if route.startswith("http") else base + route,
+                        datos = await cfg["login"](page, base, os.environ) or {}
+                    ruta = completar_ruta(route, datos)
+                    await page.goto(ruta if ruta.startswith("http") else base + ruta,
                                     wait_until="domcontentloaded")
                     try:
                         await page.wait_for_load_state("networkidle", timeout=5000)

@@ -18,7 +18,9 @@ _BREW_FULL = ["/opt/homebrew/opt/ffmpeg-full/bin", "/usr/local/opt/ffmpeg-full/b
 def install_hint() -> str:
     """Cómo instalar un ffmpeg completo (con libass) en este sistema."""
     if sys.platform == "darwin":
-        return "brew install ffmpeg-full"
+        # ffmpeg-full no tiene binario precompilado (se compila horas); el
+        # común alcanza: sin libass, los subtítulos se dibujan con Pillow.
+        return "brew install ffmpeg"
     if os.name == "nt":
         return "winget install Gyan.FFmpeg  (después abrí una terminal nueva)"
     return "sudo apt install ffmpeg  (Fedora: sudo dnf install ffmpeg)"

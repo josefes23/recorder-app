@@ -5,10 +5,15 @@ Plantilla de escena. Copiala con otro nombre (sin "_" adelante) para crear una:
 
 Cada archivo de escenas/ es una funcionalidad y genera su propio video,
 en celular y en escritorio. El nombre del archivo es el nombre del video.
+
+Reemplazá este texto por: qué muestra la escena y qué necesita en la liga
+demo (ej. "Necesita: un complejo con horario").
 """
 
 TITLE = "Nombre de la funcionalidad"   # aparece en --listar y en landing.html
-START = "/"                            # ruta donde arranca (se abre fuera de cámara)
+# Ruta donde arranca (se abre fuera de cámara). Sin IDs escritos: usá los datos
+# del login entre llaves, ej. "/league/{liga}/config/venues".
+START = "/"
 LOGIN = True                           # hace login antes de grabar (config.login)
 PROFILES = ["mobile", "desktop"]       # o solo uno de los dos
 
@@ -19,9 +24,15 @@ async def prepare(d):
     pass
 
 
+# async def cleanup(d):
+#     """Opcional, fuera de cámara al terminar la toma (aunque falle): deshacer
+#     lo que la escena creó, si no se puede limpiar en prepare()."""
+
+
 async def run(d):
-    # Un cartel arriba, como título de la sección (no bloquea).
-    await d.banner("Organizá tu día", 2)
+    # El título de la escena ya lo muestra la intro. Un cartel arriba sirve para
+    # marcar una parte a mitad del video (no bloquea):
+    # await d.banner("Organizá tu día", 2)
 
     # Narración sola: espera a que termine la frase.
     await d.say("Con Mi App tenés todo tu día a la vista.")

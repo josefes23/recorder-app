@@ -114,7 +114,9 @@ class Capture:
             pass  # si el codificador va atrasado, se descarta: se repetirá el anterior
 
     async def _screenshot_loop(self) -> None:
-        params = {"format": "jpeg", "quality": self.quality, "optimizeForSpeed": True}
+        # Sin optimizeForSpeed: con él, después de una navegación (d.goto) Chromium
+        # deja de responder captureScreenshot y la grabación se cuelga en stop().
+        params = {"format": "jpeg", "quality": self.quality}
         while self._running:
             t_req = time.time()
             try:

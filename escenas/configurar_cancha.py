@@ -1,22 +1,25 @@
 """Configurar una cancha: agregarla al complejo, nombrarla, elegir la modalidad
-y darle un horario propio."""
+y darle un horario propio.
 
-import os
+Necesita en la liga demo: un complejo con horario semanal y ninguna cancha
+llamada "Cancha Techada" (ver "Datos demo" en CONTRIBUTING.md).
+"""
 
 TITLE = "Configurar una cancha"
-START = "/league/cmuejep0z00dexas12ubbtl0i/config/venues"
+START = "/league/{liga}/config/venues"
 LOGIN = True
 PROFILES = ["mobile", "desktop"]
 
 NUEVA = "Cancha Techada"
 ROWS = "[data-testid=pitch-row]"
-# Lo que deja una toma: la cancha renombrada o, si se cortó antes, el nombre por
-# defecto con el que nace (el complejo tiene cuatro). Nada más se borra.
-DE_TOMAS_ANTERIORES = {NUEVA, "Cancha 5"}
+# Solo se borra la cancha que crea esta escena. Si una toma se corta entre
+# "Agregar cancha" y el cambio de nombre, queda una "Cancha N" que no se puede
+# distinguir de las reales: borrala a mano.
+DE_TOMAS_ANTERIORES = {NUEVA}
 
 
 async def prepare(d):
-    """Fuera de cámara: borra la cancha de la toma anterior y oculta el email."""
+    """Fuera de cámara: borra la cancha de la toma anterior."""
     page = d.page  # la captura todavía no empezó: se puede tocar la página directo
     await page.locator("[data-testid=venue-expand]").first.click()
     await page.locator(ROWS).first.wait_for()
@@ -37,17 +40,9 @@ async def prepare(d):
 
     await d.goto(START)  # recarga con el complejo cerrado, como lo ve alguien al entrar
     await page.locator("[data-testid=venue-expand]").first.wait_for()
-    email = os.environ.get("DEMO_EMAIL")
-    if email:
-        await page.evaluate("""email => {
-            for (const el of document.querySelectorAll('div, span'))
-              if (!el.childElementCount && el.textContent.trim() === email)
-                el.style.visibility = 'hidden'
-        }""", email)
 
 
 async def run(d):
-    await d.banner("Canchas y horarios", 2.2)
     await d.say("Cargá tus canchas una sola vez, y el fixture las usa para programar cada fecha.")
 
     async with d.narrate("Abrí el complejo. Arriba tenés su horario semanal de turnos."):

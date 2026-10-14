@@ -2,7 +2,11 @@
 Voz de la narración.
 
 - "edge": edge-tts, gratis, con marcas de tiempo por palabra (adaptado de
-  auto-video-generator). Requiere internet.
+  auto-video-generator). Requiere internet. Usa el "leer en voz alta" de Edge,
+  que no es un servicio oficial: sirve para borradores.
+- "azure": Azure AI Speech, las mismas voces Neural por la API oficial, para
+  los videos finales. Necesita AZURE_SPEECH_KEY y AZURE_SPEECH_REGION en .env
+  y el extra `azure`: `uv run --extra azure grabar.py … --proveedor-voz azure`.
 - "test": tono de prueba sin red, para verificar la instalación.
 - Audio propio: say("texto", audio="voz/intro.m4a") usa tu grabación y el
   texto solo alimenta los subtítulos.
@@ -16,8 +20,10 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from . import ff
 
@@ -60,6 +66,8 @@ class Voice:
             if not (mp3.is_file() and meta.is_file()):
                 if self.provider == "edge":
                     words = await self._edge(text, mp3)
+                elif self.provider == "azure":
+                    words = await self._azure(text, mp3)
                 elif self.provider == "test":
                     words = await asyncio.to_thread(self._test_tone, text, mp3)
                 else:
@@ -87,6 +95,21 @@ class Voice:
             f"ERROR: edge-tts no pudo generar la voz ({last}). "
             "Revisa tu conexión a internet (edge-tts necesita red)."
         )
+
+    async def _azure(self, text: str, mp3: Path) -> list[dict]:
+        tmp = mp3.with_suffix(".part.mp3")
+        last = None
+        for attempt in range(3):
+            try:
+                data, words = await asyncio.to_thread(
+                    _azure_synth, text, self.voice, self.rate, self.pitch)
+                tmp.write_bytes(data)
+                tmp.replace(mp3)
+                return words
+            except RuntimeError as e:  # red intermitente o límite del servicio: se reintenta
+                last = e
+            await asyncio.sleep(1.5 * (attempt + 1))
+        raise SystemExit(f"ERROR: Azure Speech no pudo generar la voz ({last}).")
 
     @staticmethod
     def _test_tone(text: str, mp3: Path) -> list[dict]:
@@ -122,3 +145,40 @@ async def _edge_stream(text: str, voice: str, rate: str, pitch: str, out_mp3: Pa
                     "end": (chunk["offset"] + chunk["duration"]) / 1e7,
                 })
     return words
+
+
+def _azure_synth(text: str, voice: str, rate: str, pitch: str) -> tuple[bytes, list[dict]]:
+    """Azure AI Speech: devuelve el mp3 y los WordBoundary, como _edge_stream."""
+    try:
+        import azure.cognitiveservices.speech as sdk
+    except ImportError:
+        raise SystemExit("ERROR: falta el SDK de Azure Speech. Ejecutá con el extra:\n"
+                         "  uv run --extra azure grabar.py … --proveedor-voz azure") from None
+    key, region = os.environ.get("AZURE_SPEECH_KEY"), os.environ.get("AZURE_SPEECH_REGION")
+    if not (key and region):
+        raise SystemExit("ERROR: la voz de Azure necesita AZURE_SPEECH_KEY y "
+                         "AZURE_SPEECH_REGION en tu .env (ver .env.example).")
+
+    cfg = sdk.SpeechConfig(subscription=key, region=region)
+    cfg.set_speech_synthesis_output_format(
+        sdk.SpeechSynthesisOutputFormat.Audio24Khz48KBitRateMonoMp3)
+    synth = sdk.SpeechSynthesizer(speech_config=cfg, audio_config=None)  # audio en memoria
+    words: list[dict] = []
+
+    def on_word(evt) -> None:
+        # Solo palabras: la puntuación la recupera attach_punctuation, igual que con edge.
+        if evt.boundary_type == sdk.SpeechSynthesisBoundaryType.Word:
+            start = evt.audio_offset / 1e7   # unidades de 100 nanosegundos
+            words.append({"text": evt.text, "start": start,
+                          "end": start + evt.duration.total_seconds()})
+
+    synth.synthesis_word_boundary.connect(on_word)
+    lang = "-".join(voice.split("-")[:2])     # es-AR-ElenaNeural → es-AR
+    ssml = (f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="{lang}">'
+            f'<voice name="{voice}"><prosody rate="{rate}" pitch="{pitch}">{escape(text)}'
+            "</prosody></voice></speak>")
+    result = synth.speak_ssml_async(ssml).get()
+    if result.reason != sdk.ResultReason.SynthesizingAudioCompleted:
+        det = result.cancellation_details
+        raise RuntimeError(f"{det.reason}: {det.error_details}")
+    return result.audio_data, words

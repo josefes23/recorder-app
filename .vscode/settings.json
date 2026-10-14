@@ -1,0 +1,8 @@
+{
+  // Copilot corre el grabador sin pedir confirmación cada vez, y siempre
+  // pregunta antes de un comando que toque .env (credenciales de la cuenta demo).
+  "chat.tools.terminal.autoApprove": {
+    "/^uv run (--extra azure )?(grabar|instalar)\\.py\\b/": true,
+    "/\\.env(\\s|$)/": false
+  }
+}

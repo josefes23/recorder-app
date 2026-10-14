@@ -76,9 +76,9 @@ def check_ffmpeg() -> None:
         return
     ok(f"ffmpeg en {path}")
     if ff.has_filter("ass"):
-        ok("puede quemar subtítulos (libass)")
+        ok("quema subtítulos con libass")
     else:
-        fail("este ffmpeg no quema subtítulos: no saldrán los *-subs.mp4", ff.install_hint())
+        ok("quema subtítulos dibujándolos con Pillow (este ffmpeg no trae libass)")
 
 
 def check_env() -> None:
@@ -104,6 +104,13 @@ def check_env() -> None:
             fail(f"APP_DIR no existe: {app_dir}", "corregí la ruta en .env o borrá la línea")
     else:
         warn("sin APP_DIR: Claude va a usar --inspeccionar en vez de leer el código de la app")
+
+    if values.get("AZURE_SPEECH_KEY"):
+        try:
+            import azure.cognitiveservices.speech  # noqa: F401
+            ok("voz de Azure lista para los finales (--proveedor-voz azure)")
+        except ImportError:
+            warn("hay AZURE_SPEECH_KEY pero falta el SDK: corré  uv run --extra azure instalar.py")
 
     url = values.get("APP_URL") or "http://localhost:5173"
     try:
