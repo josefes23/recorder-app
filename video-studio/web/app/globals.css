@@ -1,0 +1,360 @@
+/* ---------------------------------------------------------------------------
+   video-studio · hoja única de estilos
+
+   Tres reglas sostienen el resto:
+
+   1. Los tokens de :root son la única fuente de color, espacio y tipografía.
+      Ningún componente escribe un color literal ni un píxel suelto.
+   2. Los estilos base van dentro de :where(), así que pesan 0 en especificidad
+      y cualquier clase los sobrescribe sin peleas de cascada.
+   3. El espacio lo reparte el contenedor con `gap`, nunca el margen del hijo:
+      añadir un control no descuadra a sus vecinos.
+
+   Tema oscuro y sin variante clara a propósito. Esto es un banco de trabajo de
+   video: el fotograma 9:16 se juzga sobre un fondo neutro y apagado, igual que
+   en cualquier montador. Un fondo claro alrededor falsea lo que ves.
+   --------------------------------------------------------------------------- */
+
+:root {
+  /* Superficies, de la más honda a la más cercana */
+  --ink: #0d0f13;
+  --surface: #16191f;
+  --surface-2: #1d212a;
+  --line: #272c37;
+
+  /* Grises con sesgo frío hacia el fondo, para que el naranja sea lo único cálido */
+  --text: #e7e9ef;
+  --muted: #8d95a6;
+
+  --accent: #ff8a4c;
+  --accent-ink: #24130a;              /* texto legible sobre el acento */
+  --accent-soft: rgba(255, 138, 76, 0.16);
+
+  --ok: #4ccf8f;
+  --warn: #ffb37a;
+  --err: #ff6b6b;
+
+  /* Escala de espacio: todo el layout sale de estos seis valores */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 34px;
+
+  /* Escala tipográfica */
+  --t-xs: 11.5px;
+  --t-sm: 13px;
+  --t-base: 15px;
+  --t-lg: 19px;
+
+  --r-sm: 6px;
+  --r: 9px;
+  --r-lg: 13px;
+
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* Las medidas —segundos, MB, porcentajes— van siempre en mono con cifras de
+     ancho fijo: en esta app los números son datos, no texto. */
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  --topbar: 57px;
+}
+
+/* --------------------------------------------------------------------- base */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Una regla `display` propia gana al estilo de agente de usuario de [hidden],
+   así que .modal{display:flex} lo dejaba visible. Esto lo zanja para todos.
+   Va con !important y sin :where(): aquí sí queremos ganar siempre. */
+[hidden] { display: none !important; }
+
+:where(body) {
+  margin: 0;
+  background: var(--ink);
+  color: var(--text);
+  font: var(--t-base) / 1.55 var(--sans);
+  padding-bottom: var(--s6);
+}
+
+:where(h1, h2, h3, p) { margin: 0; }
+
+:where(input, select, textarea, button) { font: inherit; }
+
+:where(
+  input[type="text"], input[type="password"], input[type="number"],
+  input[type="search"], input:not([type]), select, textarea
+) {
+  width: 100%;
+  padding: 9px 11px;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+:where(textarea) { resize: vertical; line-height: 1.6; }
+:where(input[type="range"]) { width: 100%; accent-color: var(--accent); }
+:where(input[type="checkbox"]) { accent-color: var(--accent); }
+
+/* Un solo anillo de foco para todo lo enfocable, también con teclado */
+:where(input, select, textarea, button, summary, a):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+:where(input, select, textarea):focus { outline: none; border-color: var(--accent); }
+:where(input, select, textarea):focus-visible { outline: 2px solid var(--accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
+
+/* ------------------------------------------------------------ composición */
+
+.stack { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+.cluster { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; }
+/* El campo de texto se come el hueco que dejen los botones de al lado */
+.cluster--search > input { flex: 1 1 170px; }
+.spread { display: flex; justify-content: space-between; align-items: center; gap: var(--s3); }
+
+/* Rejilla de campos; el número de columnas lo fija quien la usa */
+.fields {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr));
+  gap: var(--s3) var(--s4);
+}
+@media (max-width: 560px) { .fields { --cols: 1; } }
+
+.field { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
+.field > label, .field-label {
+  font-size: var(--t-sm);
+  color: var(--muted);
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--text); }
+
+.hint { font-size: var(--t-xs); color: var(--muted); line-height: 1.5; }
+.hint.warn { color: var(--warn); }
+.error { font-size: var(--t-sm); color: var(--err); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ------------------------------------------------------------------ chapa */
+
+.topbar {
+  display: flex; align-items: center; gap: var(--s3);
+  height: var(--topbar); padding: 0 var(--s5);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--ink) 92%, transparent);
+  backdrop-filter: blur(8px);
+}
+.brand { font-size: var(--t-lg); letter-spacing: -0.02em; font-weight: 600; }
+
+.chip {
+  font-size: var(--t-xs); padding: 3px 9px; border-radius: 999px;
+  background: var(--surface-2); color: var(--muted); border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.chip.is-on { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+
+/* --------------------------------------------------------------- estructura */
+
+.workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(310px, 0.6fr);
+  gap: var(--s5);
+  padding: var(--s5);
+  align-items: start;
+}
+@media (max-width: 1000px) { .workbench { grid-template-columns: 1fr; } }
+
+.rail { position: sticky; top: calc(var(--topbar) + var(--s5)); }
+@media (max-width: 1000px) { .rail { position: static; } }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+.panel--pad { padding: var(--s4); }
+.panel--loose { margin: 0 var(--s5); padding: var(--s4); }
+
+.panel-title {
+  font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--muted); font-weight: 600;
+}
+
+/* ------------------------------------------------------------------- pasos */
+
+/* Las cuatro fases son una secuencia real: el guion fija la duración, la
+   duración condiciona las escenas. Por eso van numeradas y en un mismo panel,
+   separadas por filetes en lugar de flotar como cajas sueltas. */
+.step { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s4); }
+.step + .step { border-top: 1px solid var(--line); }
+
+.step-head { display: flex; align-items: baseline; gap: var(--s2); }
+.step-n {
+  font-family: var(--mono); font-size: var(--t-xs);
+  color: var(--accent); background: var(--accent-soft);
+  border-radius: var(--r-sm); padding: 1px 6px; flex-shrink: 0;
+}
+.step-title { font-size: var(--t-sm); font-weight: 600; letter-spacing: 0.01em; }
+.step-note { font-size: var(--t-xs); color: var(--muted); margin-left: auto; text-align: right; }
+
+/* ------------------------------------------------------------------ botones */
+
+.btn {
+  padding: 9px 14px; border-radius: var(--r-sm); font-weight: 500;
+  cursor: pointer; border: 1px solid var(--line);
+  background: var(--surface-2); color: var(--text);
+  transition: filter 0.12s, border-color 0.12s;
+}
+/* También en enlaces y en la etiqueta que dispara un <input type=file> */
+label.btn, a.btn { display: inline-block; text-decoration: none; }
+.btn:hover:not(:disabled) { filter: brightness(1.15); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn--primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+/* Un acento apagado se lee como naranja sucio; desactivado es un control inerte */
+.btn--primary:disabled {
+  opacity: 1; background: var(--surface-2); color: var(--muted); border-color: var(--line);
+}
+.btn--block { width: 100%; }
+.btn--lg { padding: 13px; font-size: var(--t-base); font-weight: 600; }
+.btn--sm { padding: 5px 9px; font-size: var(--t-xs); }
+.btn--icon {
+  background: none; border: none; color: var(--muted);
+  padding: 0 var(--s1); font-size: 19px; line-height: 1;
+}
+.btn--icon:hover { color: var(--err); }
+
+/* ---------------------------------------------------------------- plegables */
+
+/* Todo lo que se ajusta una vez y no se vuelve a mirar vive aquí dentro: es lo
+   que mantiene la superficie principal en unos pocos controles. */
+.disclosure { border-top: 1px dashed var(--line); padding-top: var(--s3); }
+.disclosure > summary {
+  cursor: pointer; font-size: var(--t-sm); color: var(--muted);
+  display: flex; gap: var(--s2); align-items: baseline;
+}
+.disclosure > summary::marker { color: var(--line); }
+.disclosure[open] > summary { margin-bottom: var(--s3); }
+.disclosure-body { display: flex; flex-direction: column; gap: var(--s3); }
+
+/* ------------------------------------------------------------------ salida */
+
+.frame {
+  background: #000; border-radius: var(--r); overflow: hidden;
+  aspect-ratio: 9 / 16; display: grid; place-items: center;
+  /* Sin tope, al colapsar a una columna el marco se come toda la pantalla */
+  max-width: 300px; width: 100%; margin-inline: auto;
+}
+.frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.frame-empty { color: var(--muted); font-size: var(--t-sm); padding: var(--s4); text-align: center; }
+
+/* Resumen de lo que se va a renderizar: responde «¿qué sale de aquí?» sin
+   tener que recorrer los cuatro pasos hacia arriba. */
+.readout { display: flex; flex-direction: column; gap: var(--s1); }
+.readout-row { display: flex; justify-content: space-between; gap: var(--s3); font-size: var(--t-sm); }
+.readout-row dt { color: var(--muted); }
+.readout-row dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+
+.progress { height: 6px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); transition: width 0.3s ease; }
+
+/* ---------------------------------------------------------------- escenas */
+
+/* La barra dibuja la duración estimada del audio y el tramo que cubre cada
+   escena: los huecos y las escenas que entran pasado el final se ven de un
+   vistazo, que es justo lo que una lista de números no enseña. */
+.timeline-wrap { display: flex; flex-direction: column; gap: var(--s1); }
+.timeline {
+  display: flex; gap: 2px; height: 26px; position: relative;
+  background: var(--surface-2); border-radius: var(--r-sm); overflow: hidden;
+}
+/* Dónde se acaba la voz. Lo que quede a su derecha no llega a verse. */
+.timeline-end { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed var(--err); }
+.timeline-seg {
+  min-width: 3px; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+  font-family: var(--mono); font-size: var(--t-xs);
+  border-left: 2px solid var(--accent);
+}
+.timeline-seg.is-late { background: color-mix(in srgb, var(--err) 16%, transparent); color: var(--err); border-left-color: var(--err); }
+.timeline-scale {
+  display: flex; justify-content: space-between; position: relative;
+  font-size: var(--t-xs); color: var(--muted);
+}
+/* Cuando hay escenas más allá del final, esta etiqueta se coloca justo bajo la
+   marca roja: si flotara en el centro diría un segundo que no es el que señala. */
+.timeline-scale .at-mark {
+  position: absolute; transform: translateX(-50%); white-space: nowrap; color: var(--err);
+}
+/* La cifra hereda el rojo de la etiqueta en lugar del color de texto normal */
+.timeline-scale .at-mark .num { color: inherit; }
+
+.scene-row {
+  display: flex; align-items: center; gap: var(--s3);
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r-sm); padding: var(--s2);
+}
+.scene-thumb {
+  width: 38px; height: 66px; object-fit: cover; border-radius: var(--r-sm);
+  background: #000; flex-shrink: 0; cursor: pointer;
+}
+.scene-name {
+  flex: 1; min-width: 0; font-size: var(--t-sm); overflow-wrap: anywhere;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.scene-start { width: 82px; flex-shrink: 0; }
+.scene-start input { padding: 6px 8px; background: var(--surface); text-align: right; }
+
+/* ---------------------------------------------------------------- galería */
+
+.modal {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.72);
+  display: grid; place-items: center; z-index: 50; padding: var(--s5);
+}
+.modal-box {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
+  padding: var(--s5); width: min(940px, 100%); max-height: 88vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--s4);
+}
+
+.gallery {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: var(--s2);
+}
+.gallery figure { margin: 0; cursor: pointer; }
+.gallery img {
+  width: 100%; aspect-ratio: 9 / 16; object-fit: cover;
+  border-radius: var(--r-sm); border: 2px solid transparent; background: #000; display: block;
+}
+.gallery figure:hover img { border-color: var(--accent); }
+.gallery figcaption {
+  font-size: var(--t-xs); color: var(--muted); margin-top: var(--s1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Miniaturas sin thumbnail: evita el icono de imagen rota del navegador */
+.scene-thumb[src=""], .gallery img[src=""] { visibility: hidden; }
+
+/* -------------------------------------------------------------- biblioteca */
+
+.library { display: grid; grid-template-columns: repeat(auto-fill, minmax(186px, 1fr)); gap: var(--s3); }
+.lib-item {
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r); padding: var(--s2);
+  display: flex; flex-direction: column; gap: var(--s2);
+}
+/* El 9:16 a lo ancho de la columna daría tarjetas altísimas: se recorta la caja
+   y el video se encaja dentro sin deformarse. */
+.lib-item video {
+  width: 100%; max-height: 240px; object-fit: contain;
+  border-radius: var(--r-sm); background: #000; display: block;
+}
+.lib-item h3 { font-size: var(--t-sm); font-weight: 600; overflow-wrap: anywhere; }
+.lib-item .btn { background: var(--surface); }
+.status-error { color: var(--err); }
+.status-running { color: var(--warn); }

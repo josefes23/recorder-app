@@ -1,0 +1,19 @@
+[project]
+name = "app-demo-recorder"
+version = "0.1.0"
+description = "Graba demos de la PWA con voz en español, subtítulos y música, en celular y escritorio."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "edge-tts>=7.2",
+    "pillow>=10.1",        # subtítulos quemados cuando el ffmpeg no trae libass
+    "playwright>=1.51",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+# Voz de Azure AI Speech para los videos finales: uv run --extra azure grabar.py …
+azure = ["azure-cognitiveservices-speech>=1.40"]
+
+[tool.uv]
+package = false

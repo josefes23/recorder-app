@@ -1,0 +1,9 @@
+.venv/
+.env
+data/
+__pycache__/
+*.pyc
+.DS_Store
+web/out/
+web/.next/
+web/node_modules/

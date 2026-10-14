@@ -1,0 +1,9 @@
+.venv/
+.env
+tmp/
+outputs/
+assets/backgrounds/*
+!assets/backgrounds/.gitkeep
+__pycache__/
+*.pyc
+.DS_Store

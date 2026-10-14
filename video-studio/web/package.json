@@ -1,0 +1,31 @@
+{
+  "name": "video-studio-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c yellow,cyan \"npm:api\" \"npm:dev:web\"",
+    "dev:web": "next dev",
+    "api": "cd .. && ./.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000",
+    "api:reload": "cd .. && ./.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload",
+    "build": "next build",
+    "export": "NEXT_EXPORT=1 next build",
+    "serve": "npm run export && npm run api",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test domain/*.test.mts application/use-cases/*.test.mts"
+  },
+  "dependencies": {
+    "next": "16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^10.0.4",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.0",
+    "typescript": "^5"
+  }
+}

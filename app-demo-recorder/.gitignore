@@ -1,0 +1,15 @@
+# Personal (cada uno tiene el suyo)
+.env
+.claude/settings.local.json
+
+# Generado
+.venv/
+.cache/
+salida/
+__pycache__/
+*.pyc
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,8 @@
+# Instalación:  python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
+# Requiere además ffmpeg en el sistema:  brew install ffmpeg
+
+moviepy>=2.2,<3
+edge-tts>=7.2
+requests>=2.32
+pillow>=11
+numpy>=2
