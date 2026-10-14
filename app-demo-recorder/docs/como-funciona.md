@@ -116,9 +116,11 @@ deben usar `d.page.click()` dentro de `run()`.
   `overlay` (`subtitles.write_images`). Esa versión no tiene el fundido de 120 ms.
 - `uv run grabar.py <escena> --hoja` arma las hojas de cuadros con ffmpeg, así
   ningún asistente depende de comandos propios del sistema para revisar.
-- `.github/workflows/prueba.yml` graba la app de ejemplo en los tres sistemas
-  en cada PR, con voz de prueba y sin música.
-- `.github/workflows/escenas.yml` graba las escenas reales contra staging: una
+- Los workflows están en `.github/workflows/` de la raíz del monorepo y corren
+  dentro de `app-demo-recorder/`.
+- `prueba.yml` graba la app de ejemplo en los tres sistemas en cada PR que
+  toque el grabador, con voz de prueba y sin música.
+- `escenas.yml` graba las escenas reales contra staging: una
   prueba rápida cada día hábil (avisa si un cambio de la app rompió una
   escena) y, a mano, los videos finales, todos desde el mismo entorno. Por qué:
   [ADR 001](adr/001-entorno-de-grabacion.md).

@@ -34,7 +34,8 @@ Referencia para escribir escenas: `docs/escribir-escenas.md`; la API está en
 - Nada de IDs de la base en las escenas: las rutas usan los datos del login
   (`"/league/{liga}/…"`), porque staging y la base de cada uno tienen IDs distintos.
 - Lo que se graba en una máquina es un borrador. Los videos finales salen del
-  workflow `.github/workflows/escenas.yml` (ver `CONTRIBUTING.md`).
+  workflow `.github/workflows/escenas.yml` de la raíz del monorepo (ver
+  `CONTRIBUTING.md`).
 - Antes de dar un video por terminado, mirá sus cuadros:
   `uv run grabar.py <escena> --hoja` genera las hojas. Si no podés ver
   imágenes, pedile a la persona que las abra y te confirme.

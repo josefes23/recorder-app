@@ -32,8 +32,8 @@ Necesitás tres cosas: **git**, **uv** (maneja Python y las dependencias) y
 Después, en una terminal:
 
 ```bash
-git clone <url-del-repo> app-demo-recorder
-cd app-demo-recorder
+git clone <url-del-repo> CreacionContenido   # el monorepo
+cd CreacionContenido/app-demo-recorder
 uv run instalar.py
 ```
 

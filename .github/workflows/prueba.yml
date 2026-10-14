@@ -1,12 +1,15 @@
 # Graba la app de ejemplo en Windows, Linux y Mac con voz de prueba (sin red)
 # y sin música. Si pasa, la instalación y el grabador andan en los tres
 # sistemas. Los videos quedan como artefacto del run para mirarlos.
-name: Prueba en Windows, Linux y Mac
+# Es del grabador: corre en app-demo-recorder/ y solo cuando cambia.
+name: "Grabador: prueba en Windows, Linux y Mac"
 
 on:
   push:
     branches: [main]
+    paths: ["app-demo-recorder/**", ".github/workflows/prueba.yml"]
   pull_request:
+    paths: ["app-demo-recorder/**", ".github/workflows/prueba.yml"]
   workflow_dispatch:
 
 jobs:
@@ -17,6 +20,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: app-demo-recorder
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -51,6 +57,6 @@ jobs:
         with:
           name: ejemplo-${{ matrix.os }}
           path: |
-            salida/ejemplo/crear_tarea/*.mp4
-            salida/ejemplo/crear_tarea/*.srt
+            app-demo-recorder/salida/ejemplo/crear_tarea/*.mp4
+            app-demo-recorder/salida/ejemplo/crear_tarea/*.srt
           if-no-files-found: ignore

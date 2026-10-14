@@ -9,7 +9,8 @@
 #   APP_URL, DEMO_EMAIL, DEMO_PASSWORD           obligatorios
 #   AZURE_SPEECH_KEY, AZURE_SPEECH_REGION        voz oficial para los finales
 #                                                (sin ellos, edge-tts)
-name: Escenas contra staging
+# Es del grabador: corre en app-demo-recorder/.
+name: "Grabador: escenas contra staging"
 
 on:
   schedule:
@@ -52,9 +53,11 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: app-demo-recorder
     steps:
       - name: Revisar secretos
         id: cfg
+        working-directory: .   # corre antes del checkout: app-demo-recorder/ todavía no existe
         run: |
           if [ -z "$APP_URL" ] || [ -z "$DEMO_EMAIL" ] || [ -z "$DEMO_PASSWORD" ]; then
             echo "::warning::Faltan los secretos APP_URL, DEMO_EMAIL o DEMO_PASSWORD: no se graba nada."
@@ -83,8 +86,8 @@ jobs:
       - uses: actions/cache@v4
         if: steps.cfg.outputs.ok == 'true' && env.MODO == 'final'
         with:
-          path: .cache/voz
-          key: voz-${{ hashFiles('escenas/**', 'config.py') }}
+          path: app-demo-recorder/.cache/voz
+          key: voz-${{ hashFiles('app-demo-recorder/escenas/**', 'app-demo-recorder/config.py') }}
           restore-keys: voz-
 
       - name: Grabar
@@ -110,8 +113,8 @@ jobs:
         with:
           name: escenas-${{ env.MODO }}-${{ github.sha }}
           path: |
-            salida/
-            !salida/**/.work/raw.mp4
-            !salida/**/.work/fonts/
+            app-demo-recorder/salida/
+            !app-demo-recorder/salida/**/.work/raw.mp4
+            !app-demo-recorder/salida/**/.work/fonts/
           retention-days: ${{ env.MODO == 'final' && 90 || 7 }}
           if-no-files-found: ignore
