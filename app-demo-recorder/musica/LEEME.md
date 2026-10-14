@@ -18,3 +18,5 @@ Cada pista que se agrega necesita origen y licencia (uso comercial) en esta tabl
 | Archivo | Origen | Licencia |
 |---|---|---|
 | demo-pad.mp3 | *(completar)* | *(completar)* |
+| IamDayLight - Groovy Panda.mp3 | *(completar)* | *(completar)* |
+| Steven Beddall - Pocket Money.mp3 | *(completar)* | *(completar)* |
