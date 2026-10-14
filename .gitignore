@@ -1,0 +1,15 @@
+# Cada proyecto tiene además su propio .gitignore con lo que genera.
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Personal: credenciales y ajustes de cada uno
+.env
+.claude/settings.local.json
+
+# Entornos de Python
+.venv/
+__pycache__/
+*.pyc
