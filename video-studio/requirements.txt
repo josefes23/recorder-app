@@ -1,0 +1,13 @@
+# Instalación:  python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
+# Requiere ffmpeg en el sistema y el proyecto auto-video-generator como hermano.
+
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+anthropic>=0.60          # opcional: solo si redactas los guiones con Claude
+                         # (con NVIDIA basta requests, que ya está más abajo)
+moviepy>=2.2,<3
+edge-tts>=7.2
+requests>=2.32
+pillow>=11
+numpy>=2
