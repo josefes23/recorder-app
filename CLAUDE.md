@@ -2,7 +2,8 @@
 
 Tres proyectos independientes en un solo repo (ver README.md). Al trabajar en
 uno, seguí las reglas de su carpeta: `app-demo-recorder/CLAUDE.md` y
-`AGENTS.md` mandan dentro de `app-demo-recorder/`.
+`AGENTS.md` mandan dentro de `app-demo-recorder/`; `video-studio/CLAUDE.md`
+fija las capas del backend dentro de `video-studio/`.
 
 - Cada proyecto tiene su propio entorno. Corré los comandos desde su carpeta:
   - `auto-video-generator/`: `./.venv/bin/python` (nunca el python del sistema).

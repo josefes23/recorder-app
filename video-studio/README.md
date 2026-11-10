@@ -114,9 +114,10 @@ esperar.
 NVIDIA, Google y DeepSeek exponen el mismo endpoint compatible con OpenAI, así
 que comparten implementación —en el caso de Google, su capa de compatibilidad en
 lugar de la API nativa: un guion es un system y un user sin streaming, justo lo
-que cubre—. Cada proveedor es una entrada de `PROVIDERS` en `scriptgen.py` con
-dónde vive su clave, qué catálogo ofrece y cómo se le pide un guion. Añadir otro
-es añadir una entrada, sin condicionales repartidos.
+que cubre—. Cada proveedor es una entrada de `PROVIDERS` en `app/domain/writer.py`
+(dónde vive su clave, modelo por defecto) y un `Endpoint` en
+`app/infrastructure/llm/composer.py` (cómo se le habla). Añadir otro es añadir
+esas dos entradas, sin condicionales repartidos.
 
 El presupuesto de tokens va holgado (4096) porque los modelos que razonan lo
 gastan pensando antes de escribir: medido con Gemini 3.6 Flash, 980 tokens de
@@ -133,8 +134,16 @@ eso el desplegable los deja fuera.
 ## Fondos
 
 La galería lee `auto-video-generator/assets/backgrounds/`. Desde el mismo diálogo
-puedes buscar y descargar clips de Pexels (necesita `PEXELS_API_KEY` en el `.env`
-del generador, que ya está configurado) o subir archivos propios.
+puedes buscar en Pexels: la búsqueda enseña miniaturas de los clips verticales
+sin descargar nada, «Ver» abre cualquiera a tamaño grande y en movimiento (la
+versión ligera de Pexels), marcas los que quieres y solo se bajan esos, con el
+mismo nombre que les daría el script del generador («finanzas_6799744.mp4»),
+así que la galería los agrupa por búsqueda. Los que ya están en la galería
+aparecen señalados. Necesita `PEXELS_API_KEY` en el `.env` del generador (que ya está
+configurado). También puedes subir archivos propios. En tu galería, «Ver» abre
+cualquier fondo a tamaño grande (los vídeos se reproducen) y «×» lo borra,
+archivo y miniatura incluidos; si alguna escena lo usaba, desaparece de la
+línea de tiempo. Cada escena tiene también su «Ver».
 
 ## Decisiones de arquitectura
 
@@ -151,8 +160,8 @@ un `ECONNRESET`. Ahora `POST /api/script` publica el encargo y contesta en
 milisegundos con la clave del trabajo; el guion llega por `GET /api/events`
 cuando está listo.
 
-**El log de eventos es la arquitectura de Kafka sin el broker.** `eventlog.py`
-es un log append-only sobre la misma base SQLite, con las garantías que
+**El log de eventos es la arquitectura de Kafka sin el broker.** `SqliteEventLog`
+(`app/infrastructure/sqlite.py`) es un log append-only sobre la misma base SQLite, con las garantías que
 importan: los eventos solo se añaden y nunca se reescriben, cada uno tiene un
 `offset` monótono que es la posición del consumidor, la clave agrupa los
 eventos de un mismo trabajo, la entrega es *al menos una vez* —se confirma el
@@ -191,7 +200,7 @@ proceso, así que dos previsualizaciones simultáneas se pisaban el estilo. Y la
 respuesta viaja como bytes en vez de como archivo, para que una petición no
 pueda sobrescribir el PNG que otra está enviando.
 
-**El progreso sale de moviepy.** `app/render_worker.py` reimplanta el ensamblado
+**El progreso sale de moviepy.** `app/infrastructure/render_worker.py` reimplanta el ensamblado
 final en lugar de llamar a `gen.render()`, porque esa función no acepta un
 `logger` y sin él no habría barra de progreso. La lógica con sustancia
 (`build_caption_clips`) se reutiliza tal cual.
@@ -258,15 +267,15 @@ segundos en lugar de minutos, que es lo que hace usable el ajuste de estilo.
 
 ```
 video-studio/
-├── app/
-│   ├── engine.py          # puente al motor + previsualización
-│   ├── render_worker.py   # render en subproceso, progreso por stdout
-│   ├── jobs.py            # cola de renders, un trabajo a la vez
-│   ├── eventlog.py        # log append-only con offsets y grupos
-│   ├── scriptjobs.py      # consumidor: encargo de guion → guion redactado
-│   ├── db.py              # historial en SQLite
-│   ├── scriptgen.py       # guiones con NVIDIA NIM o Claude
-│   └── main.py            # API FastAPI + flujo SSE de eventos
+├── app/                   # backend, en capas (ver «Arquitectura»)
+│   ├── domain/            # reglas puras: guion, estilo, escenas, eventos, proveedores
+│   ├── application/       # puertos (Protocols) y casos de uso
+│   │   └── use_cases/     # scripts, render, library, backgrounds, preview, writer_settings
+│   ├── infrastructure/    # SQLite, .env, ffmpeg, cola de render, worker, clientes LLM
+│   ├── api/               # FastAPI: schemas, rutas y traducción de errores
+│   ├── container.py       # raíz de composición: enchufa adaptadores a casos de uso
+│   └── main.py            # crea la app (uvicorn app.main:app)
+├── tests/                 # unittest: dominio, aplicación (con dobles), SQLite, contrato HTTP
 ├── web/                   # interfaz Next.js (App Router + TypeScript)
 │   ├── app/               # rutas y estilos · raíz de composición
 │   ├── domain/            # reglas puras + sus pruebas (npm test)
@@ -279,9 +288,49 @@ video-studio/
 └── data/                  # SQLite, vídeos, miniaturas — todo ignorado por git
 ```
 
+## Arquitectura
+
+Backend y frontend siguen la misma idea: las reglas en el centro, el mundo
+exterior detrás de puertos, y un único sitio que decide qué implementación va
+en cada puerto. Las dependencias apuntan siempre hacia dentro:
+
+```
+api ──▶ application ──▶ domain
+          ▲   (puertos: Protocols en application/ports.py)
+          │
+   infrastructure         ← solo la importa container.py (y el worker)
+```
+
+| Capa | Qué contiene | Qué no puede importar |
+|---|---|---|
+| `domain/` | Entidades y reglas: `clean_script`, `timeline_spans`, `CaptionStyle`, `validate_script`, convención de eventos | Nada de fuera de `domain` |
+| `application/` | Casos de uso (`ScriptUseCases`, `RenderUseCases`…), `RenderJobs`, `EventConsumer` y los puertos | `infrastructure`, `api`, FastAPI, SQLite, requests |
+| `infrastructure/` | Un adaptador por puerto: `SqliteEventLog`, `SubprocessRenderQueue`, `HttpScriptComposer`, `EnvCredentials`… | `api` |
+| `api/` | Rutas FastAPI y modelos Pydantic; mapea `DomainError` → 400 y `NotFoundError` → 404 | `infrastructure` |
+
+`app/container.py` es la raíz de composición: construye los adaptadores reales y
+arranca los hilos de fondo cuando el servidor arranca (`lifespan`), no al
+importar. Por eso `tests/test_api.py` monta la API entera sobre dobles en
+memoria sin tocar SQLite ni el motor.
+
+Cambiar SQLite por un broker real es escribir otro `EventLog`; cambiar la cola
+de renders por Celery es otro `RenderQueue`. Los casos de uso no se enteran.
+
+El worker de render (`infrastructure/render_worker.py`) corre en su propio
+proceso e importa solo `domain` y el puente al motor: ni FastAPI ni SQLite.
+
+### Pruebas del backend
+
+```bash
+./.venv/bin/python -m unittest discover -s tests -t .
+```
+
+No necesita ffmpeg, red ni el motor: los puertos se sustituyen por los dobles
+de `tests/fakes.py`. Las de SQLite usan una base temporal.
+
 ## Requisitos
 
-- Python 3.9+ (probado en 3.13)
+- Python 3.11+ (probado en 3.13)
 - Node.js 18+ (probado en 24) — solo para compilar la interfaz
 - ffmpeg (`brew install ffmpeg`)
 - Internet para la síntesis de voz

@@ -16,6 +16,7 @@ import { renderVideo } from "@/application/use-cases/render-video";
 import { writeScript } from "@/application/use-cases/write-script";
 import type { Config } from "@/domain/config";
 import type { VideoItem } from "@/domain/library";
+import { withoutBackground } from "@/domain/scene";
 import { useBackgroundsSlice, type BackgroundsSlice } from "@/features/backgrounds/model/backgrounds-slice";
 import { useCaptionsSlice, type CaptionsSlice } from "@/features/captions/model/captions-slice";
 import { useLibrarySlice, type LibrarySlice } from "@/features/library/model/library-slice";
@@ -48,6 +49,8 @@ export type StudioActions = {
   render: () => Promise<void>;
   /** Clona los ajustes de un video ya renderizado. */
   reuse: (item: VideoItem) => void;
+  /** Borra un fondo de la galería y lo quita de las escenas que lo usaban. */
+  deleteBackground: (name: string) => Promise<boolean>;
 };
 
 export type Studio = {
@@ -171,8 +174,16 @@ export function StudioProvider({
         captions.apply(item.style);
         window.scrollTo({ top: 0, behavior: "smooth" });
       },
+
+      deleteBackground: async (name) => {
+        const items = await backgrounds.remove(name);
+        if (items === undefined) return false;
+        // Una escena con un fondo que ya no existe haría fallar el render.
+        scenes.replaceAll(withoutBackground(scenes.items, name));
+        return true;
+      },
     }),
-    [gateway, jobs, run, script, voice, captions, scenes, render, loadLibrary],
+    [gateway, jobs, run, script, voice, captions, scenes, backgrounds, render, loadLibrary],
   );
 
   const studio = useMemo<Studio>(

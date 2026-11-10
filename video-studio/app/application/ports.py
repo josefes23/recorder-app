@@ -1,0 +1,129 @@
+"""
+Puertos: lo que la aplicación necesita del mundo y lo que ofrece a quien la
+llama desde fuera del hilo de la petición.
+
+Son Protocols a propósito: la implementación real vive en `infrastructure` y no
+hereda de nada de aquí; basta con que tenga los mismos métodos.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from contextlib import AbstractContextManager
+from pathlib import Path
+from typing import Protocol
+
+from app.domain.background import Background
+from app.domain.events import Event
+from app.domain.stock import StockClip
+from app.domain.style import CaptionStyle
+from app.domain.video import NewVideo, RenderResult, RenderSpec, Video
+from app.domain.writer import Provider
+
+
+class VideoRepository(Protocol):
+    """Historial de videos."""
+
+    def add(self, video: NewVideo) -> int: ...
+    def update(self, video_id: int, **fields) -> None: ...
+    def get(self, video_id: int) -> Video | None: ...
+    def list(self, limit: int = 60) -> list[Video]: ...
+    def remove(self, video_id: int) -> None: ...
+
+
+class EventLog(Protocol):
+    """
+    Log append-only con posiciones y consumidores que confirman avance.
+
+    Las garantías que la aplicación da por hechas: el log solo crece, el offset
+    es monótono, la entrega es al menos una vez y `claim` excluye a otros
+    procesos sobre la misma clave.
+    """
+
+    def publish(self, topic: str, key: str | None, payload: dict) -> Event: ...
+    def read_after(self, offset: int, topics: tuple[str, ...] = (), limit: int = 200) -> list[Event]: ...
+    def wait_for(self, offset: int, timeout: float, topics: tuple[str, ...] = ()) -> list[Event]: ...
+    def last_offset(self) -> int: ...
+    def by_key(self, key: str, topics: tuple[str, ...] = ()) -> list[Event]: ...
+    def settled(self, key: str, topics: tuple[str, ...]) -> bool: ...
+    def claim(self, key: str) -> bool: ...
+    def committed_offset(self, consumer_group: str) -> int: ...
+    def commit(self, consumer_group: str, offset: int) -> None: ...
+    def prune(self) -> int: ...
+
+
+class RenderListener(Protocol):
+    """
+    Puerto de entrada: por aquí la cola de renders informa de cómo va cada
+    trabajo. Lo implementa la aplicación (`RenderJobs`), no la infraestructura.
+    """
+
+    def queued(self, video_id: int) -> None: ...
+    def started(self, video_id: int) -> None: ...
+    def progressed(self, video_id: int, progress: float, message: str, phase: str) -> None: ...
+    def finished(self, video_id: int, result: RenderResult) -> None: ...
+    def failed(self, video_id: int, detail: str) -> None: ...
+
+
+class RenderQueue(Protocol):
+    """Encola renders y los ejecuta uno a uno, avisando al `RenderListener`."""
+
+    def enqueue(self, video_id: int, spec: RenderSpec) -> None: ...
+
+
+class Readable(Protocol):
+    """Lo mínimo que hace falta para copiar bytes a disco: un archivo subido o una descarga."""
+
+    def read(self, size: int = -1, /) -> bytes: ...
+
+
+class BackgroundStore(Protocol):
+    """La galería de fondos y sus miniaturas."""
+
+    def list(self) -> list[Background]: ...
+    def has(self, name: str) -> bool: ...
+    def path(self, name: str) -> Path | None: ...
+    def save(self, name: str, stream: Readable) -> str: ...
+    def remove(self, name: str) -> None: ...
+    def thumbnail_path(self, thumb: str) -> Path | None: ...
+
+
+class StockLibrary(Protocol):
+    """Catálogo de clips de stock: buscar, situar uno por su id y abrirlo para bajarlo."""
+
+    def search(self, query: str) -> list[StockClip]: ...
+    def clip(self, clip_id: int) -> StockClip: ...
+    def open(self, clip: StockClip) -> AbstractContextManager[Readable]: ...
+
+
+class FramePreviewer(Protocol):
+    """Compone un fotograma con fondo y subtítulo. Devuelve un PNG."""
+
+    def render(self, text: str, style: CaptionStyle, background: str | None, topic: str) -> bytes: ...
+
+
+class ScriptTemplate(Protocol):
+    """La plantilla local: un guion genérico sin pedirle nada a ningún modelo."""
+
+    def template(self, topic: str) -> str: ...
+
+
+class ScriptComposer(Protocol):
+    """Habla con el proveedor que toque: redacta y ofrece su catálogo de modelos."""
+
+    def compose(self, provider: Provider, model: str, api_key: str | None, system: str, prompt: str) -> str: ...
+    def catalog(self, provider: Provider, api_key: str | None) -> list[dict]: ...
+
+
+class CredentialStore(Protocol):
+    """Dónde viven las claves y los ajustes del redactor."""
+
+    def get(self, name: str) -> str | None: ...
+    def save(self, values: Mapping[str, str | None]) -> None: ...
+
+
+class VideoFiles(Protocol):
+    """Los archivos de video ya renderizados."""
+
+    def exists(self, path: Path) -> bool: ...
+    def remove(self, path: Path) -> None: ...

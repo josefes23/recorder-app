@@ -326,7 +326,7 @@ label.btn, a.btn { display: inline-block; text-decoration: none; }
   display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
   gap: var(--s2);
 }
-.gallery figure { margin: 0; cursor: pointer; }
+.gallery figure { margin: 0; cursor: pointer; position: relative; }
 .gallery img {
   width: 100%; aspect-ratio: 9 / 16; object-fit: cover;
   border-radius: var(--r-sm); border: 2px solid transparent; background: #000; display: block;
@@ -335,6 +335,56 @@ label.btn, a.btn { display: inline-block; text-decoration: none; }
 .gallery figcaption {
   font-size: var(--t-xs); color: var(--muted); margin-top: var(--s1);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Resultados de Pexels: se marcan con una casilla antes de descargar */
+.stock {
+  display: flex; flex-direction: column; gap: var(--s2);
+  padding-bottom: var(--s4); border-bottom: 1px dashed var(--line);
+}
+.stock a { color: inherit; text-decoration: underline; }
+/* Los resultados van más grandes que la galería: aquí se elige, no se repasa. */
+.gallery--stock { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.gallery .peek {
+  position: absolute; top: var(--s2); right: var(--s2); padding: 2px 7px;
+  font-size: var(--t-xs); color: var(--text); background: rgba(0, 0, 0, 0.7);
+  border: 1px solid transparent; border-radius: var(--r-sm); cursor: pointer;
+}
+.gallery .peek:hover { border-color: var(--accent); }
+/* Solo en la galería propia, en la esquina que en los resultados ocupa la casilla */
+.gallery .peek--delete { right: auto; left: var(--s2); padding: 2px 8px; }
+.gallery .peek--delete:hover { border-color: var(--err); color: var(--err); }
+
+/* Vista grande de un resultado: el clip en movimiento, con sus datos */
+.lightbox {
+  position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.84);
+  display: grid; place-items: center; padding: var(--s5);
+}
+.lightbox-box { display: flex; flex-direction: column; align-items: center; gap: var(--s3); }
+.lightbox-row { display: flex; align-items: center; gap: var(--s3); }
+.lightbox-media { margin: 0; }
+.lightbox-media video, .lightbox-media img {
+  display: block; height: min(72vh, 760px); aspect-ratio: 9 / 16; object-fit: cover;
+  border-radius: var(--r-lg); border: 1px solid var(--line); background: #000;
+}
+.lightbox-nav { font-size: 24px; line-height: 1; padding: 8px 13px; }
+.lightbox-info {
+  display: flex; flex-direction: column; align-items: center; gap: var(--s2);
+  text-align: center; font-size: var(--t-sm); color: var(--text);
+}
+.lightbox-info p { margin: 0; }
+.lightbox-info a { color: inherit; text-decoration: underline; }
+.gallery figure.is-selected img { border-color: var(--accent); }
+.gallery figure.is-owned { opacity: 0.5; cursor: default; }
+.gallery figure.is-owned:hover img { border-color: transparent; }
+.gallery figure > input[type="checkbox"] {
+  position: absolute; top: var(--s2); left: var(--s2);
+  width: 18px; height: 18px; margin: 0; cursor: pointer;
+}
+.gallery .badge {
+  position: absolute; top: var(--s2); left: var(--s2); padding: 2px 6px;
+  font-size: var(--t-xs); color: var(--text); background: rgba(0, 0, 0, 0.7);
+  border-radius: var(--r-sm);
 }
 
 /* Miniaturas sin thumbnail: evita el icono de imagen rota del navegador */

@@ -6,6 +6,7 @@ import { BackgroundPicker } from "@/features/backgrounds/ui/BackgroundPicker";
 import { useBackgrounds } from "@/features/backgrounds/model/use-backgrounds";
 import { useScenes, useTimeline } from "@/features/scenes/model/use-scenes";
 import { useScript } from "@/features/script/model/use-script";
+import { Lightbox } from "@/shared/ui/Lightbox";
 import { Step } from "@/shared/ui/Step";
 
 import { SceneTimeline } from "./SceneTimeline";
@@ -18,6 +19,12 @@ export function ScenesStep() {
 
   /* undefined = cerrado · null = añadir escena · número = cambiar esa escena */
   const [target, setTarget] = useState<number | null | undefined>(undefined);
+  /** Escena abierta a tamaño grande, o null. */
+  const [peek, setPeek] = useState<number | null>(null);
+  const peeked =
+    peek === null
+      ? undefined
+      : backgrounds.items.find((b) => b.name === scenes.items[peek]?.background);
 
   const voice = Math.max(seconds, 1);
 
@@ -78,6 +85,15 @@ export function ScenesStep() {
                       </span>
                     )}
                   </div>
+                  {meta && (
+                    <button
+                      className="btn btn--sm"
+                      title="Ver el fondo a tamaño grande"
+                      onClick={() => setPeek(i)}
+                    >
+                      Ver
+                    </button>
+                  )}
                   <div className="scene-start">
                     <input
                       type="number"
@@ -117,6 +133,35 @@ export function ScenesStep() {
             setTarget(undefined);
           }}
           onClose={() => setTarget(undefined)}
+        />
+      )}
+
+      {peek !== null && peeked && (
+        <Lightbox
+          id={`scene-${peek}-${peeked.name}`}
+          media={{
+            kind: peeked.kind,
+            src: backgrounds.fileUrl(peeked.name),
+            poster: backgrounds.thumbUrl(peeked.thumb),
+          }}
+          info={
+            <>
+              <strong>Escena {peek + 1}</strong> · {peeked.name}
+              {peeked.duration ? ` · ${peeked.duration}s` : ""}
+            </>
+          }
+          actions={
+            <button
+              className="btn"
+              onClick={() => {
+                setPeek(null);
+                setTarget(peek);
+              }}
+            >
+              Cambiar el fondo
+            </button>
+          }
+          onClose={() => setPeek(null)}
         />
       )}
     </Step>

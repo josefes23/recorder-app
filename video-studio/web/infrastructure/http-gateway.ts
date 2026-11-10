@@ -9,6 +9,7 @@ import type { Background } from "@/domain/background";
 import type { Style } from "@/domain/captions";
 import type { Config } from "@/domain/config";
 import type { VideoItem } from "@/domain/library";
+import type { DownloadReport, StockClip } from "@/domain/stock";
 import type { Voice } from "@/domain/voice";
 import type { Writer, WriterDraft } from "@/domain/writer";
 
@@ -75,8 +76,15 @@ export const httpGateway: StudioGateway = {
     return items;
   },
 
-  fetchBackgrounds: (query, count = 4) =>
-    post<{ log: string; items: Background[] }>("/api/backgrounds/fetch", { query, count }),
+  async searchStock(query: string): Promise<StockClip[]> {
+    const { items } = await request<{ items: StockClip[] }>(
+      `/api/backgrounds/search?q=${encodeURIComponent(query)}`,
+    );
+    return items;
+  },
+
+  downloadStock: (query, ids) =>
+    post<DownloadReport & { items: Background[] }>("/api/backgrounds/download", { query, ids }),
 
   async uploadBackground(file: File): Promise<Background[]> {
     const form = new FormData();
@@ -86,6 +94,14 @@ export const httpGateway: StudioGateway = {
     const body = (await response.json()) as { items?: Background[]; detail?: string };
     if (!response.ok) throw new Error(body.detail ?? `Error ${response.status}`);
     return body.items ?? [];
+  },
+
+  async deleteBackground(name: string): Promise<Background[]> {
+    const { items } = await request<{ deleted: string; items: Background[] }>(
+      `/api/backgrounds/${encodeURIComponent(name)}`,
+      { method: "DELETE" },
+    );
+    return items;
   },
 
   async previewFrame(payload: PreviewRequest): Promise<Blob> {
@@ -115,6 +131,8 @@ export const httpGateway: StudioGateway = {
   },
 
   thumbUrl: (thumb) => (thumb ? `/api/thumb/${thumb}` : ""),
+
+  backgroundUrl: (name) => `/api/backgrounds/${encodeURIComponent(name)}/file`,
 
   videoUrl: (id) => `/api/videos/${id}/file`,
 };

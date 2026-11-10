@@ -70,3 +70,9 @@ test("encadena la escena nueva al final", () => {
     { background: "b", start: 8 },
   ]);
 });
+
+test("al borrar un fondo de la galería se van las escenas que lo usaban", async () => {
+  const { withoutBackground } = await import("./scene.ts");
+  const left = withoutBackground([scene("a", 0), scene("b", 5), scene("a", 9)], "a");
+  assert.deepEqual(left, [scene("b", 5)]);
+});

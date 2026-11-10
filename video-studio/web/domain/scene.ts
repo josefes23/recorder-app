@@ -83,3 +83,7 @@ export const withBackground = (scenes: Scene[], index: number, background: strin
 
 export const without = (scenes: Scene[], index: number): Scene[] =>
   scenes.filter((_, i) => i !== index);
+
+/** Las escenas que no usan ese fondo: lo que queda cuando se borra de la galería. */
+export const withoutBackground = (scenes: Scene[], background: string): Scene[] =>
+  scenes.filter((scene) => scene.background !== background);

@@ -25,7 +25,8 @@ const POLL_MS = 4000;
  * Red de seguridad para cuando el servidor muere de verdad: el botón no puede
  * quedarse «Escribiendo…» eternamente.
  *
- * Tiene que ser mayor que el tope del servidor (HTTP_TIMEOUT en scriptgen.py,
+ * Tiene que ser mayor que el tope del servidor (HTTP_TIMEOUT en
+ * app/infrastructure/llm/composer.py,
  * tres minutos), porque un trabajo lento siempre acaba publicando su fallo con
  * el motivo bueno. Si empatan, gana este mensaje genérico y se pierde el útil.
  */

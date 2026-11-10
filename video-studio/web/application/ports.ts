@@ -3,6 +3,7 @@ import type { Style } from "@/domain/captions";
 import type { Config } from "@/domain/config";
 import type { VideoItem } from "@/domain/library";
 import type { Scene } from "@/domain/scene";
+import type { DownloadReport, StockClip } from "@/domain/stock";
 import type { Writer, WriterDraft } from "@/domain/writer";
 
 export type ScriptDraft = { script: string; seconds: number };
@@ -77,8 +78,13 @@ export interface StudioGateway {
   templateScript(topic: string): Promise<ScriptDraft>;
 
   backgrounds(): Promise<Background[]>;
-  fetchBackgrounds(query: string, count?: number): Promise<{ log: string; items: Background[] }>;
+  /** Clips de Pexels que encajan con la búsqueda, con miniatura y sin bajar nada. */
+  searchStock(query: string): Promise<StockClip[]>;
+  /** Baja a la galería los clips marcados de esa búsqueda; devuelve la galería al día. */
+  downloadStock(query: string, ids: number[]): Promise<DownloadReport & { items: Background[] }>;
   uploadBackground(file: File): Promise<Background[]>;
+  /** Borra un fondo de la galería, archivo incluido; devuelve la galería al día. */
+  deleteBackground(name: string): Promise<Background[]>;
 
   previewFrame(request: PreviewRequest): Promise<Blob>;
 
@@ -90,5 +96,7 @@ export interface StudioGateway {
 
   /** URLs que sirve el propio backend; la interfaz no arma rutas a mano. */
   thumbUrl(thumb: string | null): string;
+  /** El archivo entero de un fondo, para verlo o reproducirlo a tamaño grande. */
+  backgroundUrl(name: string): string;
   videoUrl(id: number): string;
 }

@@ -1,0 +1,21 @@
+"""Errores con el mensaje ya redactado para el usuario. La API los traduce a HTTP."""
+
+
+class DomainError(Exception):
+    """Fallo esperable: el mensaje se enseña tal cual en la interfaz."""
+
+
+class ValidationError(DomainError):
+    """La petición no vale: falta un dato o viene mal formado."""
+
+
+class NotFoundError(DomainError):
+    """Lo que se pide no existe, o ya no."""
+
+
+class WriterError(DomainError):
+    """El proveedor del guion no pudo redactarlo."""
+
+
+class EngineError(DomainError):
+    """El motor o una herramienta externa (ffmpeg, un script) falló."""
