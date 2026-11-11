@@ -1,6 +1,6 @@
 import type { StudioGateway } from "@/application/ports";
 import type { Style } from "@/domain/captions";
-import type { Scene } from "@/domain/scene";
+import { forEngine, type Scene } from "@/domain/scene";
 import { canRender } from "@/domain/script";
 import { formatPitch, formatRate } from "@/domain/voice";
 
@@ -26,6 +26,7 @@ export async function renderVideo(gateway: StudioGateway, input: RenderInput): P
     rate: formatRate(input.rate),
     pitch: formatPitch(input.pitch),
     style: input.style,
-    scenes: input.scenes,
+    // Las escenas que aún esperan su imagen no tienen fondo: el motor las salta.
+    scenes: forEngine(input.scenes),
   });
 }

@@ -7,7 +7,7 @@ python-multipart>=0.0.9
 anthropic>=0.60          # opcional: solo si redactas los guiones con Claude
                          # (con NVIDIA basta requests, que ya está más abajo)
 moviepy>=2.2,<3
-edge-tts>=7.2
+edge-tts>=7.3.1  # con 7.2.8 Microsoft responde 403 al sintetizar; 7.3.1 funciona (probado 2026-11-10)
 requests>=2.32
 pillow>=11
 numpy>=2

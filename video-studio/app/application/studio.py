@@ -4,13 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.application.outcomes import job_outcome
 from app.application.ports import EventLog
 from app.application.render_jobs import RenderJobs
 from app.application.use_cases.backgrounds import BackgroundUseCases
+from app.application.use_cases.characters import CharacterUseCases
+from app.application.use_cases.illustrations import IllustrationUseCases, ImageSettings
 from app.application.use_cases.library import LibraryUseCases
 from app.application.use_cases.preview import PreviewUseCase
 from app.application.use_cases.render import RenderUseCases
 from app.application.use_cases.scripts import ScriptUseCases
+from app.application.use_cases.storyboard import StoryboardUseCases
 from app.application.use_cases.writer_settings import WriterSettings
 
 
@@ -24,5 +28,13 @@ class Studio:
     library: LibraryUseCases
     jobs: RenderJobs
     events: EventLog
+    images: ImageSettings
+    illustrations: IllustrationUseCases
+    storyboards: StoryboardUseCases
+    characters: CharacterUseCases
     #: Dónde está el motor, para poder situarlo si algo falla.
     generator: str
+
+    def outcome(self, job: str) -> dict:
+        """Desenlace de un trabajo encolado de cualquier tipo."""
+        return job_outcome(self.events, job)

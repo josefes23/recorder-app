@@ -17,5 +17,9 @@ class WriterError(DomainError):
     """El proveedor del guion no pudo redactarlo."""
 
 
+class IllustratorError(DomainError):
+    """El generador de imágenes no pudo pintar la escena."""
+
+
 class EngineError(DomainError):
     """El motor o una herramienta externa (ffmpeg, un script) falló."""

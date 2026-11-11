@@ -13,6 +13,8 @@ from enum import Enum
 from pathlib import Path
 
 from app.domain.events import Event
+from app.domain.illustration import Character, fold
+from app.domain.saved_characters import SavedCharacter
 from app.domain.video import NewVideo, Video
 
 
@@ -122,6 +124,79 @@ def _row_to_video(row: sqlite3.Row) -> Video:
         except (TypeError, json.JSONDecodeError):
             data[field] = {}
     return Video(**data)
+
+
+# --------------------------------------------------------------------------- #
+# Biblioteca de elementos
+# --------------------------------------------------------------------------- #
+
+class SqliteCharacterRepository:
+    SCHEMA = """
+    CREATE TABLE IF NOT EXISTS characters (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        name        TEXT    NOT NULL,
+        folded      TEXT    NOT NULL UNIQUE,
+        traits      TEXT    NOT NULL,
+        kind        TEXT    NOT NULL DEFAULT 'persona',
+        reference   TEXT,
+        created_at  TEXT    NOT NULL,
+        updated_at  TEXT    NOT NULL
+    );
+    """
+
+    def __init__(self, db: Database) -> None:
+        self._db = db
+        db.migrate(self.SCHEMA)
+
+    def list(self) -> list[SavedCharacter]:
+        # Lo último guardado o repintado primero: es lo que se ofrece al guion visual.
+        with self._db.connection() as conn:
+            rows = conn.execute("SELECT * FROM characters ORDER BY updated_at DESC, id DESC").fetchall()
+        return [_row_to_character(r) for r in rows]
+
+    def get(self, character_id: int) -> SavedCharacter | None:
+        with self._db.connection() as conn:
+            row = conn.execute("SELECT * FROM characters WHERE id = ?", (character_id,)).fetchone()
+        return _row_to_character(row) if row else None
+
+    def find(self, name: str) -> SavedCharacter | None:
+        with self._db.connection() as conn:
+            row = conn.execute("SELECT * FROM characters WHERE folded = ?", (fold(name),)).fetchone()
+        return _row_to_character(row) if row else None
+
+    def upsert(self, character: Character) -> SavedCharacter:
+        """Guarda por nombre: el mismo nombre actualiza rasgos y tipo y conserva su referencia."""
+        now = _now()
+        with self._db.connection() as conn:
+            conn.execute(
+                "INSERT INTO characters (name, folded, traits, kind, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(folded) DO UPDATE SET name = excluded.name, traits = excluded.traits, "
+                "kind = excluded.kind, updated_at = excluded.updated_at",
+                (character.name, fold(character.name), character.traits, character.kind, now, now),
+            )
+            conn.commit()
+            row = conn.execute("SELECT * FROM characters WHERE folded = ?", (fold(character.name),)).fetchone()
+        return _row_to_character(row)
+
+    def set_reference(self, character_id: int, reference: str | None) -> None:
+        with self._db.connection() as conn:
+            conn.execute(
+                "UPDATE characters SET reference = ?, updated_at = ? WHERE id = ?",
+                (reference, _now(), character_id),
+            )
+            conn.commit()
+
+    def remove(self, character_id: int) -> None:
+        with self._db.connection() as conn:
+            conn.execute("DELETE FROM characters WHERE id = ?", (character_id,))
+            conn.commit()
+
+
+def _row_to_character(row: sqlite3.Row) -> SavedCharacter:
+    data = dict(row)
+    data.pop("folded", None)
+    return SavedCharacter(**data)
 
 
 # --------------------------------------------------------------------------- #

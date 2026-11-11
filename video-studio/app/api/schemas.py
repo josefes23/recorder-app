@@ -45,3 +45,60 @@ class DownloadRequest(BaseModel):
 
     query: str
     ids: list[int] = Field(default_factory=list)
+
+
+class ImageSettingsRequest(BaseModel):
+    provider: str
+    model: str = ""
+    #: Variable del .env → valor. Uno vacío conserva el que hubiera.
+    values: dict[str, str] = Field(default_factory=dict)
+
+
+class CharacterIn(BaseModel):
+    name: str = ""
+    traits: str = ""
+    #: persona, animal, objeto o lugar.
+    kind: str = "persona"
+    #: Id en la biblioteca si viene de ahí: su imagen de referencia acompaña a la escena.
+    saved: int | None = None
+
+
+class StoryboardRequest(BaseModel):
+    topic: str = ""
+    script: str = ""
+    #: El estilo que pide el usuario; el modelo lo concreta.
+    style: str = ""
+    #: Lo que ya está en el video: el guion visual mantiene lo que encaje.
+    characters: list[CharacterIn] = Field(default_factory=list)
+
+
+class CharacterSave(BaseModel):
+    name: str = ""
+    traits: str = ""
+    kind: str = "persona"
+    #: El estilo del video desde el que se guarda: con él se pinta su imagen de referencia.
+    look: str = ""
+    #: Vacíos: el generador y el modelo guardados.
+    provider: str = ""
+    model: str = ""
+
+
+class ReferenceRequest(BaseModel):
+    look: str = ""
+    provider: str = ""
+    model: str = ""
+
+
+class IllustrationRequest(BaseModel):
+    topic: str = ""
+    #: Qué debe mostrar la imagen.
+    description: str = ""
+    #: La guía visual del video: estilo, reparto y semilla comunes a sus escenas.
+    look: str = ""
+    characters: list[CharacterIn] = Field(default_factory=list)
+    seed: int | None = None
+    #: Vacíos: los que estén guardados.
+    provider: str = ""
+    model: str = ""
+    #: Que el modelo del guion la revise y la repinte si ve fallos.
+    review: bool = True

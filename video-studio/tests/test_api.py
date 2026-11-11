@@ -126,6 +126,122 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("./run.sh", response.text)
 
+    def test_image_settings(self):
+        settings = self.client.get("/api/images").json()
+        self.assertEqual([p["id"] for p in settings["providers"]], ["cloudflare", "google"])
+        self.assertIsNone(settings["label"])
+
+        saved = self.client.post("/api/images", json={
+            "provider": "cloudflare",
+            "values": {"CLOUDFLARE_ACCOUNT_ID": "acc", "CLOUDFLARE_API_TOKEN": "tok-1234"},
+        }).json()
+        self.assertEqual(saved["label"], "Cloudflare · FLUX.2 klein 4B")
+        self.assertEqual([f["hint"] for f in saved["providers"][0]["fields"]], ["acc", "…1234"])
+
+        bad = self.client.post("/api/images", json={"provider": "cloudflare", "values": {"GEMINI_API_KEY": "x"}})
+        self.assertEqual(bad.status_code, 400)
+
+    def test_storyboard_is_queued_and_arrives_as_an_outcome(self):
+        self.assertEqual(self.client.post("/api/storyboards", json={"topic": "t", "script": "  "}).status_code, 400)
+
+        self.fakes.credentials.values["NVIDIA_API_KEY"] = "nv"
+        self.fakes.composer.text = (
+            '{"look": "óleo", "characters": [], "scenes": [{"n": 1, "description": "una taza al sol"}]}'
+        )
+        accepted = self.client.post("/api/storyboards", json={"topic": "Café", "script": "Hola mundo. Adiós."})
+        self.assertEqual(accepted.status_code, 202)
+        job = accepted.json()["job"]
+        self.assertEqual(self.client.get(f"/api/outcomes/{job}").json(), {"status": "pending"})
+
+        self.studio.storyboards.handle_request(self.fakes.events.events[-1])
+        done = self.client.get(f"/api/outcomes/{job}").json()
+        self.assertEqual(done["status"], "completed")
+        self.assertEqual(done["guide"]["look"], "óleo")
+        self.assertEqual(done["scenes"], [{"start": 0.0, "text": "Hola mundo. Adiós.", "description": "una taza al sol"}])
+
+    def test_illustrate_scenes(self):
+        # Sin generador configurado, el encargo se rechaza con el motivo.
+        refused = self.client.post("/api/illustrations", json={"topic": "Café", "description": "una taza"})
+        self.assertEqual(refused.status_code, 400)
+        self.assertIn("Generador de imágenes", refused.json()["detail"])
+
+        self.fakes.credentials.values["GEMINI_API_KEY"] = "g-key"
+        # Claude redacta y ve imágenes, así que revisa cada una.
+        self.fakes.credentials.values["ANTHROPIC_API_KEY"] = "a-key"
+        self.fakes.credentials.values["SCRIPT_PROVIDER"] = "anthropic"
+        bad_cast = {"topic": "Café", "description": "una taza", "characters": [{"name": "Ana"}]}
+        self.assertEqual(self.client.post("/api/illustrations", json=bad_cast).status_code, 400)
+        accepted = self.client.post("/api/illustrations", json={
+            "topic": "Café", "description": "Ana sirve una taza", "look": "óleo",
+            "characters": [{"name": "Ana", "traits": "pelo rojo"}], "seed": 3,
+        })
+        self.assertEqual(accepted.status_code, 202)
+        job = accepted.json()["job"]
+        self.assertTrue(job.startswith("im-"))
+        self.assertEqual(self.client.get(f"/api/outcomes/{job}").json(), {"status": "pending"})
+
+        self.studio.illustrations.handle_request(self.fakes.events.events[-1])
+        done = self.client.get(f"/api/outcomes/{job}").json()
+        self.assertEqual(done["status"], "completed")
+        self.assertTrue(done["name"].startswith("ia-cafe_"))
+        self.assertEqual(done["provider"], "google")
+        # El doble del compositor contesta un guion y no un veredicto: la
+        # imagen llega igual, marcada como sin revisar.
+        self.assertEqual(done["review"]["status"], "unchecked")
+
+        unreviewed = self.client.post("/api/illustrations", json={"description": "una taza", "review": False})
+        self.assertIsNone(self.fakes.events.events[-1].payload["review"])
+        self.studio.illustrations.handle_request(self.fakes.events.events[-1])
+        self.assertIsNone(self.client.get(f"/api/outcomes/{unreviewed.json()['job']}").json()["review"])
+
+    def test_character_library(self):
+        # Sin generador no se guarda: la referencia no se podría pintar.
+        refused = self.client.post("/api/characters", json={"name": "Pincel", "traits": "robot"})
+        self.assertEqual(refused.status_code, 400)
+
+        self.fakes.credentials.values.update(CLOUDFLARE_ACCOUNT_ID="acc", CLOUDFLARE_API_TOKEN="tok")
+        saved = self.client.post("/api/characters", json={
+            "name": "Pincel", "traits": "robot de dibujo naranja", "kind": "objeto", "look": "acuarela",
+        })
+        self.assertEqual(saved.status_code, 202)
+        body = saved.json()
+        self.assertTrue(body["job"].startswith("rf-"))
+        self.assertEqual(body["character"]["kind"], "objeto")
+        self.assertIsNone(body["character"]["reference"])
+
+        self.studio.characters.handle_request(self.fakes.events.events[-1])
+        done = self.client.get(f"/api/outcomes/{body['job']}").json()
+        self.assertEqual((done["status"], done["reference"]), ("completed", "ref-1.jpg"))
+        (listed,) = self.client.get("/api/characters").json()
+        self.assertEqual((listed["name"], listed["reference"]), ("Pincel", "ref-1.jpg"))
+
+        again = self.client.post("/api/characters", json={"name": "pincel", "traits": "robot de dibujo naranja", "kind": "objeto"})
+        self.assertIsNone(again.json()["job"])
+        repaint = self.client.post(f"/api/characters/{listed['id']}/reference", json={"look": "óleo"})
+        self.assertEqual(repaint.status_code, 202)
+        self.assertEqual(self.client.get("/api/references/ref-9.jpg").status_code, 404)
+        self.assertEqual(self.client.get("/api/references/..%2Fstudio.db").status_code, 404)
+
+        self.assertEqual(self.client.delete(f"/api/characters/{listed['id']}").status_code, 204)
+        self.assertEqual(self.client.get("/api/characters").json(), [])
+        self.assertEqual(self.client.delete(f"/api/characters/{listed['id']}").status_code, 404)
+
+    def test_storyboard_takes_the_cast_already_in_the_video(self):
+        cast = [{"name": "Ana", "traits": "pelo rojo", "kind": "persona", "saved": 3}]
+        accepted = self.client.post("/api/storyboards", json={"topic": "t", "script": "Hola mundo. Adiós.", "characters": cast})
+        self.assertEqual(accepted.status_code, 202)
+        self.assertEqual(self.fakes.events.events[-1].payload["characters"], cast)
+        bad = self.client.post("/api/storyboards", json={"script": "Hola.", "characters": [{"name": "Ana", "kind": "x", "traits": "t"}]})
+        self.assertEqual(bad.status_code, 400)
+
+    def test_writer_settings_say_whether_it_can_review_images(self):
+        self.assertFalse(self.client.get("/api/writer").json()["sees_images"])
+        self.fakes.credentials.values["DEEPSEEK_API_KEY"] = "d"
+        self.assertFalse(self.client.get("/api/writer").json()["sees_images"])
+        self.fakes.credentials.values["ANTHROPIC_API_KEY"] = "a"
+        self.fakes.credentials.values["SCRIPT_PROVIDER"] = "anthropic"
+        self.assertTrue(self.client.get("/api/writer").json()["sees_images"])
+
 
 if __name__ == "__main__":
     unittest.main()

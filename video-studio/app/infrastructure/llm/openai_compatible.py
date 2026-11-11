@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass
 
 from app.domain.errors import WriterError
+from app.domain.illustration import GeneratedImage
+from app.infrastructure.llm.vision import as_base64
 
 
 @dataclass(frozen=True)
@@ -20,14 +22,30 @@ class Endpoint:
     public_catalog: bool = False
 
 
-def chat(endpoint: Endpoint, api_key: str | None, model: str, system: str, prompt: str, timeout: int) -> str:
+def chat(
+    endpoint: Endpoint,
+    api_key: str | None,
+    model: str,
+    system: str,
+    prompt: str,
+    timeout: int,
+    image: GeneratedImage | None = None,
+) -> str:
     import requests
+
+    content: str | list[dict] = prompt
+    if image is not None:
+        data, media_type = as_base64(image)
+        content = [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{data}"}},
+        ]
 
     payload = {
         "model": model,
         "messages": [
             {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": content},
         ],
         # Holgado a propósito. Los modelos que razonan gastan el presupuesto en
         # pensar antes de escribir —medido con Gemini 3.6 Flash: 980 tokens de

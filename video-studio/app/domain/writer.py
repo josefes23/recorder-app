@@ -49,6 +49,9 @@ class Provider:
     #: Variable del .env donde se guarda el modelo elegido.
     model_env: str
     default_model: str
+    #: Acepta imágenes con cualquiera de sus modelos: puede revisar las escenas
+    #: pintadas (`domain.review`). En NVIDIA depende del modelo y DeepSeek no ve.
+    sees_images: bool = False
 
 
 PROVIDERS: tuple[Provider, ...] = (
@@ -58,7 +61,7 @@ PROVIDERS: tuple[Provider, ...] = (
     ),
     Provider(
         "google", "Google Gemini", "nivel gratuito con límites",
-        "GEMINI_API_KEY", "GEMINI_MODEL", "gemini-3.6-flash",
+        "GEMINI_API_KEY", "GEMINI_MODEL", "gemini-3.6-flash", sees_images=True,
     ),
     Provider(
         "deepseek", "DeepSeek", "de pago por uso",
@@ -66,7 +69,7 @@ PROVIDERS: tuple[Provider, ...] = (
     ),
     Provider(
         "anthropic", "Anthropic (Claude)", "de pago por uso",
-        "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "claude-opus-5-5",
+        "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "claude-opus-5-5", sees_images=True,
     ),
 )
 

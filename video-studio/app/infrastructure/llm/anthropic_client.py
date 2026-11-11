@@ -3,26 +3,26 @@
 from __future__ import annotations
 
 from app.domain.errors import WriterError
+from app.domain.illustration import GeneratedImage
+from app.infrastructure.llm.vision import as_base64
 
 
-def compose(api_key: str | None, model: str, system: str, prompt: str) -> str:
+def compose(
+    api_key: str | None, model: str, system: str, prompt: str, image: GeneratedImage | None = None
+) -> str:
     import anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
+    messages = [{"role": "user", "content": user_content(prompt, image)}]
 
     def create(**extra):
-        return client.messages.create(
-            model=model,
-            max_tokens=2000,
-            system=system,
-            messages=[{"role": "user", "content": prompt}],
-            **extra,
-        )
+        return client.messages.create(model=model, max_tokens=2000, system=system, messages=messages, **extra)
 
     try:
         try:
-            # Esfuerzo medio: cien palabras no necesitan que el modelo se lo
-            # piense mucho, y así contesta antes y más barato.
+            # Esfuerzo medio: cien palabras —o un veredicto sobre una imagen—
+            # no necesitan que el modelo se lo piense mucho, y así contesta
+            # antes y más barato.
             response = create(output_config={"effort": "medium"})
         except anthropic.BadRequestError as exc:
             # La generación 4.5 (Haiku 4.5, Sonnet 4.5) rechaza `effort` con un
@@ -51,6 +51,17 @@ def compose(api_key: str | None, model: str, system: str, prompt: str) -> str:
         )
 
     return "".join(block.text for block in response.content if block.type == "text")
+
+
+def user_content(prompt: str, image: GeneratedImage | None = None) -> str | list[dict]:
+    """El turno del usuario: el encargo, con la imagen delante si la hay."""
+    if image is None:
+        return prompt
+    data, media_type = as_base64(image)
+    return [
+        {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": data}},
+        {"type": "text", "text": prompt},
+    ]
 
 
 def catalog(api_key: str | None) -> list[dict] | None:

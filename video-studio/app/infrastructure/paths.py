@@ -27,6 +27,11 @@ class Paths:
         return self.data / "thumbs"
 
     @property
+    def references(self) -> Path:
+        """Imágenes de referencia de la biblioteca de elementos."""
+        return self.data / "references"
+
+    @property
     def previews(self) -> Path:
         return self.data / "previews"
 

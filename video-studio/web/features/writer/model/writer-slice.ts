@@ -10,6 +10,8 @@ export type WriterSlice = {
   settings: Writer | null;
   /** Etiqueta del modelo activo, o null mientras no haya clave. */
   label: string | null;
+  /** El modelo activo ve imágenes: puede revisar las escenas pintadas. */
+  seesImages: boolean;
   load: () => Promise<void>;
   save: (draft: WriterDraft) => Promise<boolean>;
 };
@@ -33,7 +35,13 @@ export function useWriterSlice({ gateway, run }: SliceDeps): WriterSlice {
   );
 
   return useMemo(
-    () => ({ settings, label: settings?.label ?? null, load, save }),
+    () => ({
+      settings,
+      label: settings?.label ?? null,
+      seesImages: Boolean(settings?.label && settings.sees_images),
+      load,
+      save,
+    }),
     [settings, load, save],
   );
 }

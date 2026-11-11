@@ -36,6 +36,21 @@ SCRIPT_COMPLETED = "script.completed"
 SCRIPT_FAILED = "script.failed"
 SCRIPT_TERMINAL = (SCRIPT_COMPLETED, SCRIPT_FAILED)
 
+STORYBOARD_REQUESTED = "storyboard.requested"
+STORYBOARD_COMPLETED = "storyboard.completed"
+STORYBOARD_FAILED = "storyboard.failed"
+STORYBOARD_TERMINAL = (STORYBOARD_COMPLETED, STORYBOARD_FAILED)
+
+ILLUSTRATION_REQUESTED = "illustration.requested"
+ILLUSTRATION_COMPLETED = "illustration.completed"
+ILLUSTRATION_FAILED = "illustration.failed"
+ILLUSTRATION_TERMINAL = (ILLUSTRATION_COMPLETED, ILLUSTRATION_FAILED)
+
+REFERENCE_REQUESTED = "reference.requested"
+REFERENCE_COMPLETED = "reference.completed"
+REFERENCE_FAILED = "reference.failed"
+REFERENCE_TERMINAL = (REFERENCE_COMPLETED, REFERENCE_FAILED)
+
 Outcome = Literal["completed", "failed", "pending"]
 
 

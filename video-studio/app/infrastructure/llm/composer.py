@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 
+from app.domain.illustration import GeneratedImage
 from app.domain.writer import Provider
 from app.infrastructure.llm import anthropic_client, openai_compatible
 from app.infrastructure.llm.openai_compatible import Endpoint
@@ -117,10 +118,18 @@ class HttpScriptComposer:
         # volver a preguntar en cuanto haya clave.
         self._catalogs: dict[str, list[dict]] = {}
 
-    def compose(self, provider: Provider, model: str, api_key: str | None, system: str, prompt: str) -> str:
+    def compose(
+        self,
+        provider: Provider,
+        model: str,
+        api_key: str | None,
+        system: str,
+        prompt: str,
+        image: GeneratedImage | None = None,
+    ) -> str:
         if provider.id == "anthropic":
-            return anthropic_client.compose(api_key, model, system, prompt)
-        return openai_compatible.chat(ENDPOINTS[provider.id], api_key, model, system, prompt, self._timeout)
+            return anthropic_client.compose(api_key, model, system, prompt, image)
+        return openai_compatible.chat(ENDPOINTS[provider.id], api_key, model, system, prompt, self._timeout, image)
 
     def catalog(self, provider: Provider, api_key: str | None) -> list[dict]:
         if provider.id in self._catalogs:

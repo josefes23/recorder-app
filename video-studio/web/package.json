@@ -12,7 +12,7 @@
     "serve": "npm run export && npm run api",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --test domain/*.test.mts application/use-cases/*.test.mts"
+    "test": "node --import ./shared/testing/alias.mjs --test domain/*.test.mts application/use-cases/*.test.mts"
   },
   "dependencies": {
     "next": "16.3.0",

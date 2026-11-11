@@ -13,6 +13,12 @@ router = APIRouter(prefix="/api", tags=["events"])
 HEARTBEAT_SECONDS = 15.0
 
 
+@router.get("/outcomes/{job}")
+def outcome(job: str, studio: StudioDep) -> dict:
+    """Desenlace de cualquier trabajo encolado, para quien no haya visto pasar su evento."""
+    return studio.outcome(job)
+
+
 @router.get("/events")
 async def events(request: Request, studio: StudioDep, after: int | None = None):
     """Flujo SSE del log de eventos.

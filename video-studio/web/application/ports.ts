@@ -1,6 +1,13 @@
 import type { Background } from "@/domain/background";
 import type { Style } from "@/domain/captions";
 import type { Config } from "@/domain/config";
+import type {
+  Character,
+  ImageSettings,
+  ImageSettingsDraft,
+  Kind,
+  SavedCharacter,
+} from "@/domain/illustration";
 import type { VideoItem } from "@/domain/library";
 import type { Scene } from "@/domain/scene";
 import type { DownloadReport, StockClip } from "@/domain/stock";
@@ -45,6 +52,44 @@ export type PreviewRequest = {
   style: Style;
 };
 
+export type StoryboardRequest = {
+  topic: string;
+  script: string;
+  /** El estilo que pide el usuario; el modelo lo concreta. */
+  style: string;
+  /** El reparto que ya está en el video: el guion visual lo incluye entero. */
+  characters: Character[];
+};
+
+export type CharacterSaveRequest = {
+  name: string;
+  traits: string;
+  kind: Kind;
+  /** El estilo del video desde el que se guarda: con él se pinta su imagen de referencia. */
+  look: string;
+  provider: string;
+  model: string;
+};
+
+/** Guardado al momento; `job` es su imagen de referencia, o null si la que tenía sigue valiendo. */
+export type CharacterSaved = { character: SavedCharacter; job: string | null };
+
+export type ReferenceRequest = { look: string; provider: string; model: string };
+
+export type IllustrationRequest = {
+  topic: string;
+  /** Qué debe mostrar la imagen. */
+  description: string;
+  /** La guía visual del video, común a todas sus escenas. */
+  look: string;
+  characters: Character[];
+  seed: number | null;
+  provider: string;
+  model: string;
+  /** Que el modelo del guion la revise y la repinte si ve fallos. */
+  review: boolean;
+};
+
 export type RenderRequest = {
   topic: string;
   script: string;
@@ -86,6 +131,23 @@ export interface StudioGateway {
   /** Borra un fondo de la galería, archivo incluido; devuelve la galería al día. */
   deleteBackground(name: string): Promise<Background[]>;
 
+  imageSettings(): Promise<ImageSettings>;
+  saveImageSettings(draft: ImageSettingsDraft): Promise<ImageSettings>;
+  /**
+   * Encola el guion visual: estilo, reparto y qué se ve en cada escena. Lo
+   * escribe el modelo del guion y llega por el flujo de eventos.
+   */
+  requestStoryboard(request: StoryboardRequest): Promise<JobAccepted>;
+  /** Encola una imagen; llega por el flujo de eventos y entra en la galería. */
+  requestIllustration(request: IllustrationRequest): Promise<JobAccepted>;
+
+  /** La biblioteca de elementos que se repiten entre videos, lo último primero. */
+  characters(): Promise<SavedCharacter[]>;
+  /** Guarda (o pone al día por nombre) y encarga su imagen de referencia si hace falta. */
+  saveCharacter(request: CharacterSaveRequest): Promise<CharacterSaved>;
+  repaintReference(id: number, request: ReferenceRequest): Promise<JobAccepted>;
+  deleteCharacter(id: number): Promise<void>;
+
   previewFrame(request: PreviewRequest): Promise<Blob>;
 
   startRender(request: RenderRequest): Promise<number>;
@@ -98,5 +160,7 @@ export interface StudioGateway {
   thumbUrl(thumb: string | null): string;
   /** El archivo entero de un fondo, para verlo o reproducirlo a tamaño grande. */
   backgroundUrl(name: string): string;
+  /** La imagen de referencia de un elemento guardado; `version` evita la copia vieja del navegador al repintarla. */
+  referenceUrl(name: string, version: string): string;
   videoUrl(id: number): string;
 }

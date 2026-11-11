@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from datetime import datetime
 from dataclasses import replace
 from enum import Enum
 from pathlib import Path
@@ -12,14 +13,19 @@ from typing import BinaryIO
 from app.application.render_jobs import RenderJobs
 from app.application.studio import Studio
 from app.application.use_cases.backgrounds import BackgroundUseCases
+from app.application.use_cases.characters import CharacterUseCases
+from app.application.use_cases.illustrations import IllustrationUseCases, ImageSettings, ReviewedPainter
 from app.application.use_cases.library import LibraryUseCases
 from app.application.use_cases.preview import PreviewUseCase
 from app.application.use_cases.render import RenderUseCases
 from app.application.use_cases.scripts import ScriptUseCases
+from app.application.use_cases.storyboard import StoryboardUseCases
 from app.application.use_cases.writer_settings import WriterSettings
 from app.domain.background import Background
 from app.domain.errors import EngineError, NotFoundError
 from app.domain.events import Event
+from app.domain.illustration import Character, GeneratedImage, ImageProvider, fold
+from app.domain.saved_characters import SavedCharacter, is_reference_name
 from app.domain.stock import StockClip
 from app.domain.style import CaptionStyle
 from app.domain.video import NewVideo, RenderSpec, Video
@@ -66,7 +72,8 @@ class InMemoryEventLog:
         self.claims: set[str] = set()
 
     def publish(self, topic: str, key: str | None, payload: dict) -> Event:
-        event = Event(len(self.events) + 1, topic, key, payload, "2026-01-01T00:00:00")
+        # Hora local, como el log de SQLite: los reintentos de imagen la miran.
+        event = Event(len(self.events) + 1, topic, key, payload, datetime.now().isoformat(timespec="seconds"))
         self.events.append(event)
         return event
 
@@ -104,15 +111,40 @@ class InMemoryEventLog:
 
 
 class FakeComposer:
-    def __init__(self, text: str = LONG_SCRIPT, error: Exception | None = None) -> None:
+    """
+    Contesta `text` a todo, o falla con `error`. Con `replies`, contesta esas
+    respuestas en orden —una excepción en la lista se lanza— y después `text`.
+    """
+
+    def __init__(
+        self, text: str = LONG_SCRIPT, error: Exception | None = None, replies: list | None = None
+    ) -> None:
         self.text = text
         self.error = error
+        self.replies = list(replies or [])
         self.calls: list[tuple] = []
+        #: Las imágenes que se le enseñaron, en orden.
+        self.images: list[GeneratedImage] = []
 
-    def compose(self, provider: Provider, model: str, api_key: str | None, system: str, prompt: str) -> str:
+    def compose(
+        self,
+        provider: Provider,
+        model: str,
+        api_key: str | None,
+        system: str,
+        prompt: str,
+        image: GeneratedImage | None = None,
+    ) -> str:
         self.calls.append((provider.id, model, api_key, system, prompt))
+        if image is not None:
+            self.images.append(image)
         if self.error:
             raise self.error
+        if self.replies:
+            reply = self.replies.pop(0)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
         return self.text
 
     def catalog(self, provider: Provider, api_key: str | None) -> list[dict]:
@@ -166,6 +198,8 @@ class FakeBackgroundStore:
     def __init__(self) -> None:
         self.items = [Background.describe("bosque_1.mp4", 12.3, 4_200_000, "abc.jpg")]
         self.saved: list[str] = []
+        #: Lo que se guardó con cada nombre.
+        self.data: dict[str, bytes] = {}
         self.removed: list[str] = []
         self.thumbs = {"abc.jpg": Path("/thumbs/abc.jpg")}
 
@@ -184,7 +218,8 @@ class FakeBackgroundStore:
 
     def save(self, name: str, stream: BinaryIO) -> str:
         self.saved.append(name)
-        self.items.append(Background.describe(name, 0.0, len(stream.read()), None))
+        self.data[name] = stream.read()
+        self.items.append(Background.describe(name, 0.0, len(self.data[name]), None))
         return name
 
     def thumbnail_path(self, thumb: str) -> Path | None:
@@ -219,6 +254,88 @@ class FakeStockLibrary:
         return io.BytesIO(b"mp4:" + str(clip.id).encode())
 
 
+class FakeIllustrator:
+    """Pinta un JPEG de mentira, o falla con `error`."""
+
+    def __init__(self, error: Exception | None = None, fail_from: int | None = None) -> None:
+        self.error = error
+        #: A partir de esa llamada (contando desde 0), falla con `error`.
+        self.fail_from = fail_from
+        self.calls: list[tuple[str, str, dict, str, int | None]] = []
+        self.references: list[list[bytes]] = []
+
+    def illustrate(
+        self, provider: ImageProvider, model: str, credentials, prompt: str, seed: int | None = None,
+        references=(),
+    ) -> GeneratedImage:
+        self.calls.append((provider.id, model, dict(credentials), prompt, seed))
+        #: Las referencias de cada llamada, en orden.
+        self.references.append([r.data for r in references])
+        if self.error and (self.fail_from is None or len(self.calls) > self.fail_from):
+            raise self.error
+        # La semilla va dentro para saber qué intento acabó en la galería.
+        return GeneratedImage(b"\xff\xd8jpeg" + str(seed).encode(), ".jpg")
+
+
+class InMemoryCharacterRepository:
+    def __init__(self) -> None:
+        self.rows: dict[int, SavedCharacter] = {}
+        self._next = 1
+        self._tick = 0
+
+    def _stamp(self) -> str:
+        # Cada escritura «más tarde» que la anterior, para que el orden se pueda probar.
+        self._tick += 1
+        return f"2026-11-11T12:00:{self._tick:02d}"
+
+    def list(self) -> list[SavedCharacter]:
+        return sorted(self.rows.values(), key=lambda c: (c.updated_at, c.id), reverse=True)
+
+    def get(self, character_id: int) -> SavedCharacter | None:
+        return self.rows.get(character_id)
+
+    def find(self, name: str) -> SavedCharacter | None:
+        return next((c for c in self.rows.values() if fold(c.name) == fold(name)), None)
+
+    def upsert(self, character: Character) -> SavedCharacter:
+        now = self._stamp()
+        found = self.find(character.name)
+        if found:
+            saved = replace(found, name=character.name, traits=character.traits, kind=character.kind, updated_at=now)
+        else:
+            saved = SavedCharacter(self._next, character.name, character.traits, character.kind, None, now, now)
+            self._next += 1
+        self.rows[saved.id] = saved
+        return saved
+
+    def set_reference(self, character_id: int, reference: str | None) -> None:
+        self.rows[character_id] = replace(self.rows[character_id], reference=reference, updated_at=self._stamp())
+
+    def remove(self, character_id: int) -> None:
+        self.rows.pop(character_id, None)
+
+
+class FakeReferenceStore:
+    def __init__(self) -> None:
+        self.files: dict[str, bytes] = {}
+        self.removed: list[str] = []
+
+    def save(self, name: str, data: bytes) -> str:
+        assert is_reference_name(name), name
+        self.files[name] = data
+        return name
+
+    def read(self, name: str) -> bytes | None:
+        return self.files.get(name)
+
+    def path(self, name: str) -> Path | None:
+        return Path("/references") / name if name in self.files else None
+
+    def remove(self, name: str) -> None:
+        self.removed.append(name)
+        self.files.pop(name, None)
+
+
 class FakePreviewer:
     def __init__(self) -> None:
         self.calls: list[tuple[str, CaptionStyle, str | None, str]] = []
@@ -241,6 +358,11 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
     backgrounds = FakeBackgroundStore()
     stock = FakeStockLibrary()
     previewer = FakePreviewer()
+    illustrator = FakeIllustrator()
+    images = ImageSettings(credentials)
+    character_library = InMemoryCharacterRepository()
+    references = FakeReferenceStore()
+    painter = ReviewedPainter(images, illustrator, writer, composer)
     studio = Studio(
         writer=writer,
         scripts=ScriptUseCases(events, writer, composer, FakeTemplate()),
@@ -250,10 +372,15 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
         library=LibraryUseCases(videos, files),
         jobs=jobs,
         events=events,
+        images=images,
+        illustrations=IllustrationUseCases(events, images, painter, backgrounds, character_library, references),
+        storyboards=StoryboardUseCases(events, writer, composer, character_library),
+        characters=CharacterUseCases(events, character_library, references, images, painter),
         generator="/fake/auto-video-generator",
     )
     fakes = SimpleNamespace(
         videos=videos, events=events, credentials=credentials, composer=composer,
         queue=queue, files=files, backgrounds=backgrounds, stock=stock, previewer=previewer, jobs=jobs,
+        illustrator=illustrator, painter=painter, character_library=character_library, references=references,
     )
     return studio, fakes

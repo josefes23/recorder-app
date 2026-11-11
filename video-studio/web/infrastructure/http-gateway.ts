@@ -1,13 +1,19 @@
 import type {
+  CharacterSaved,
+  CharacterSaveRequest,
+  IllustrationRequest,
   JobAccepted,
   PreviewRequest,
+  ReferenceRequest,
   RenderRequest,
   ScriptDraft,
+  StoryboardRequest,
   StudioGateway,
 } from "@/application/ports";
 import type { Background } from "@/domain/background";
 import type { Style } from "@/domain/captions";
 import type { Config } from "@/domain/config";
+import { readSaved, type ImageSettings, type ImageSettingsDraft } from "@/domain/illustration";
 import type { VideoItem } from "@/domain/library";
 import type { DownloadReport, StockClip } from "@/domain/stock";
 import type { Voice } from "@/domain/voice";
@@ -67,7 +73,8 @@ export const httpGateway: StudioGateway = {
 
   requestScript: (topic, notes) => post<JobAccepted>("/api/script", { topic, notes }),
 
-  jobStatus: (job) => request<Record<string, unknown>>(`/api/script/${encodeURIComponent(job)}`),
+  /* Vale para cualquier trabajo encolado: guion o imagen. */
+  jobStatus: (job) => request<Record<string, unknown>>(`/api/outcomes/${encodeURIComponent(job)}`),
 
   templateScript: (topic) => post<ScriptDraft>("/api/script/template", { topic, notes: "" }),
 
@@ -104,6 +111,25 @@ export const httpGateway: StudioGateway = {
     return items;
   },
 
+  imageSettings: () => request<ImageSettings>("/api/images"),
+
+  saveImageSettings: (draft: ImageSettingsDraft) => post<ImageSettings>("/api/images", draft),
+
+  requestStoryboard: (payload: StoryboardRequest) => post<JobAccepted>("/api/storyboards", payload),
+
+  requestIllustration: (payload: IllustrationRequest) =>
+    post<JobAccepted>("/api/illustrations", payload),
+
+  characters: async () => readSaved(await request<unknown>("/api/characters")),
+  saveCharacter: (payload: CharacterSaveRequest) => post<CharacterSaved>("/api/characters", payload),
+  repaintReference: (id: number, payload: ReferenceRequest) =>
+    post<JobAccepted>(`/api/characters/${id}/reference`, payload),
+  async deleteCharacter(id: number): Promise<void> {
+    // 204 sin cuerpo: aquí no hay JSON que leer.
+    const response = await fetch(`/api/characters/${id}`, { method: "DELETE" });
+    if (!response.ok) throw new Error(await detail(response));
+  },
+
   async previewFrame(payload: PreviewRequest): Promise<Blob> {
     const response = await fetch("/api/preview", {
       method: "POST",
@@ -133,6 +159,8 @@ export const httpGateway: StudioGateway = {
   thumbUrl: (thumb) => (thumb ? `/api/thumb/${thumb}` : ""),
 
   backgroundUrl: (name) => `/api/backgrounds/${encodeURIComponent(name)}/file`,
+  referenceUrl: (name, version) =>
+    `/api/references/${encodeURIComponent(name)}?v=${encodeURIComponent(version)}`,
 
   videoUrl: (id) => `/api/videos/${id}/file`,
 };

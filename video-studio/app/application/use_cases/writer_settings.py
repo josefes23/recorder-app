@@ -56,9 +56,12 @@ class WriterSettings:
         # El formulario muestra el proveedor elegido aunque le falte la clave: es
         # justo el caso en el que el usuario abre el panel para ponérsela.
         shown = self.chosen() or self.active() or PROVIDERS[0]
+        active = self.active()
         return {
             "provider": shown.id,
             "label": self.label(),
+            # El que redacta puede además revisar las imágenes pintadas.
+            "sees_images": bool(active and active.sees_images),
             "providers": [
                 {
                     "id": provider.id,

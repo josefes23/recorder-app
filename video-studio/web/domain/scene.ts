@@ -1,7 +1,17 @@
+import type { ImageReview, StoryboardScene } from "./illustration";
+
 export type Scene = {
   background: string | null;
   /** Segundo en el que entra. La primera escena siempre arranca en 0. */
   start: number;
+  /** Qué debe mostrar la imagen generada: lo que propuso el guion visual o lo que escribió el usuario. */
+  prompt?: string;
+  /** Imagen pedida que aún no ha llegado. */
+  job?: string;
+  /** Por qué falló la última imagen pedida. */
+  error?: string;
+  /** Lo que dijo el revisor de la imagen generada que lleva. */
+  review?: ImageReview;
 };
 
 export type TimelineSegment = {
@@ -70,7 +80,7 @@ export function buildTimeline(
 /** Separación por defecto al encadenar una escena nueva al final. */
 const NEXT_SCENE_GAP = 8;
 
-export function appended(scenes: Scene[], background: string): Scene[] {
+export function appended(scenes: Scene[], background: string | null): Scene[] {
   const last = scenes.length ? Math.max(...scenes.map((s) => s.start)) : 0;
   return [...scenes, { background, start: scenes.length ? last + NEXT_SCENE_GAP : 0 }];
 }
@@ -78,8 +88,49 @@ export function appended(scenes: Scene[], background: string): Scene[] {
 export const withStart = (scenes: Scene[], index: number, start: number): Scene[] =>
   scenes.map((scene, i) => (i === index ? { ...scene, start } : scene));
 
+/**
+ * Pone un fondo elegido a mano. Si la escena esperaba una imagen, deja de
+ * esperarla: lo que el usuario eligió después manda sobre lo que pidió antes.
+ */
 export const withBackground = (scenes: Scene[], index: number, background: string): Scene[] =>
-  scenes.map((scene, i) => (i === index ? { ...scene, background } : scene));
+  scenes.map((scene, i) =>
+    i === index ? { ...scene, background, job: undefined, error: undefined, review: undefined } : scene,
+  );
+
+/** Escenas nuevas desde el guion visual, aún sin imagen: se marcan según sale cada encargo. */
+export const fromStoryboard = (scenes: StoryboardScene[]): Scene[] =>
+  scenes.map((scene) => ({ background: null, start: scene.start, prompt: scene.description }));
+
+/** Marca la escena como «pintándose»; `null` la añade al final. */
+export function withJob(scenes: Scene[], index: number | null, job: string, prompt: string): Scene[] {
+  const target = index ?? scenes.length;
+  const base = index === null ? appended(scenes, null) : scenes;
+  return base.map((scene, i) =>
+    i === target ? { ...scene, job, prompt, error: undefined, review: undefined } : scene,
+  );
+}
+
+/** Llegó la imagen: la escena que la esperaba la estrena. Si ya no la espera nadie, nada cambia. */
+export const withImage = (
+  scenes: Scene[],
+  job: string,
+  background: string,
+  review: ImageReview | null = null,
+): Scene[] =>
+  scenes.map((scene) =>
+    scene.job === job
+      ? { background, start: scene.start, prompt: scene.prompt, ...(review ? { review } : {}) }
+      : scene,
+  );
+
+export const withFailure = (scenes: Scene[], job: string, error: string): Scene[] =>
+  scenes.map((scene) => (scene.job === job ? { ...scene, job: undefined, error } : scene));
+
+export const pendingImages = (scenes: Scene[]): number => scenes.filter((s) => s.job).length;
+
+/** Lo que viaja al motor: fondo y segundo. Lo demás es estado de la edición. */
+export const forEngine = (scenes: Scene[]): Scene[] =>
+  scenes.map(({ background, start }) => ({ background, start }));
 
 export const without = (scenes: Scene[], index: number): Scene[] =>
   scenes.filter((_, i) => i !== index);

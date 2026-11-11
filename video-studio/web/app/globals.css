@@ -310,6 +310,41 @@ label.btn, a.btn { display: inline-block; text-decoration: none; }
 .scene-start { width: 82px; flex-shrink: 0; }
 .scene-start input { padding: 6px 8px; background: var(--surface); text-align: right; }
 
+/* Escenas con imagen generada */
+.ai-panel {
+  display: flex; flex-direction: column; gap: var(--s3);
+  background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: var(--r); padding: var(--s3);
+}
+.scene-item { display: flex; flex-direction: column; gap: var(--s2); }
+.scene-thumb--busy {
+  background: linear-gradient(110deg, var(--surface) 30%, var(--line) 50%, var(--surface) 70%);
+  background-size: 200% 100%;
+  animation: scene-shimmer 1.2s linear infinite;
+  cursor: progress;
+}
+@keyframes scene-shimmer { to { background-position: -200% 0; } }
+.scene-thumb--empty {
+  display: grid; place-items: center; padding: 0;
+  background: var(--surface); border: 1px dashed var(--line);
+  color: var(--muted); font-size: var(--t-lg);
+}
+.scene-thumb--empty:hover { color: var(--accent); border-color: var(--accent); }
+/* En un móvil los controles bajan a su propia línea y el texto respira. */
+@media (max-width: 560px) {
+  .scene-row { flex-wrap: wrap; justify-content: flex-end; }
+  .scene-name { flex-basis: calc(100% - 38px - var(--s3)); }
+}
+.scene-prompt {
+  font-style: italic;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.scene-editor {
+  display: flex; flex-direction: column; gap: var(--s3);
+  border: 1px dashed var(--line); border-radius: var(--r-sm); padding: var(--s3);
+}
+.scene-add { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--s2); }
+
 /* ---------------------------------------------------------------- galería */
 
 .modal {
@@ -408,3 +443,49 @@ label.btn, a.btn { display: inline-block; text-decoration: none; }
 .lib-item .btn { background: var(--surface); }
 .status-error { color: var(--err); }
 .status-running { color: var(--warn); }
+
+/* Reparto del guion visual */
+.characters { display: flex; flex-direction: column; gap: var(--s2); }
+/* Casilla con una explicación larga: el texto se parte a su lado, no debajo */
+.check { flex-wrap: nowrap; align-items: flex-start; }
+.check > input { margin-top: 3px; flex: none; }
+.characters-head { justify-content: space-between; }
+.character {
+  display: grid; grid-template-columns: 44px minmax(100px, 150px) 1fr auto;
+  gap: var(--s2); align-items: start;
+}
+.character-id, .character-actions { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
+.character-actions { align-items: flex-end; }
+.character-note { grid-column: 2 / -1; margin: 0; }
+@media (max-width: 560px) {
+  .character { grid-template-columns: 44px 1fr auto; }
+  .character textarea { grid-column: 1 / -1; grid-row: 2; }
+  .character-note { grid-column: 1 / -1; }
+}
+
+/* Imagen de referencia de un elemento guardado */
+.ref-thumb {
+  display: block; width: 44px; height: 78px; object-fit: cover;
+  border-radius: var(--r-sm); background: var(--surface); border: 1px solid var(--line);
+}
+.ref-thumb--mini { width: 18px; height: 32px; display: inline-block; vertical-align: middle; }
+.ref-thumb--empty { border-style: dashed; }
+.ref-thumb--busy {
+  background: linear-gradient(110deg, var(--surface) 30%, var(--line) 50%, var(--surface) 70%);
+  background-size: 200% 100%;
+  animation: scene-shimmer 1.2s linear infinite;
+  cursor: progress;
+}
+
+.library-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--s3); }
+.library-card { display: flex; gap: var(--s2); align-items: flex-start; min-width: 0; }
+.library-card-body { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; flex: 1; }
+.library-traits {
+  margin: 0; overflow: hidden; display: -webkit-box;
+  -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+}
+
+.suggestions { gap: var(--s1); }
+.chip { display: inline-flex; align-items: center; gap: var(--s1); }
+.scene-cast { gap: var(--s2); }
+.scene-cast-item { display: inline-flex; align-items: center; gap: 4px; }

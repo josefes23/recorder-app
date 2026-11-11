@@ -18,6 +18,8 @@ export type Writer = {
   provider: string;
   /** Etiqueta corta del modelo activo, o null si falta la clave. */
   label: string | null;
+  /** El modelo activo ve imágenes, así que puede revisar las escenas pintadas. */
+  sees_images: boolean;
   providers: WriterProvider[];
 };
 

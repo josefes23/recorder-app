@@ -11,7 +11,18 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.errors import install_error_handlers
-from app.api.routes import backgrounds, config, events, library, render, scripts, web, writer
+from app.api.routes import (
+    backgrounds,
+    characters,
+    config,
+    events,
+    illustrations,
+    library,
+    render,
+    scripts,
+    web,
+    writer,
+)
 from app.container import Container, build_container
 
 ROUTERS = (
@@ -20,6 +31,8 @@ ROUTERS = (
     scripts.router,
     events.router,
     backgrounds.router,
+    illustrations.router,
+    characters.router,
     render.router,
     library.router,
 )

@@ -59,7 +59,7 @@ tocar una línea del generador.
 | Guion | Campo de tema → «Escribir con …» o «Plantilla» → **lo editas tú** antes de seguir. Contador de palabras y segundos, con aviso si te sales de 30–45 s. Panel plegable para elegir proveedor, clave y modelo |
 | Voz | Doce voces en español con velocidad y tono |
 | Subtítulos | Tamaño, borde, altura, texto por bloque y líneas máximas |
-| Escenas | Añades fondos y marcas en qué segundo entra cada uno |
+| Escenas | Un guion visual (estilo, personajes y qué se ve en cada tramo) y una imagen generada por tramo, o el fondo que elijas de Pexels o la galería; marcas en qué segundo entra cada uno |
 | Previsualización | Un fotograma con fondo y subtítulos aplicados, en segundos |
 | Render | Cola con barra de progreso real (fotograma N de M) |
 | Biblioteca | Reproductor, descarga, borrado y «Reutilizar» para clonar los ajustes |
@@ -145,6 +145,178 @@ cualquier fondo a tamaño grande (los vídeos se reproducen) y «×» lo borra,
 archivo y miniatura incluidos; si alguna escena lo usaba, desaparece de la
 línea de tiempo. Cada escena tiene también su «Ver».
 
+## Escenas con imágenes generadas (opcional)
+
+«Generar escenas desde el guion» trocea el guion en tramos de unos seis
+segundos sin partir ninguna frase (cada frase cae en el tramo donde queda su
+mitad, hasta ocho escenas). Cada escena entra en el segundo en que empieza su
+texto, estimado al mismo ritmo que la duración del guion.
+
+Antes de pintar, el modelo del guion (el de «Modelo del guion») escribe un
+**guion visual**: un estilo común, lo que se repite —personas, animales,
+objetos como una máquina de dibujos o un juego, lugares— con sus rasgos fijos
+(edad, cara, pelo y ropa; o forma, materiales y colores) y lo que se ve en cada
+escena, contado como un plano de película. El generador pinta cada imagen por
+separado y sin ver las demás, así que cada encargo lleva su escena, los rasgos
+de los elementos que nombra, el estilo y la misma semilla para todo el video.
+Sin eso, cada imagen se inventaba un protagonista distinto y, como recibía la
+frase de la voz, la escribía encima. Estilo y elementos se pueden retocar en el
+panel; al pedir otra imagen para una escena, nombrar a uno basta para que salga
+igual. Como mucho seis elementos por video.
+
+Dos detalles probados contra FLUX.2: no admite instrucciones negativas («sin
+texto» no quita letras, y lo que va entre comillas lo escribe), y llamar a la
+imagen «fotograma de película» evita que pinte rótulos, que en temas religiosos
+salían como versículos. El filtro de contenido de Cloudflare bloquea algunas
+escenas (cuerpos mojados, por ejemplo en un bautismo); esa escena se marca con
+el motivo y se puede pedir otra vez con otra descripción.
+
+### Revisión de cada imagen
+
+Si el modelo del guion ve imágenes (Claude o Gemini), revisa cada una antes de
+darla por buena, con la descripción que se pidió delante. La rechaza solo por
+fallos que se notan en el móvil: manos, brazos o dedos de más, cuerpos fundidos
+o superpuestos, letras inventadas o escritas encima, o una escena que no tiene
+nada que ver. Si ve un fallo, se repinta con otra semilla (la misma repetiría la
+imagen), hasta tres imágenes por escena; entra la primera aprobada o, si
+ninguna lo está, la de menos fallos. A la galería solo llega la que se queda, y
+debajo de la escena se cuenta qué pasó: «Revisada por Claude», qué se descartó
+y por qué, o qué fallos quedan. Una revisión que falla —sin saldo, límite de
+peticiones— no tumba la imagen: entra marcada como «sin revisar». Se desactiva
+con la casilla del panel.
+
+Medido con 21 imágenes de la galería —4 con fallos de anatomía (tres manos,
+una mano suelta, cuerpos fundidos, un brazo de más), 3 más con letras
+inventadas encima, 3 con rótulos dudosos y 11 limpias— y el mismo encargo de
+revisión que usa el estudio:
+
+| Revisor | Fallos cazados | Falsas alarmas | Anatomía |
+|---|---|---|---|
+| Claude Sonnet 5.5 | 6 de 7 | 0 de 11 | Ve 3 de 4: se le escapó una mano ambigua que entra por el borde |
+| Claude Haiku 5.5 | 5 de 7 | 0 de 11 | Ninguna: solo rechaza por las letras |
+| Llama 4 Scout (Cloudflare, gratis) | 5 de 7 | 0 de 11 | Ninguna: solo rechaza por las letras |
+| Gemini 3.6 Flash (nivel gratuito) | — | — | Error 429 a la octava imagen |
+
+Por eso revisa el modelo del guion y no uno barato aparte: lo que más se nota,
+las manos y los cuerpos, solo lo ve el modelo grande.
+
+Cada revisión con Sonnet 5.5 cuesta unos 0,006 $ (unos 2.500 tokens de entrada
+por la imagen y el encargo, y unos 200 de salida) y tarda de 2 a 15 segundos. Con
+Gemini en el nivel gratuito el límite de peticiones se agota enseguida; esas
+imágenes quedan «sin revisar». Dos lecciones del ajuste: si el encargo pide que
+la imagen cumpla la descripción, el revisor rechaza por cualquier detalle (un
+gesto, un objeto) y casi todas las escenas gastan sus tres intentos; y a veces
+contesta, se lo repiensa por escrito y vuelve a contestar, así que vale el
+último veredicto. Las reglas viven en `app/domain/review.py`.
+
+Los intentos tienen tope de tiempo además de número: no se empieza otro si el
+encargo lleva más de tres minutos, porque la interfaz se da por vencida a los
+cinco contando la cola.
+
+### Biblioteca de personajes y elementos
+
+Lo que se repite de un video a otro —la misma presentadora, una mascota, la
+máquina de dibujos del canal— se guarda en una biblioteca. Cada elemento del
+panel tiene su botón «Guardar»: queda guardado con su nombre, su tipo y sus
+rasgos, y se le pinta una **imagen de referencia** con el estilo del video
+abierto (un retrato de la cintura para arriba si es una persona, una foto de
+producto si es un objeto, un plano general si es un lugar). Esa imagen pasa
+por la misma revisión que las escenas, porque una referencia con una mano de
+más estropearía todas las escenas donde sale. Guardar otra vez el mismo nombre
+pone al día sus rasgos y repinta la referencia solo si cambiaron.
+
+Por qué hace falta la imagen: los rasgos escritos mantienen la ropa y la forma,
+pero la cara cambia en cada imagen. Probado con FLUX.2 [klein]: con un retrato
+como referencia, la túnica y el manto salieron idénticos y la cara muy
+parecida; sin él, otra ropa y otra cara.
+
+Cómo se reutiliza:
+
+- El guion visual recibe la biblioteca (los 40 últimos) y lo que ya está en el
+  video, y se queda con lo que encaje en el guion nuevo: con su nombre, sus
+  rasgos y su referencia de siempre, aunque el modelo los reescriba. Lo de otro
+  tema lo deja fuera, así que un video sobre Kafka no arrastra al Jesús del
+  anterior.
+- En cada escena que nombra a un elemento guardado, su imagen de referencia va
+  a FLUX (`input_image_0` a `input_image_3`, hasta cuatro por escena) y el
+  encargo dice cuál es de quién con ordinales («Ana se ve igual que en la
+  primera imagen de referencia; Pincel, que en la segunda»): la documentación de
+  klein no aclara si la primera es la «imagen 0» o la «imagen 1».
+- Al editar una escena se proponen, con un clic, los elementos del reparto que
+  aún no nombra y los guardados que aún no están en el video.
+- Desde la biblioteca (desplegable bajo el reparto) se mete un elemento a mano,
+  se repinta su referencia o se borra.
+
+Solo Cloudflare manda referencias; con Nano Banana sin probar (sin facturación
+no hay cupo), las escenas van solo con los rasgos. La imagen de referencia se
+pinta una vez (unas 130 neuronas a 864x1536) y en cada escena viaja reducida a
+432x768, unas 11 neuronas. Viven en `data/references/` (fuera de git) y la
+biblioteca en la tabla `characters` de `data/studio.db`.
+
+Pendiente de probar con imágenes reales: dos referencias en la misma escena.
+Con una sola está probado; el día que se construyó se acabó el cupo de
+Cloudflare antes de probar dos.
+
+En cada escena eliges: la miniatura abre la galería y Pexels, como siempre, y
+«IA» pide otra imagen con la descripción que escribas. «Añadir con IA» crea una
+escena nueva desde una descripción. Lo generado se guarda en la galería como un
+fondo más, con nombre `ia-<tema>_<n>.jpg`, así que se puede reutilizar o borrar
+como cualquier otro.
+
+### Movimiento de las imágenes
+
+Una imagen fija seis segundos se nota quieta, y el zoom del motor (un 7 %
+repartido en toda la escena) casi no se veía. Al renderizar, el estudio parte
+cada escena con imagen en planos de 3 a 4 segundos sobre la misma imagen, como
+haría un montador con una foto: dentro de cada plano, un acercamiento lento y
+constante (2 % por segundo); entre uno y otro, un corte a otro encuadre. El
+primero es abierto; después se alternan uno cerrado sobre el motivo y uno
+intermedio, cada vez ligeramente a un lado. El salto de escala, más del 10 %,
+se lee como un corte buscado. Los encuadres cerrados miran a la mitad superior,
+donde el guion visual pone las caras, lejos de los subtítulos. Una escena de 6
+s da dos planos; una de 8, dos de 4; una de menos de 5, uno solo.
+
+Lo hace el estudio y no el motor, que no se toca: el worker de render ya arma
+la pista escena a escena y solo pide al motor cada fondo. Para las imágenes lo
+pinta él (`app/domain/motion.py` decide dónde está la cámara en cada instante;
+`app/infrastructure/motion.py` pinta los fotogramas). Cada fotograma recorta la
+imagen con decimales y la escala en un solo paso (`Image.resize(box=…)`): el
+zoom de moviepy redondea a píxeles enteros y en un zoom lento eso tiembla. Medido
+fotograma a fotograma sobre una escena de 6 s, el cambio dentro de un plano se
+mantiene parejo (de 1 a 2,5 de diferencia media por fotograma) y salta a 54
+justo en el corte. Y sale más barato que antes: la pista de fondo pasó de 171 a
+53 ms por fotograma, porque estas escenas ya salen a la medida del cuadro y se
+ahorran el `CompositeVideoClip` que solo igualaba tamaños. Los clips de video
+van como siempre: ya se mueven solos.
+
+Hay dos generadores, configurables en «Generador de imágenes» al final del paso
+de escenas (o en `video-studio/.env`):
+
+```
+# Cloudflare Workers AI — gratis, 10.000 neuronas al día (se renuevan a las 00:00 UTC)
+CLOUDFLARE_ACCOUNT_ID=...
+CLOUDFLARE_API_TOKEN=...          # token con permiso de Workers AI
+CLOUDFLARE_IMAGE_MODEL=@cf/black-forest-labs/flux-2-klein-4b   # opcional; o -9b
+
+# Google Nano Banana — de pago: los modelos de imagen tienen cupo cero en el nivel gratuito
+GEMINI_API_KEY=AIza...            # la misma que el guion con Gemini
+GEMINI_IMAGE_MODEL=gemini-nano-banana-2.1   # opcional; -lite o gemini-3-pro-image
+
+IMAGE_PROVIDER=cloudflare          # el que escribe el panel al guardar
+```
+
+FLUX.2 klein 4B a 864x1536 sale por unas 75 imágenes diarias dentro del cupo
+gratuito, según la tabla de precios de Cloudflare; el 9B da más detalle pero
+solo unas 7. Nano Banana 2.1 cuesta unos 0,05 $ por imagen a 2K. Las cifras son
+orientativas: manda la página de precios de cada proveedor.
+
+Cada generador es una entrada de `IMAGE_PROVIDERS` en `app/domain/illustration.py`
+(qué datos pide, qué modelos ofrece) y un módulo en `app/infrastructure/imaging/`
+(cómo se le habla). Nano Banana va por `generateContent`, la API nativa que
+esos modelos anuncian en su catálogo; la guía de AI Studio documenta también la
+API de Interactions, pero no enseña su respuesta y con una clave del nivel
+gratuito no se puede comprobar.
+
 ## Decisiones de arquitectura
 
 **Un render por vez, en un proceso aparte.** Un render tarda varios minutos y
@@ -178,6 +350,23 @@ propósito: esto es localhost para un solo usuario, y levantar Kafka para
 redactar cien palabras sería mantenimiento a cambio de nada — la misma razón
 por la que la cola de renders es un hilo y no Celery. Si algún día hace falta,
 se reescriben `publish()` y `read_after()` y nadie más se entera.
+
+**Las imágenes usan las mismas piezas, con consumidores que compiten.** Un
+guion entero pide hasta ocho imágenes y una a una se haría largo, así que hay
+tres consumidores de `illustration.requested`, cada uno con su grupo: todos ven
+todos los encargos y la reserva decide quién pinta cada uno. Es la reserva que
+ya evitaba redactar dos veces el mismo guion, usada a propósito. El guion visual
+que precede a las imágenes es otro trabajo igual (`storyboard.requested`, con su
+propio consumidor), porque lo escribe el mismo modelo que el guion y tarda lo
+mismo. Viaja entero en el evento de cierre y la interfaz manda su estilo,
+elementos y semilla con cada encargo de imagen: el backend no guarda estado
+por video. Lo único que guarda es la biblioteca de elementos, que es de todos
+los videos; un elemento que viene de ahí viaja con su id y el backend le pone
+su imagen de referencia al pintar. Esas referencias son otro trabajo más
+(`reference.requested`, con su consumidor), y comparten con las escenas el
+pintor que revisa y repinta (`ReviewedPainter`). El desenlace de cualquier
+trabajo, guion, guion visual, imagen o referencia, se consulta en
+`GET /api/outcomes/{job}`.
 
 **El front escucha por SSE, no pregunta.** Es un flujo de una sola dirección, y
 `EventSource` reconecta solo y reenvía `Last-Event-ID`. Como cada evento lleva
@@ -257,8 +446,8 @@ huecos, ni las escenas muertas, ni cuánto dura realmente cada una; la barra sí
 tramo, `build_background` lo encadena consigo mismo hasta cubrirlo. La interfaz
 lo anticipa con la **misma fórmula del motor**, así que el número que enseña es
 el que va a ocurrir; copiar la cuenta a ojo habría sido peor que no decir nada.
-Las imágenes quedan fuera del aviso: a esas el motor les aplica un zoom lento
-que cubre el tramo entero, no las repite.
+Las imágenes quedan fuera del aviso: no se repiten, se mueven (ver «Movimiento
+de las imágenes»).
 
 **La previsualización no renderiza vídeo.** Compone un solo fotograma con PIL:
 segundos en lugar de minutos, que es lo que hace usable el ajuste de estilo.
@@ -271,7 +460,7 @@ video-studio/
 │   ├── domain/            # reglas puras: guion, estilo, escenas, eventos, proveedores
 │   ├── application/       # puertos (Protocols) y casos de uso
 │   │   └── use_cases/     # scripts, render, library, backgrounds, preview, writer_settings
-│   ├── infrastructure/    # SQLite, .env, ffmpeg, cola de render, worker, clientes LLM
+│   ├── infrastructure/    # SQLite, .env, ffmpeg, cola de render, worker, clientes LLM y de imagen
 │   ├── api/               # FastAPI: schemas, rutas y traducción de errores
 │   ├── container.py       # raíz de composición: enchufa adaptadores a casos de uso
 │   └── main.py            # crea la app (uvicorn app.main:app)

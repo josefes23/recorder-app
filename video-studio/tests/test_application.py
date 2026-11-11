@@ -1,10 +1,26 @@
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 from app.application.consumers import EventConsumer
+from app.domain import review
 from app.domain.background import Background
-from app.domain.errors import EngineError, NotFoundError, ValidationError, WriterError
-from app.domain.events import SCRIPT_COMPLETED, SCRIPT_FAILED, SCRIPT_REQUESTED
+from app.domain.errors import EngineError, IllustratorError, NotFoundError, ValidationError, WriterError
+from app.domain.events import (
+    ILLUSTRATION_COMPLETED,
+    ILLUSTRATION_FAILED,
+    ILLUSTRATION_REQUESTED,
+    REFERENCE_COMPLETED,
+    REFERENCE_FAILED,
+    REFERENCE_REQUESTED,
+    SCRIPT_COMPLETED,
+    SCRIPT_FAILED,
+    SCRIPT_REQUESTED,
+    STORYBOARD_COMPLETED,
+    STORYBOARD_FAILED,
+    STORYBOARD_REQUESTED,
+)
+from app.domain.illustration import DEFAULT_STYLE, Character, illustration_name
 from app.domain.scene import Scene
 from app.domain.video import RenderResult
 from tests.fakes import LONG_SCRIPT, DictCredentials, FakeComposer, make_studio
@@ -291,5 +307,428 @@ class LibraryAndBackgroundsTests(unittest.TestCase):
         self.assertEqual(f.previewer.calls[1][0], "TEXTO DE EJEMPLO")
 
 
+class ImageSettingsTests(unittest.TestCase):
+    def test_shows_the_ready_provider_and_masks_only_secrets(self):
+        studio, _ = make_studio(credentials=DictCredentials(GEMINI_API_KEY="AIza-secret-1234"))
+        settings = studio.images.settings()
+        self.assertEqual(settings["provider"], "google")
+        self.assertEqual(settings["label"], "Google · Nano Banana 2.1")
+        self.assertEqual(settings["style"], DEFAULT_STYLE)
+        cloudflare, google = settings["providers"]
+        self.assertFalse(cloudflare["ready"])
+        self.assertEqual([f["hint"] for f in cloudflare["fields"]], [None, None])
+        self.assertTrue(google["ready"])
+        self.assertEqual(google["fields"][0]["hint"], "…1234")
+
+    def test_a_chosen_provider_only_takes_over_once_complete(self):
+        studio, f = make_studio(credentials=DictCredentials(GEMINI_API_KEY="k"))
+        saved = studio.images.save("cloudflare", "", {"CLOUDFLARE_ACCOUNT_ID": " acc-1 "})
+        self.assertEqual(saved["provider"], "cloudflare")
+        self.assertEqual(saved["label"], "Google · Nano Banana 2.1")  # aún le falta el token
+        self.assertEqual(saved["providers"][0]["fields"][0]["hint"], "acc-1")  # el ID no es secreto
+
+        saved = studio.images.save(
+            "cloudflare", "@cf/black-forest-labs/flux-2-klein-9b", {"CLOUDFLARE_API_TOKEN": "tok-9999"},
+        )
+        self.assertEqual(saved["label"], "Cloudflare · FLUX.2 klein 9B")
+        self.assertEqual(f.credentials.values["IMAGE_PROVIDER"], "cloudflare")
+        # Un dato vacío conserva el guardado.
+        studio.images.save("cloudflare", "", {"CLOUDFLARE_API_TOKEN": "  "})
+        self.assertEqual(f.credentials.values["CLOUDFLARE_API_TOKEN"], "tok-9999")
+
+    def test_save_rejects_unknown_provider_model_and_foreign_fields(self):
+        studio, _ = make_studio()
+        with self.assertRaisesRegex(ValidationError, "Generador desconocido"):
+            studio.images.save("dalle")
+        with self.assertRaisesRegex(ValidationError, "no ofrece"):
+            studio.images.save("google", "flux")
+        with self.assertRaisesRegex(ValidationError, "no usa GEMINI_API_KEY"):
+            studio.images.save("cloudflare", "", {"GEMINI_API_KEY": "x"})
+
+
+class IllustrationTests(unittest.TestCase):
+    def test_request_publishes_job_with_resolved_provider_and_model(self):
+        studio, f = make_studio(credentials=DictCredentials(GEMINI_API_KEY="k"))
+        event = studio.illustrations.request(
+            " Café ", "  una taza   humeante ", "acuarela", [{"name": "Ana", "traits": "pelo rojo"}], 7,
+        )
+        self.assertEqual(event.topic, ILLUSTRATION_REQUESTED)
+        self.assertTrue(event.key.startswith("im-"))
+        self.assertEqual(event.payload, {
+            "topic": "Café", "description": "una taza humeante",
+            "look": "acuarela", "characters": [{"name": "Ana", "traits": "pelo rojo", "kind": "persona", "saved": None}],
+            "seed": 7,
+            "provider": "google", "model": "gemini-nano-banana-2.1",
+            # Gemini también redacta y ve imágenes: revisa con su modelo del guion.
+            "review": {"provider": "google", "model": "gemini-3.6-flash"},
+        })
+
+    def test_request_validates_before_publishing(self):
+        studio, f = make_studio()
+        with self.assertRaisesRegex(ValidationError, "ningún generador"):
+            studio.illustrations.request("t", "algo")
+        with self.assertRaisesRegex(ValidationError, "Describe"):
+            studio.illustrations.request("t", "   ")
+        with self.assertRaisesRegex(ValidationError, "nombre y sus rasgos"):
+            studio.illustrations.request("t", "algo", characters=[{"name": "Ana"}])
+        with self.assertRaisesRegex(ValidationError, "le falta id de cuenta y token de api"):
+            studio.illustrations.request("t", "algo", provider_id="cloudflare")
+        f.credentials.values["GEMINI_API_KEY"] = "k"
+        with self.assertRaisesRegex(ValidationError, "no ofrece"):
+            studio.illustrations.request("t", "algo", provider_id="google", model="dall-e")
+        self.assertEqual(f.events.events, [])
+
+    def test_handle_request_paints_saves_and_publishes_once(self):
+        studio, f = make_studio(credentials=DictCredentials(GEMINI_API_KEY="k"))
+        event = studio.illustrations.request("Café", "Ana sirve una taza", "", [{"name": "Ana", "traits": "pelo rojo"}], 7)
+        studio.illustrations.handle_request(event)
+
+        (provider, model, credentials, prompt, seed), = f.illustrator.calls
+        self.assertEqual((provider, model, credentials), ("google", "gemini-nano-banana-2.1", {"GEMINI_API_KEY": "k"}))
+        self.assertEqual(prompt.splitlines()[:3], ["Fotograma de película: Ana sirve una taza.", "Ana: pelo rojo.", f"Estilo: {DEFAULT_STYLE}."])
+        self.assertEqual(seed, 7)
+
+        name = illustration_name("Café", event.key, ".jpg")
+        done = f.events.events[-1]
+        self.assertEqual(done.topic, ILLUSTRATION_COMPLETED)
+        self.assertEqual(done.payload["name"], name)
+        self.assertEqual(f.backgrounds.saved, [name])
+        self.assertEqual(studio.outcome(event.key)["name"], name)
+
+        # Entregado otra vez tras un corte: no se repinta.
+        studio.illustrations.handle_request(event)
+        self.assertEqual(len(f.illustrator.calls), 1)
+
+    def test_handle_request_publishes_the_failure_reason(self):
+        studio, f = make_studio(credentials=DictCredentials(GEMINI_API_KEY="k"))
+        f.illustrator.error = IllustratorError("cupo cero")
+        event = studio.illustrations.request("t", "algo")
+        studio.illustrations.handle_request(event)
+        self.assertEqual(f.events.events[-1].topic, ILLUSTRATION_FAILED)
+        self.assertEqual(studio.outcome(event.key), {"status": "failed", "detail": "cupo cero"})
+        self.assertEqual(f.backgrounds.saved, [])
+
+    def test_competing_consumers_paint_each_image_once(self):
+        studio, f = make_studio(credentials=DictCredentials(GEMINI_API_KEY="k"))
+        for description in ("uno", "dos", "tres"):
+            studio.illustrations.request("t", description)
+        consumers = [
+            EventConsumer(f.events, f"illustrator-{n}", (ILLUSTRATION_REQUESTED,), studio.illustrations.handle_request)
+            for n in (1, 2)
+        ]
+        for consumer in consumers:
+            consumer.run_once(0)
+        self.assertEqual(len(f.illustrator.calls), 3)
+        self.assertEqual(len(f.backgrounds.saved), 3)
+
+    def test_outcome_is_pending_until_a_terminal_event(self):
+        studio, _ = make_studio()
+        self.assertEqual(studio.outcome("im-nada"), {"status": "pending"})
+
+
+class ImageReviewTests(unittest.TestCase):
+    """El modelo del guion mira cada imagen y se repinta lo que tenga fallos."""
+
+    OK = '{"ok": true, "problems": []}'
+    ARMS = '{"ok": false, "problems": ["Ana tiene tres brazos"]}'
+    TEXT = '{"ok": false, "problems": ["hay letras en el cielo", "Ana tiene tres brazos"]}'
+
+    def studio(self, *replies, **credentials):
+        credentials = credentials or {"GEMINI_API_KEY": "g", "ANTHROPIC_API_KEY": "a", "SCRIPT_PROVIDER": "anthropic"}
+        return make_studio(credentials=DictCredentials(**credentials), composer=FakeComposer(replies=list(replies)))
+
+    def paint(self, studio, f, **request):
+        event = studio.illustrations.request("Café", "Ana sirve una taza", seed=7, provider_id="google", **request)
+        studio.illustrations.handle_request(event)
+        return event, studio.outcome(event.key)
+
+    def test_the_writer_reviews_with_the_image_and_the_description(self):
+        studio, f = self.studio(self.OK)
+        event, done = self.paint(studio, f)
+
+        self.assertEqual(event.payload["review"], {"provider": "anthropic", "model": "claude-opus-5-5"})
+        (provider, model, key, system, prompt), = f.composer.calls
+        self.assertEqual((provider, model, key), ("anthropic", "claude-opus-5-5", "a"))
+        self.assertIn("control de calidad", system)
+        self.assertEqual(prompt, "Descripción de la escena: Ana sirve una taza")
+        self.assertEqual(f.composer.images[0].data, b"\xff\xd8jpeg7")
+
+        self.assertEqual(len(f.illustrator.calls), 1)
+        self.assertEqual(done["review"], {
+            "status": "approved", "reviewer": "Claude", "attempts": 1, "problems": [], "fixed": [], "detail": "",
+        })
+
+    def test_a_flagged_image_is_repainted_with_another_seed(self):
+        studio, f = self.studio(self.ARMS, self.OK)
+        _, done = self.paint(studio, f)
+
+        self.assertEqual([call[4] for call in f.illustrator.calls], [7, 8])
+        self.assertEqual(done["review"]["status"], "approved")
+        self.assertEqual(done["review"]["attempts"], 2)
+        self.assertEqual(done["review"]["fixed"], ["Ana tiene tres brazos"])
+        # A la galería solo llega la buena.
+        self.assertEqual(f.backgrounds.saved, [done["name"]])
+        self.assertEqual(f.backgrounds.data[done["name"]], b"\xff\xd8jpeg8")
+
+    def test_after_the_last_attempt_the_least_broken_one_stays(self):
+        studio, f = self.studio(self.TEXT, self.ARMS, self.TEXT)
+        _, done = self.paint(studio, f)
+
+        self.assertEqual(len(f.illustrator.calls), review.MAX_ATTEMPTS)
+        self.assertEqual(done["review"]["status"], "flagged")
+        self.assertEqual(done["review"]["problems"], ["Ana tiene tres brazos"])
+        self.assertEqual(f.backgrounds.data[done["name"]], b"\xff\xd8jpeg8")
+
+    def test_no_new_attempt_once_the_request_is_too_old(self):
+        studio, f = self.studio(self.ARMS, self.OK)
+        event = studio.illustrations.request("Café", "Ana sirve una taza", seed=7, provider_id="google")
+        late = datetime.fromisoformat(event.created_at) + review.RETRY_DEADLINE
+        f.painter._clock = lambda: late
+        studio.illustrations.handle_request(event)
+
+        self.assertEqual(len(f.illustrator.calls), 1)
+        self.assertEqual(studio.outcome(event.key)["review"]["status"], "flagged")
+
+    def test_a_failed_review_never_sinks_the_image(self):
+        for failure in (WriterError("Límite de peticiones alcanzado."), "no sé qué decir", RuntimeError("boom")):
+            studio, f = self.studio(failure)
+            _, done = self.paint(studio, f)
+            self.assertEqual(done["status"], "completed")
+            self.assertEqual(done["review"]["status"], "unchecked")
+            self.assertTrue(done["review"]["detail"])
+            self.assertEqual(len(f.illustrator.calls), 1)
+
+    def test_if_repainting_fails_the_earlier_image_stays(self):
+        studio, f = self.studio(self.ARMS)
+        f.illustrator.error, f.illustrator.fail_from = IllustratorError("cupo agotado"), 1
+        _, done = self.paint(studio, f)
+        self.assertEqual(done["status"], "completed")
+        self.assertEqual(done["review"]["status"], "flagged")
+        self.assertEqual(f.backgrounds.data[done["name"]], b"\xff\xd8jpeg7")
+
+    def test_no_review_when_asked_not_to_or_when_the_writer_cannot_see(self):
+        studio, f = self.studio()
+        _, done = self.paint(studio, f, review=False)
+        self.assertIsNone(done["review"])
+        self.assertEqual(f.composer.calls, [])
+
+        # DeepSeek redacta pero no ve imágenes.
+        studio, f = self.studio(GEMINI_API_KEY="g", DEEPSEEK_API_KEY="d", SCRIPT_PROVIDER="deepseek")
+        event, done = self.paint(studio, f)
+        self.assertIsNone(event.payload["review"])
+        self.assertIsNone(done["review"])
+        self.assertEqual(f.composer.calls, [])
+
+
+
+class StoryboardTests(unittest.TestCase):
+    SCRIPT = "Jesús se bautizó en el Jordán. Hazlo tú también."
+    ANSWER = (
+        '{"look": "Fotografía cinematográfica", "characters": [{"name": "Jesús", "traits": "túnica crema"}], '
+        '"scenes": [{"n": 1, "description": "Jesús entra en el río al amanecer"}]}'
+    )
+
+    def studio(self, answer: str = ANSWER):
+        return make_studio(credentials=DictCredentials(NVIDIA_API_KEY="nv"), composer=FakeComposer(answer))
+
+    def test_request_needs_a_script_and_a_writer(self):
+        studio, f = make_studio()
+        with self.assertRaisesRegex(ValidationError, "guion"):
+            studio.storyboards.request("t", "  ")
+        with self.assertRaisesRegex(ValidationError, "Modelo del guion"):
+            studio.storyboards.request("t", self.SCRIPT)
+        self.assertEqual(f.events.events, [])
+
+        studio, f = self.studio()
+        event = studio.storyboards.request(" Bautismo ", self.SCRIPT, " acuarela ")
+        self.assertEqual(event.topic, STORYBOARD_REQUESTED)
+        self.assertTrue(event.key.startswith("sb-"))
+        self.assertEqual(event.payload, {"topic": "Bautismo", "script": self.SCRIPT, "style": "acuarela", "characters": []})
+
+    def test_handle_request_asks_the_writer_once_and_publishes_the_storyboard(self):
+        studio, f = self.studio()
+        event = studio.storyboards.request("Bautismo", self.SCRIPT, "acuarela")
+        studio.storyboards.handle_request(event)
+
+        (_, _, key, system, prompt), = f.composer.calls
+        self.assertEqual(key, "nv")
+        self.assertIn("director de arte", system)
+        self.assertIn("1. Jesús se bautizó en el Jordán. Hazlo tú también.", prompt)
+
+        done = studio.outcome(event.key)
+        self.assertEqual(done["status"], "completed")
+        self.assertEqual(done["guide"]["characters"], [{"name": "Jesús", "traits": "túnica crema", "kind": "persona", "saved": None}])
+        self.assertIsInstance(done["guide"]["seed"], int)
+        self.assertEqual(done["scenes"], [{
+            "start": 0.0, "text": self.SCRIPT, "description": "Jesús entra en el río al amanecer",
+        }])
+        self.assertEqual(f.events.events[-1].topic, STORYBOARD_COMPLETED)
+
+        studio.storyboards.handle_request(event)
+        self.assertEqual(len(f.composer.calls), 1)
+
+    def test_a_bad_answer_fails_with_the_reason(self):
+        studio, f = self.studio(answer="lo siento, no puedo")
+        event = studio.storyboards.request("t", self.SCRIPT)
+        studio.storyboards.handle_request(event)
+        self.assertEqual(f.events.events[-1].topic, STORYBOARD_FAILED)
+        self.assertIn("formato esperado", studio.outcome(event.key)["detail"])
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class CharacterLibraryTests(unittest.TestCase):
+    """Elementos que se repiten entre videos, con su imagen de referencia."""
+
+    CLOUDFLARE = {"CLOUDFLARE_ACCOUNT_ID": "acc", "CLOUDFLARE_API_TOKEN": "tok"}
+
+    def studio(self, *replies, **extra):
+        credentials = DictCredentials(**self.CLOUDFLARE, **extra)
+        return make_studio(credentials=credentials, composer=FakeComposer(replies=list(replies)))
+
+    def saved_with_reference(self, studio, f, name="Pincel", traits="robot de dibujo naranja", kind="objeto"):
+        saved, event = studio.characters.save(name, traits, kind, "acuarela")
+        studio.characters.handle_request(event)
+        return f.character_library.get(saved.id)
+
+    def test_save_keeps_it_and_orders_its_reference_image(self):
+        studio, f = self.studio()
+        saved, event = studio.characters.save(" Pincel ", " robot de dibujo naranja ", "objeto", " acuarela ")
+        self.assertEqual((saved.name, saved.traits, saved.kind, saved.reference), ("Pincel", "robot de dibujo naranja", "objeto", None))
+        self.assertEqual(event.topic, REFERENCE_REQUESTED)
+        self.assertTrue(event.key.startswith("rf-"))
+        self.assertEqual(event.payload, {
+            "id": saved.id, "look": "acuarela", "provider": "cloudflare",
+            "model": "@cf/black-forest-labs/flux-2-klein-4b", "review": None,
+        })
+
+        studio.characters.handle_request(event)
+        (_, _, _, prompt, seed), = f.illustrator.calls
+        self.assertTrue(prompt.startswith("Foto de producto de Pincel"))
+        self.assertIn("Estilo: acuarela.", prompt)
+        self.assertIsNone(seed)
+        self.assertEqual(f.references.files, {"ref-1.jpg": b"\xff\xd8jpegNone"})
+        self.assertEqual(f.character_library.get(saved.id).reference, "ref-1.jpg")
+        done = studio.outcome(event.key)
+        self.assertEqual((done["status"], done["id"], done["reference"]), ("completed", saved.id, "ref-1.jpg"))
+        self.assertEqual(f.events.events[-1].topic, REFERENCE_COMPLETED)
+
+        # Entregado otra vez: no se repinta.
+        studio.characters.handle_request(event)
+        self.assertEqual(len(f.illustrator.calls), 1)
+
+    def test_saving_the_same_name_only_repaints_when_it_changed(self):
+        studio, f = self.studio()
+        first = self.saved_with_reference(studio, f)
+        same, job = studio.characters.save("pincel", "robot de dibujo naranja", "objeto")
+        self.assertIsNone(job)
+        self.assertEqual((same.id, same.reference), (first.id, "ref-1.jpg"))
+
+        changed, job = studio.characters.save("Pincel", "robot de dibujo azul", "objeto")
+        self.assertEqual(changed.id, first.id)
+        self.assertEqual(job.payload["id"], first.id)
+        self.assertEqual(len(studio.characters.list()), 1)
+
+    def test_the_reference_is_reviewed_like_any_scene(self):
+        studio, f = self.studio(
+            '{"ok": false, "problems": ["tiene tres manos"]}', '{"ok": true}',
+            ANTHROPIC_API_KEY="a", SCRIPT_PROVIDER="anthropic",
+        )
+        saved, event = studio.characters.save("Ana", "pelo rojo", "persona")
+        studio.characters.handle_request(event)
+        self.assertEqual(len(f.illustrator.calls), 2)
+        self.assertIn("Imagen de referencia de Ana", f.composer.calls[0][4])
+        done = studio.outcome(event.key)
+        self.assertEqual(done["review"]["fixed"], ["tiene tres manos"])
+        self.assertTrue(f.illustrator.calls[0][3].startswith("Retrato de estudio de Ana"))
+
+    def test_repaint_remove_and_failures(self):
+        studio, f = self.studio()
+        saved = self.saved_with_reference(studio, f)
+        event = studio.characters.repaint(saved.id, "óleo")
+        self.assertEqual(event.payload["look"], "óleo")
+
+        studio.characters.remove(saved.id)
+        self.assertEqual(studio.characters.list(), [])
+        self.assertEqual(f.references.removed, ["ref-1.jpg"])
+        with self.assertRaises(NotFoundError):
+            studio.characters.repaint(saved.id)
+        with self.assertRaises(NotFoundError):
+            studio.characters.reference_file("ref-1.jpg")
+
+        # Borrado antes de que llegara su referencia: el encargo falla con el motivo.
+        studio.characters.handle_request(event)
+        self.assertEqual(f.events.events[-1].topic, REFERENCE_FAILED)
+        self.assertIn("ya no está", studio.outcome(event.key)["detail"])
+
+    def test_nothing_is_saved_without_a_name_traits_or_a_painter(self):
+        studio, f = make_studio()
+        with self.assertRaisesRegex(ValidationError, "ningún generador"):
+            studio.characters.save("Ana", "pelo rojo")
+        studio, f = self.studio()
+        with self.assertRaisesRegex(ValidationError, "nombre y sus rasgos"):
+            studio.characters.save("Ana", "  ")
+        with self.assertRaisesRegex(ValidationError, "tipo desconocido"):
+            studio.characters.save("Ana", "pelo rojo", "dragón")
+        self.assertEqual(studio.characters.list(), [])
+
+    def test_scenes_carry_the_reference_of_each_saved_element_they_name(self):
+        studio, f = self.studio()
+        pincel = self.saved_with_reference(studio, f)
+        ana = self.saved_with_reference(studio, f, "Ana", "pelo rojo", "persona")
+        f.illustrator.calls.clear(); f.illustrator.references.clear()
+
+        cast = [
+            {"name": "Ana", "traits": "pelo rojo", "kind": "persona", "saved": ana.id},
+            {"name": "Pincel", "traits": "robot de dibujo naranja", "kind": "objeto", "saved": pincel.id},
+            {"name": "Luis", "traits": "barba negra"},
+        ]
+        event = studio.illustrations.request("t", "Luis mira cómo Pincel dibuja a Ana", "", cast, 5)
+        studio.illustrations.handle_request(event)
+
+        prompt = f.illustrator.calls[0][3]
+        # En el orden del reparto: Ana primero, Pincel después; Luis no viene de la biblioteca.
+        self.assertEqual(f.illustrator.references[0], [f.references.files["ref-2.jpg"], f.references.files["ref-1.jpg"]])
+        self.assertIn("Ana se ve igual que en la primera imagen de referencia; Pincel, que en la segunda", prompt)
+        self.assertNotIn("Luis se ve igual", prompt)
+
+        # Una escena que no los nombra va sin referencias; uno borrado, también.
+        studio.characters.remove(pincel.id)
+        event = studio.illustrations.request("t", "Pincel dibuja solo", "", cast, 5)
+        studio.illustrations.handle_request(event)
+        self.assertEqual(f.illustrator.references[-1], [])
+        self.assertNotIn("imagen de referencia", f.illustrator.calls[-1][3])
+
+    def test_the_storyboard_reuses_the_library_and_what_is_already_in_the_video(self):
+        answer = (
+            '{"look": "acuarela", "characters": ['
+            '{"name": "ana", "kind": "persona", "traits": "otra"},'
+            '{"name": "pincel", "kind": "objeto", "traits": "otro robot"},'
+            '{"name": "Rex", "kind": "animal", "traits": "perro"}],'
+            '"scenes": [{"n": 1, "description": "Pincel dibuja a Rex"}]}'
+        )
+        studio, f = make_studio(
+            credentials=DictCredentials(**self.CLOUDFLARE, NVIDIA_API_KEY="nv"),
+            composer=FakeComposer(answer),
+        )
+        pincel = studio.characters.save("Pincel", "robot de dibujo naranja", "objeto")[0]
+        studio.characters.save("Lucía", "mujer de 30 años", "persona")
+
+        current = [{"name": "Ana", "traits": "pelo rojo", "kind": "persona"}, {"name": "Jesús", "traits": "túnica"}]
+        event = studio.storyboards.request("t", "Pincel dibuja. Fin.", "acuarela", current)
+        self.assertEqual(event.payload["characters"][0], {"name": "Ana", "traits": "pelo rojo", "kind": "persona", "saved": None})
+        studio.storyboards.handle_request(event)
+
+        prompt = f.composer.calls[0][4]
+        self.assertIn("Elementos que ya están en el video (mantén los que encajen):\n- Ana (persona): pelo rojo", prompt)
+        self.assertIn("- Pincel (objeto): robot de dibujo naranja", prompt)
+        self.assertIn("- Lucía (persona): mujer de 30 años", prompt)
+        cast = studio.outcome(event.key)["guide"]["characters"]
+        self.assertEqual(cast, [
+            {"name": "Ana", "traits": "pelo rojo", "kind": "persona", "saved": None},
+            {"name": "Pincel", "traits": "robot de dibujo naranja", "kind": "objeto", "saved": pincel.id},
+            {"name": "Rex", "traits": "perro", "kind": "animal", "saved": None},
+        ])
+

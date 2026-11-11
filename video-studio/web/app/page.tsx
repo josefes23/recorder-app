@@ -1,6 +1,7 @@
 "use client";
 
 import { CaptionsStep } from "@/features/captions/ui/CaptionsStep";
+import { ImageSettingsPanel } from "@/features/illustrations/ui/ImageSettingsPanel";
 import { LibraryPanel } from "@/features/library/ui/LibraryPanel";
 import { OutputPanel } from "@/features/render/ui/OutputPanel";
 import { ScenesStep } from "@/features/scenes/ui/ScenesStep";
@@ -28,7 +29,7 @@ export default function Page() {
           <ScriptStep settings={<WriterSettings />} />
           <VoiceStep />
           <CaptionsStep />
-          <ScenesStep />
+          <ScenesStep settings={<ImageSettingsPanel />} />
         </div>
 
         <aside className="rail">

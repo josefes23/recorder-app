@@ -8,13 +8,15 @@ hereda de nada de aquí; basta con que tenga los mismos métodos.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Protocol
 
 from app.domain.background import Background
 from app.domain.events import Event
+from app.domain.illustration import Character, GeneratedImage, ImageProvider
+from app.domain.saved_characters import SavedCharacter
 from app.domain.stock import StockClip
 from app.domain.style import CaptionStyle
 from app.domain.video import NewVideo, RenderResult, RenderSpec, Video
@@ -109,10 +111,67 @@ class ScriptTemplate(Protocol):
 
 
 class ScriptComposer(Protocol):
-    """Habla con el proveedor que toque: redacta y ofrece su catálogo de modelos."""
+    """
+    Habla con el proveedor que toque: redacta y ofrece su catálogo de modelos.
 
-    def compose(self, provider: Provider, model: str, api_key: str | None, system: str, prompt: str) -> str: ...
+    Con `image`, el modelo la ve junto al encargo; solo se manda a proveedores
+    que ven imágenes (`Provider.sees_images`).
+    """
+
+    def compose(
+        self,
+        provider: Provider,
+        model: str,
+        api_key: str | None,
+        system: str,
+        prompt: str,
+        image: GeneratedImage | None = None,
+    ) -> str: ...
     def catalog(self, provider: Provider, api_key: str | None) -> list[dict]: ...
+
+
+class Illustrator(Protocol):
+    """
+    Pinta una imagen vertical a partir de un encargo de texto, con el
+    generador y el modelo que toquen. Los fallos llegan como `DomainError` con
+    el motivo ya redactado: sin cupo, clave mala, imagen bloqueada…
+
+    La semilla y las imágenes de referencia (`references`, en el orden en
+    que las nombra el encargo) las respeta quien pueda; quien no, las ignora.
+    """
+
+    def illustrate(
+        self,
+        provider: ImageProvider,
+        model: str,
+        credentials: Mapping[str, str | None],
+        prompt: str,
+        seed: int | None = None,
+        references: Sequence[GeneratedImage] = (),
+    ) -> GeneratedImage: ...
+
+
+class CharacterRepository(Protocol):
+    """
+    La biblioteca de elementos que se repiten entre videos. El nombre es la
+    clave: sin tildes ni mayúsculas, «Lucía» y «lucia» son el mismo.
+    """
+
+    def list(self) -> list[SavedCharacter]: ...
+    def get(self, character_id: int) -> SavedCharacter | None: ...
+    def find(self, name: str) -> SavedCharacter | None: ...
+    def upsert(self, character: Character) -> SavedCharacter: ...
+    def set_reference(self, character_id: int, reference: str | None) -> None: ...
+    def remove(self, character_id: int) -> None: ...
+
+
+class ReferenceStore(Protocol):
+    """Las imágenes de referencia de la biblioteca, por nombre de archivo."""
+
+    def save(self, name: str, data: bytes) -> str: ...
+    def read(self, name: str) -> bytes | None: ...
+    def path(self, name: str) -> Path | None: ...
+    def remove(self, name: str) -> None: ...
 
 
 class CredentialStore(Protocol):

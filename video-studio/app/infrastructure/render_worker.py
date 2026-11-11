@@ -19,12 +19,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.domain.captions import clip_to_duration  # noqa: E402
+from app.domain.motion import scene_seed  # noqa: E402
 from app.domain.scene import Scene, timeline_spans  # noqa: E402
 from app.domain.script import clean_script  # noqa: E402
 from app.domain.style import CaptionStyle  # noqa: E402
 from app.domain.video import RenderSpec  # noqa: E402
 from app.domain.voice import DEFAULT_PITCH, DEFAULT_RATE, DEFAULT_VOICE  # noqa: E402
 from app.infrastructure.generator import apply_style, load_generator  # noqa: E402
+from app.infrastructure.motion import moving_image  # noqa: E402
 from app.infrastructure.paths import Paths  # noqa: E402
 
 
@@ -33,7 +35,13 @@ def emit(**payload) -> None:
 
 
 def build_track(gen, backgrounds_dir: Path, scenes: list[dict], topic: str, duration: float):
-    """Encadena los fondos de la línea de tiempo en una sola pista."""
+    """
+    Encadena los fondos de la línea de tiempo en una sola pista.
+
+    Las imágenes fijas llevan el movimiento del estudio (`domain.motion`):
+    zoom continuo y un corte de encuadre cada 3 o 4 segundos. Los clips de
+    video ya se mueven solos y van tal cual, como el fondo generado del motor.
+    """
     from moviepy import CompositeVideoClip, concatenate_videoclips
 
     spans = timeline_spans((Scene.from_dict(s) for s in scenes), duration)
@@ -41,10 +49,17 @@ def build_track(gen, backgrounds_dir: Path, scenes: list[dict], topic: str, dura
         return gen.build_background(None, topic, duration)
 
     clips = []
-    for span in spans:
+    for index, span in enumerate(spans):
         path = backgrounds_dir / span.background
         emit(phase="background", progress=0.25,
              message=f"{span.start:.1f}-{span.end:.1f}s · {span.background}")
+        if path.is_file() and path.suffix.lower() in gen.IMAGE_EXTS:
+            # Sale ya a la medida exacta del cuadro, así que se ahorra el
+            # CompositeVideoClip de abajo: solo iguala tamaños y cuesta unos
+            # 115 ms por fotograma, el doble que pintar el fotograma.
+            size = (gen.WIDTH, gen.HEIGHT)
+            clips.append(moving_image(path, span.duration, size, scene_seed(index, span.background)))
+            continue
         clip = gen.build_background(path if path.is_file() else None, topic, span.duration)
         # Normaliza el lienzo: concatenate_videoclips exige tamaños idénticos.
         clips.append(
