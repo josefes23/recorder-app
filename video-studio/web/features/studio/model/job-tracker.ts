@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
-import type { EventStream, JobTracker, StudioEvent } from "@/application/ports";
+import type { EventStream, JobTracker, StudioEvent, WaitOptions } from "@/application/ports";
 import { failureDetail, outcomeOf, type JobOutcome } from "@/domain/job";
 
 /**
@@ -91,7 +91,7 @@ export function useJobTracker(
   }, [events, settle]);
 
   const waitFor = useCallback(
-    (job: string) =>
+    (job: string, { giveUpMs = GIVE_UP_MS }: WaitOptions = {}) =>
       new Promise<Record<string, unknown>>((resolve, reject) => {
         const poller = setInterval(async () => {
           try {
@@ -108,8 +108,9 @@ export function useJobTracker(
           const entry = pending.current.get(job);
           pending.current.delete(job);
           entry?.dispose();
-          reject(new Error("El servidor no ha contestado en cinco minutos. Revisa que siga en marcha."));
-        }, GIVE_UP_MS);
+          const minutes = Math.round(giveUpMs / 60_000);
+          reject(new Error(`El servidor no ha contestado en ${minutes} minutos. Revisa que siga en marcha.`));
+        }, giveUpMs);
 
         pending.current.set(job, {
           resolve,

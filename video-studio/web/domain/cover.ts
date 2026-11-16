@@ -1,7 +1,5 @@
+import { isImageFile as isImage } from "./background.ts";
 import type { Scene } from "./scene";
-
-/** Las mismas extensiones de imagen que `app/domain/background.py`. */
-const isImage = (name: string): boolean => /\.(jpe?g|png|webp|bmp)$/i.test(name);
 
 /**
  * La portada: un título gancho en grande sobre una imagen. Lo que va entre
@@ -81,9 +79,15 @@ export function titleParts(title: string): { text: string; highlighted: boolean 
   });
 }
 
-/** Las imágenes de las escenas, sin repetir y en orden: entre ellas se elige la de la portada. */
+/**
+ * Las imágenes de las escenas, sin repetir y en orden: entre ellas se elige la
+ * de la portada. Una escena animada aporta su imagen fija antes que su clip:
+ * la portada sale mejor de la imagen entera que de un fotograma del video.
+ */
 export function coverCandidates(scenes: Scene[]): string[] {
-  const names = scenes.flatMap((scene) => (scene.background ? [scene.background] : []));
+  const names = scenes.flatMap((scene) =>
+    [scene.still, scene.background].filter((name): name is string => Boolean(name)),
+  );
   return [...new Set(names)];
 }
 

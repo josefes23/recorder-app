@@ -135,3 +135,17 @@ class IllustrationRequest(BaseModel):
     #: galería) y qué está mal. Al corregir, la descripción es opcional.
     source: str = ""
     correction: str = ""
+
+
+class AnimationRequest(BaseModel):
+    topic: str = ""
+    #: La imagen de la galería que se anima: será el primer fotograma.
+    source: str = ""
+    #: Cuánto dura el clip, en segundos enteros (3 a 15): lo que dura su tramo.
+    seconds: int = 0
+    #: Qué pasa en la escena; ayuda al modelo a saber qué debe moverse.
+    description: str = ""
+    #: La guía visual del video, como en las imágenes.
+    look: str = ""
+    characters: list[CharacterIn] = Field(default_factory=list)
+    seed: int | None = None

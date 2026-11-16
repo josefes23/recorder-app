@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from app.application.outcomes import job_outcome
 from app.application.ports import EventLog
 from app.application.render_jobs import RenderJobs
+from app.application.use_cases.animations import AnimationUseCases
 from app.application.use_cases.backgrounds import BackgroundUseCases
 from app.application.use_cases.characters import CharacterUseCases
 from app.application.use_cases.cover import CoverUseCases
@@ -32,6 +33,7 @@ class Studio:
     events: EventLog
     images: ImageSettings
     illustrations: IllustrationUseCases
+    animations: AnimationUseCases
     storyboards: StoryboardUseCases
     characters: CharacterUseCases
     cover: CoverUseCases

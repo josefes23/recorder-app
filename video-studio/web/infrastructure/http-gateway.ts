@@ -1,4 +1,5 @@
 import type {
+  AnimationRequest,
   CharacterSaved,
   CharacterSaveRequest,
   CoverRequest,
@@ -12,6 +13,7 @@ import type {
   StoryboardRequest,
   StudioGateway,
 } from "@/application/ports";
+import type { AnimationSettings } from "@/domain/animation";
 import type { Background } from "@/domain/background";
 import type { Style } from "@/domain/captions";
 import type { Config } from "@/domain/config";
@@ -35,6 +37,8 @@ import type { Writer, WriterDraft } from "@/domain/writer";
  */
 
 type ConfigDto = { voices: Voice[]; default_style: Style; writer: string | null; generator: string };
+
+type AnimationSettingsDto = Omit<AnimationSettings, "usdPerSecond"> & { usd_per_second: number };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -121,6 +125,21 @@ export const httpGateway: StudioGateway = {
 
   requestIllustration: (payload: IllustrationRequest) =>
     post<JobAccepted>("/api/illustrations", payload),
+
+  async animationSettings(): Promise<AnimationSettings> {
+    const dto = await request<AnimationSettingsDto>("/api/animations");
+    return {
+      provider: dto.provider,
+      name: dto.name,
+      model: dto.model,
+      resolution: dto.resolution,
+      usdPerSecond: dto.usd_per_second,
+      ready: dto.ready,
+      key: dto.key,
+    };
+  },
+
+  requestAnimation: (payload: AnimationRequest) => post<JobAccepted>("/api/animations", payload),
 
   characters: async () => readSaved(await request<unknown>("/api/characters")),
   saveCharacter: (payload: CharacterSaveRequest) => post<CharacterSaved>("/api/characters", payload),

@@ -21,6 +21,10 @@ class IllustratorError(DomainError):
     """El generador de imágenes no pudo pintar la escena."""
 
 
+class AnimatorError(DomainError):
+    """El generador de video no pudo animar la escena."""
+
+
 class EngineError(DomainError):
     """El motor o una herramienta externa (ffmpeg, un script) falló."""
 

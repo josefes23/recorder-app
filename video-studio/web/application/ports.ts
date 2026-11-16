@@ -1,3 +1,4 @@
+import type { AnimationSettings } from "@/domain/animation";
 import type { Background } from "@/domain/background";
 import type { Style } from "@/domain/captions";
 import type { Config } from "@/domain/config";
@@ -41,9 +42,17 @@ export interface EventStream {
   subscribe(onEvent: (event: StudioEvent) => void): () => void;
 }
 
+export type WaitOptions = {
+  /**
+   * Cuánto esperar antes de darlo por perdido. Por defecto, cinco minutos; un
+   * clip animado tarda minutos y puede esperar turno, así que pide más.
+   */
+  giveUpMs?: number;
+};
+
 /** Espera el desenlace de un trabajo encolado. */
 export interface JobTracker {
-  waitFor(job: string): Promise<Record<string, unknown>>;
+  waitFor(job: string, options?: WaitOptions): Promise<Record<string, unknown>>;
 }
 
 export type PreviewRequest = {
@@ -93,6 +102,19 @@ export type IllustrationRequest = {
   source?: string;
   /** …y qué está mal en ella. Al corregir, la descripción puede ir vacía. */
   correction?: string;
+};
+
+export type AnimationRequest = {
+  topic: string;
+  /** La imagen de la galería que se anima: será el primer fotograma. */
+  source: string;
+  /** Segundos enteros del clip (3 a 15): lo que dura el tramo de la escena. */
+  seconds: number;
+  /** Qué pasa en la escena: ayuda al modelo a saber qué mover. */
+  description: string;
+  look: string;
+  characters: Character[];
+  seed: number | null;
 };
 
 export type RenderRequest = {
@@ -154,6 +176,11 @@ export interface StudioGateway {
   requestStoryboard(request: StoryboardRequest): Promise<JobAccepted>;
   /** Encola una imagen; llega por el flujo de eventos y entra en la galería. */
   requestIllustration(request: IllustrationRequest): Promise<JobAccepted>;
+
+  /** Con qué se animan las escenas, su precio orientativo y si la clave está puesta. */
+  animationSettings(): Promise<AnimationSettings>;
+  /** Encola la animación de una imagen; el clip llega por el flujo de eventos y entra en la galería. */
+  requestAnimation(request: AnimationRequest): Promise<JobAccepted>;
 
   /** La biblioteca de elementos que se repiten entre videos, lo último primero. */
   characters(): Promise<SavedCharacter[]>;

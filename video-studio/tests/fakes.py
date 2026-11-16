@@ -12,6 +12,7 @@ from typing import BinaryIO
 
 from app.application.render_jobs import RenderJobs
 from app.application.studio import Studio
+from app.application.use_cases.animations import AnimationUseCases
 from app.application.use_cases.backgrounds import BackgroundUseCases
 from app.application.use_cases.characters import CharacterUseCases
 from app.application.use_cases.cover import CoverUseCases
@@ -23,6 +24,7 @@ from app.application.use_cases.render import RenderUseCases
 from app.application.use_cases.scripts import ScriptUseCases
 from app.application.use_cases.storyboard import StoryboardUseCases
 from app.application.use_cases.writer_settings import WriterSettings
+from app.domain.animation import GeneratedClip
 from app.domain.background import Background
 from app.domain.cover import CoverWord
 from app.domain.errors import EngineError, NotFoundError
@@ -284,6 +286,21 @@ class FakeIllustrator:
         return GeneratedImage(b"\xff\xd8jpeg" + str(seed).encode(), ".jpg")
 
 
+class FakeAnimator:
+    """Devuelve un MP4 de mentira, o falla con `error`."""
+
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+        #: (proveedor, modelo, credenciales, bytes de la imagen, encargo, segundos) de cada llamada.
+        self.calls: list[tuple[str, str, dict, bytes, str, int]] = []
+
+    def animate(self, provider, model, credentials, image, prompt, seconds) -> GeneratedClip:
+        self.calls.append((provider.id, model, dict(credentials), image.data, prompt, seconds))
+        if self.error:
+            raise self.error
+        return GeneratedClip(b"\x00\x00\x00\x18ftypmp42" + str(seconds).encode())
+
+
 class InMemoryCharacterRepository:
     def __init__(self) -> None:
         self.rows: dict[int, SavedCharacter] = {}
@@ -379,6 +396,7 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
     character_library = InMemoryCharacterRepository()
     references = FakeReferenceStore()
     painter = ReviewedPainter(images, illustrator, writer, composer)
+    animator = FakeAnimator()
     cover_painter = FakeCoverPainter()
     studio = Studio(
         writer=writer,
@@ -391,6 +409,7 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
         events=events,
         images=images,
         illustrations=IllustrationUseCases(events, images, painter, backgrounds, character_library, references),
+        animations=AnimationUseCases(events, credentials, animator, backgrounds),
         storyboards=StoryboardUseCases(events, writer, composer),
         characters=CharacterUseCases(events, character_library, references, images, painter),
         cover=CoverUseCases(events, writer, composer, cover_painter, backgrounds, videos),
@@ -401,6 +420,6 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
         videos=videos, events=events, credentials=credentials, composer=composer,
         queue=queue, files=files, backgrounds=backgrounds, stock=stock, previewer=previewer, jobs=jobs,
         illustrator=illustrator, painter=painter, character_library=character_library, references=references,
-        cover_painter=cover_painter,
+        cover_painter=cover_painter, animator=animator,
     )
     return studio, fakes

@@ -17,6 +17,7 @@ from fastapi import FastAPI
 
 from app.api.errors import install_error_handlers
 from app.api.routes import (
+    animations,
     backgrounds,
     characters,
     config,
@@ -41,6 +42,7 @@ ROUTERS = (
     events.router,
     backgrounds.router,
     illustrations.router,
+    animations.router,
     characters.router,
     render.router,
     library.router,

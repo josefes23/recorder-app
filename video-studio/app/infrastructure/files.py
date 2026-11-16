@@ -20,7 +20,7 @@ def unlink(path: Path) -> None:
     except PermissionError as exc:
         raise FileInUseError(
             f"No se pudo borrar {path.name}: está abierto en otro programa o no hay permiso. "
-            "Pausá o cerrá el video y probá de nuevo."
+            "Pausa o cierra el video y vuelve a intentarlo."
         ) from exc
 
 

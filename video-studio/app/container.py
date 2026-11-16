@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from app.application.consumers import EventConsumer
 from app.application.render_jobs import RenderJobs
 from app.application.studio import Studio
+from app.application.use_cases.animations import CONSUMER_GROUP as ANIMATOR_GROUP
+from app.application.use_cases.animations import AnimationUseCases
 from app.application.use_cases.backgrounds import BackgroundUseCases
 from app.application.use_cases.characters import CONSUMER_GROUP as REFERENCER_GROUP
 from app.application.use_cases.characters import CharacterUseCases
@@ -30,6 +32,7 @@ from app.application.use_cases.storyboard import CONSUMER_GROUP as STORYBOARD_GR
 from app.application.use_cases.storyboard import StoryboardUseCases
 from app.application.use_cases.writer_settings import WriterSettings
 from app.domain.events import (
+    ANIMATION_REQUESTED,
     DESCRIPTION_REQUESTED,
     ILLUSTRATION_REQUESTED,
     REFERENCE_REQUESTED,
@@ -37,6 +40,7 @@ from app.domain.events import (
     STORYBOARD_REQUESTED,
     TITLES_REQUESTED,
 )
+from app.infrastructure.animation import HttpAnimator
 from app.infrastructure.backgrounds import FileBackgroundStore
 from app.infrastructure.cover import PillowCoverPainter
 from app.infrastructure.env_credentials import HOME_ENV_FILES, EnvCredentials
@@ -59,6 +63,10 @@ from app.infrastructure.sqlite import (
 #: Imágenes que se pintan a la vez. Un guion pide varias y una a una se haría
 #: largo; más de tres choca con los límites por minuto de los generadores.
 ILLUSTRATOR_WORKERS = 3
+
+#: Clips que se animan a la vez. Cada uno tarda minutos y se paga por segundo;
+#: Google no publica el límite del nivel de pago, así que se va con cuidado.
+ANIMATOR_WORKERS = 2
 
 
 @dataclass
@@ -100,6 +108,7 @@ def build_container(paths: Paths | None = None) -> Container:
     references = FileReferenceStore(paths.references)
     painter = ReviewedPainter(images, HttpIllustrator(), writer, composer)
     illustrations = IllustrationUseCases(events, images, painter, store, character_library, references)
+    animations = AnimationUseCases(events, credentials, HttpAnimator(), store)
     characters = CharacterUseCases(events, character_library, references, images, painter)
     storyboards = StoryboardUseCases(events, writer, composer)
     cover = CoverUseCases(events, writer, composer, PillowCoverPainter(gen), store, videos)
@@ -119,6 +128,7 @@ def build_container(paths: Paths | None = None) -> Container:
         events=events,
         images=images,
         illustrations=illustrations,
+        animations=animations,
         storyboards=storyboards,
         characters=characters,
         cover=cover,
@@ -141,6 +151,10 @@ def build_container(paths: Paths | None = None) -> Container:
         )
         for n in range(1, ILLUSTRATOR_WORKERS + 1)
     ]
+    animators = [
+        EventConsumer(events, f"{ANIMATOR_GROUP}-{n}", (ANIMATION_REQUESTED,), animations.handle_request)
+        for n in range(1, ANIMATOR_WORKERS + 1)
+    ]
 
     def start_consumers() -> None:
         events.prune()
@@ -151,5 +165,7 @@ def build_container(paths: Paths | None = None) -> Container:
         threading.Thread(target=describer.run_forever, daemon=True, name="description-consumer").start()
         for n, illustrator in enumerate(illustrators, start=1):
             threading.Thread(target=illustrator.run_forever, daemon=True, name=f"illustrator-{n}").start()
+        for n, animator in enumerate(animators, start=1):
+            threading.Thread(target=animator.run_forever, daemon=True, name=f"animator-{n}").start()
 
     return Container(studio=studio, paths=paths, workers=[queue.start, start_consumers])

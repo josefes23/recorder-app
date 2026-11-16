@@ -365,6 +365,40 @@ esos modelos anuncian en su catálogo; la guía de AI Studio documenta también 
 API de Interactions, pero no enseña su respuesta y con una clave del nivel
 gratuito no se puede comprobar.
 
+### Escenas animadas (opcional, de pago)
+
+Cualquier escena con imagen se puede convertir en un clip de video: **Gemini
+Omni Flash** toma la imagen como primer fotograma e inventa el movimiento. El
+clip entra en la galería al lado de su imagen (`<imagen>-mov-<id>.mp4`) y el
+render lo usa como cualquier clip de Pexels: sin su audio y escalado a
+1080x1920.
+
+- **«Animar»** en cada escena pide un clip del largo de su tramo, redondeado
+  hacia arriba (de 3 a 15 s: lo que admite el modelo; un tramo más largo repite
+  el clip). **«Reanimar»** pide otro desde la imagen original, e **«Imagen
+  fija»** vuelve a ella; los clips anteriores se quedan en la galería.
+- **El interruptor «Animar cada imagen nueva»** (apagado de serie) anima sola
+  cada imagen que llega a una escena. **«Animar las N escenas con imagen»**
+  anima de una vez las que todavía no tienen clip.
+- Cada botón enseña el precio orientativo: unos 0,07 US$ por segundo a 720p
+  (precio de Google del 16-11-2026). Un reel de 45 s animado entero ronda los
+  3 US$.
+
+Usa la misma clave que Nano Banana, con la facturación activada: Omni no tiene
+nivel gratuito.
+
+```
+GEMINI_API_KEY=AIza...                      # la misma de las imágenes, con facturación
+GEMINI_VIDEO_MODEL=gemini-omni-1.2-flash    # opcional
+```
+
+Un clip tarda minutos y el servidor anima dos a la vez, así que cada escena
+espera el suyo sin bloquear nada; si renderizas antes, sale con su imagen fija.
+Va por la API de Interactions (`app/infrastructure/animation/gemini_omni.py`):
+pide el clip con entrega por URI, espera a que el archivo esté listo y lo baja.
+Está probado contra la documentación y con un animador de mentira, pero no
+contra la API real: no había una clave con facturación a mano.
+
 ## Portada
 
 La pestaña **Portada** del panel de salida enseña la miniatura del video: un

@@ -13,6 +13,7 @@ from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Protocol
 
+from app.domain.animation import GeneratedClip, VideoProvider
 from app.domain.background import Background
 from app.domain.cover import CoverWord
 from app.domain.events import Event
@@ -165,6 +166,24 @@ class Illustrator(Protocol):
         seed: int | None = None,
         references: Sequence[GeneratedImage] = (),
     ) -> GeneratedImage: ...
+
+
+class Animator(Protocol):
+    """
+    Anima una imagen: la toma como primer fotograma y devuelve un clip vertical
+    de `seconds` segundos. Tarda minutos, así que solo lo llama el consumidor
+    de encargos. Los fallos llegan como `DomainError` con el motivo redactado.
+    """
+
+    def animate(
+        self,
+        provider: VideoProvider,
+        model: str,
+        credentials: Mapping[str, str | None],
+        image: GeneratedImage,
+        prompt: str,
+        seconds: int,
+    ) -> GeneratedClip: ...
 
 
 class CharacterRepository(Protocol):

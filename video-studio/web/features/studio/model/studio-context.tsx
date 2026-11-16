@@ -6,11 +6,17 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 
 import type { EventStream, StudioGateway } from "@/application/ports";
+import {
+  awaitSceneClip,
+  requestSceneAnimation,
+  type SceneAnimation,
+} from "@/application/use-cases/animate-scenes";
 import {
   awaitReference,
   repaintReference,
@@ -28,10 +34,12 @@ import { previewFrame } from "@/application/use-cases/preview-frame";
 import { renderVideo } from "@/application/use-cases/render-video";
 import { writeDescription } from "@/application/use-cases/write-description";
 import { writeScript } from "@/application/use-cases/write-script";
+import { isImageFile } from "@/domain/background";
 import type { Config } from "@/domain/config";
 import { firstBackground, readCover, resolveCover, type Cover } from "@/domain/cover";
 import type { VideoItem } from "@/domain/library";
-import { fromStoryboard, withoutBackground } from "@/domain/scene";
+import { animatable, buildTimeline, fromStoryboard, withoutBackground, type Scene } from "@/domain/scene";
+import { useAnimationSlice, type AnimationSlice } from "@/features/animation/model/animation-slice";
 import { useBackgroundsSlice, type BackgroundsSlice } from "@/features/backgrounds/model/backgrounds-slice";
 import { useCaptionsSlice, type CaptionsSlice } from "@/features/captions/model/captions-slice";
 import { useCoverSlice, type CoverSlice } from "@/features/cover/model/cover-slice";
@@ -76,6 +84,10 @@ export type StudioActions = {
   illustrateScene: (index: number | null, description: string) => Promise<boolean>;
   /** Pide corregir la imagen de esa escena contando qué está mal; llega en su lugar. */
   correctScene: (index: number, correction: string) => Promise<boolean>;
+  /** Anima la imagen de esa escena (o la original, si ya lleva un clip) con el largo de su tramo. */
+  animateScene: (index: number) => Promise<void>;
+  /** Anima todas las escenas con imagen que todavía no tienen clip. */
+  animateAll: () => Promise<void>;
   /** Guarda en la biblioteca ese elemento del reparto y le encarga su imagen de referencia. */
   saveCharacter: (index: number) => Promise<void>;
   /** Pinta otra imagen de referencia, con el estilo del video abierto. */
@@ -110,6 +122,7 @@ export type Studio = {
   render: RenderSlice;
   writer: WriterSlice;
   images: ImagesSlice;
+  animation: AnimationSlice;
   characters: CharactersSlice;
   cover: CoverState;
   description: DescriptionSlice;
@@ -154,6 +167,7 @@ export function StudioProvider({
   const render = useRenderSlice(deps, library.load);
   const writer = useWriterSlice(deps);
   const images = useImagesSlice(deps);
+  const animation = useAnimationSlice(deps);
   const characters = useCharactersSlice(deps);
   const coverSlice = useCoverSlice();
   const description = useDescriptionSlice();
@@ -196,6 +210,56 @@ export function StudioProvider({
   const { load: loadImages, adopt: adoptGuide, setCharacters } = images;
   const { load: loadCharacters, setPainting, setFailure } = characters;
   const { startImage, finishImage, failImage } = scenes;
+  const { startClipAt, startClipOn, finishClip, failClip, failClipOn } = scenes;
+  const { load: loadAnimation } = animation;
+
+  /* Lo último de la pantalla, para las esperas largas: cuando una imagen llega
+     un minuto después, sus callbacks ven el estado de entonces, no el de ahora.
+     Se pone al día después de cada render. */
+  const latest = useRef({
+    scenes: scenes.items as Scene[],
+    voice: script.seconds,
+    auto: animation.auto,
+    topic: script.topic,
+    guide: images.guide,
+  });
+  useEffect(() => {
+    latest.current = {
+      scenes: scenes.items,
+      voice: script.seconds,
+      auto: animation.auto,
+      topic: script.topic,
+      guide: images.guide,
+    };
+  });
+
+  /* Un clip tarda minutos: se espera fuera de `run`, como las imágenes. */
+  const trackClip = useCallback(
+    (job: string) => {
+      awaitSceneClip(jobs, job)
+        .then(async (name) => {
+          await loadBackgrounds().catch(() => undefined);
+          finishClip(job, name);
+        })
+        .catch((err: unknown) => failClip(job, err instanceof Error ? err.message : String(err)));
+    },
+    [jobs, loadBackgrounds, finishClip, failClip],
+  );
+
+  /** Pide la animación; `mark` sitúa el trabajo en su escena y `fail` cuenta por qué no se pudo pedir. */
+  const animate = useCallback(
+    async (scene: SceneAnimation, mark: (job: string) => void, fail: (message: string) => void) => {
+      try {
+        const { topic, guide } = latest.current;
+        const job = await requestSceneAnimation(gateway, scene, { topic, guide });
+        mark(job);
+        trackClip(job);
+      } catch (err) {
+        fail(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [gateway, trackClip],
+  );
 
   /* Una imagen pedida se espera fuera de `run`: tarda, llegan varias a la vez
      y no deben bloquear el resto de botones. Cada escena enseña lo suyo. */
@@ -205,11 +269,25 @@ export function StudioProvider({
         .then(async ({ name, review }) => {
           // La galería primero: así la escena estrena miniatura y no un hueco.
           await loadBackgrounds().catch(() => undefined);
+          // Antes de estrenarla: después ya no se sabe qué escena la esperaba.
+          const { scenes: current, voice, auto } = latest.current;
+          const index = current.findIndex((scene) => scene.job === job);
           finishImage(job, name, review);
+
+          // Con el interruptor prendido, la imagen nueva se anima sola. Se busca
+          // por nombre: entre pedir el clip y que salga, la escena pudo moverse.
+          if (auto && index >= 0 && isImageFile(name)) {
+            const span = buildTimeline(current, voice).segments[index]?.span ?? 0;
+            await animate(
+              { source: name, description: current[index].prompt ?? "", span },
+              (clipJob) => startClipOn(name, clipJob),
+              (message) => failClipOn(name, message),
+            );
+          }
         })
         .catch((err: unknown) => failImage(job, err instanceof Error ? err.message : String(err)));
     },
-    [jobs, loadBackgrounds, finishImage, failImage],
+    [jobs, loadBackgrounds, finishImage, failImage, animate, startClipOn, failClipOn],
   );
 
   /* Arranque: el servidor manda con las voces y el estilo por defecto. Los
@@ -226,6 +304,7 @@ export function StudioProvider({
           loadLibrary(),
           loadWriter().catch(() => undefined),
           loadImages().catch(() => undefined),
+          loadAnimation().catch(() => undefined),
           loadCharacters().catch(() => undefined),
         ]);
       } catch (err) {
@@ -234,7 +313,7 @@ export function StudioProvider({
     })();
   }, [
     gateway, applyStyle, selectVoice, loadBackgrounds, loadLibrary, loadWriter, loadImages,
-    loadCharacters, setError,
+    loadAnimation, loadCharacters, setError,
   ]);
 
   /* La imagen de referencia tarda como cualquier imagen: se espera fuera de
@@ -395,6 +474,35 @@ export function StudioProvider({
         return true;
       },
 
+      animateScene: async (index) => {
+        const scene = scenes.items[index];
+        const source = scene ? animatable(scene) : null;
+        if (!scene || !source) return;
+        const span = buildTimeline(scenes.items, script.seconds).segments[index]?.span ?? 0;
+        const current = scene.background ?? source;
+        await animate(
+          { source, description: scene.prompt ?? "", span },
+          (job) => startClipAt(index, job),
+          (message) => failClipOn(current, message),
+        );
+      },
+
+      animateAll: async () => {
+        const { segments } = buildTimeline(scenes.items, script.seconds);
+        // Solo las que aún no tienen clip: para rehacer una está su botón.
+        const pending = scenes.items.flatMap((scene, index) => {
+          const source = animatable(scene);
+          return source && !scene.still ? [{ scene, index, source }] : [];
+        });
+        for (const { scene, index, source } of pending) {
+          await animate(
+            { source, description: scene.prompt ?? "", span: segments[index]?.span ?? 0 },
+            (job) => startClipOn(source, job),
+            (message) => failClipOn(source, message),
+          );
+        }
+      },
+
       saveCharacter: async (index) => {
         const character = images.guide.characters[index];
         if (!character) return;
@@ -490,17 +598,18 @@ export function StudioProvider({
       gateway, jobs, run, setError, script, voice, captions, scenes, backgrounds, render,
       loadLibrary, images, adoptGuide, startImage, trackImage, characters, setCharacters,
       loadCharacters, trackReference, coverSlice, resolvedCover, loadBackgrounds, description,
+      animate, startClipAt, startClipOn, failClipOn,
     ],
   );
 
   const studio = useMemo<Studio>(
     () => ({
-      config, status, script, voice, captions, scenes,
-      backgrounds, library, render, writer, images, characters, cover, description, actions,
+      config, status, script, voice, captions, scenes, backgrounds, library, render, writer,
+      images, animation, characters, cover, description, actions,
     }),
     [
       config, status, script, voice, captions, scenes, backgrounds, library, render, writer, images,
-      characters, cover, description, actions,
+      animation, characters, cover, description, actions,
     ],
   );
 

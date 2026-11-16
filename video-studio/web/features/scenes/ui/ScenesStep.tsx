@@ -10,7 +10,10 @@ import {
   savedNamed,
   type ImageReview,
 } from "@/domain/illustration";
-import { pendingImages } from "@/domain/scene";
+import { clipSeconds, formatUsd } from "@/domain/animation";
+import { animatable, pendingClips, pendingImages } from "@/domain/scene";
+import { useAnimation } from "@/features/animation/model/use-animation";
+import { AnimationControls } from "@/features/animation/ui/AnimationControls";
 import { BackgroundPicker } from "@/features/backgrounds/ui/BackgroundPicker";
 import { useBackgrounds } from "@/features/backgrounds/model/use-backgrounds";
 import { useCharacters } from "@/features/illustrations/model/use-characters";
@@ -40,6 +43,7 @@ export function ScenesStep({ settings }: Props) {
   const scenes = useScenes();
   const backgrounds = useBackgrounds();
   const images = useImages();
+  const animation = useAnimation();
   const writer = useWriter();
   const actions = useStudioActions();
   const { busy } = useStatus();
@@ -71,7 +75,9 @@ export function ScenesStep({ settings }: Props) {
 
   const voice = Math.max(seconds, 1);
   const waiting = pendingImages(scenes.items);
+  const animating = pendingClips(scenes.items);
   const hasScript = text.trim().length > 0;
+  const usdPerSecond = animation.settings?.usdPerSecond ?? 0;
 
   const aiHint = !images.choice
     ? "Configura un generador en «Generador de imágenes», al final de este paso: Cloudflare es gratis."
@@ -143,6 +149,7 @@ export function ScenesStep({ settings }: Props) {
                 : "Generar escenas desde el guion"}
         </button>
         <p className="hint">{aiHint}</p>
+        <AnimationControls />
       </div>
 
       {scenes.items.length === 0 ? (
@@ -158,6 +165,12 @@ export function ScenesStep({ settings }: Props) {
             <p className="hint">
               {waiting === 1 ? "Llega 1 imagen" : `Llegan ${waiting} imágenes`}. Puedes seguir
               ajustando mientras tanto; si renderizas antes, esas escenas no saldrán.
+            </p>
+          )}
+          {animating > 0 && (
+            <p className="hint">
+              {animating === 1 ? "Se está animando 1 escena" : `Se están animando ${animating} escenas`}:
+              cada clip tarda unos minutos. Si renderizas antes, salen con su imagen fija.
             </p>
           )}
           {timeline.late.length > 0 && (
@@ -178,11 +191,16 @@ export function ScenesStep({ settings }: Props) {
             {scenes.items.map((scene, i) => {
               const meta = backgrounds.items.find((b) => b.name === scene.background);
               const segment = timeline.segments[i];
+              const source = animatable(scene);
+              const seconds = clipSeconds(segment.span);
               return (
                 <div className="scene-item" key={`${scene.job ?? scene.background}-${i}`}>
                   <div className="scene-row">
-                    {scene.job ? (
-                      <div className="scene-thumb scene-thumb--busy" title="Generando la imagen…" />
+                    {scene.job || scene.clipJob ? (
+                      <div
+                        className="scene-thumb scene-thumb--busy"
+                        title={scene.job ? "Generando la imagen…" : "Animando la imagen…"}
+                      />
                     ) : meta?.thumb ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -216,6 +234,15 @@ export function ScenesStep({ settings }: Props) {
                       </span>
                       {scene.error && <span className="hint warn">{scene.error}</span>}
                       {scene.review && <ReviewNote review={scene.review} />}
+                      {scene.clipJob && (
+                        <span className="hint">
+                          Animando un clip de <b className="num">{seconds}</b> s: tarda unos minutos.
+                        </span>
+                      )}
+                      {scene.still && !scene.clipJob && (
+                        <span className="hint">Animada desde {scene.still}</span>
+                      )}
+                      {scene.clipError && <span className="hint warn">{scene.clipError}</span>}
                       {segment.repeats > 1 && (
                         <span className="hint warn">
                           El clip dura <b className="num">{meta?.duration}</b> s: se repetirá{" "}
@@ -235,7 +262,7 @@ export function ScenesStep({ settings }: Props) {
                     <button
                       className="btn btn--sm"
                       title="Generar una imagen nueva para esta escena"
-                      disabled={Boolean(scene.job)}
+                      disabled={Boolean(scene.job || scene.clipJob)}
                       onClick={() => openEditor(editing === i ? null : i)}
                     >
                       IA
@@ -244,11 +271,30 @@ export function ScenesStep({ settings }: Props) {
                       <button
                         className="btn btn--sm"
                         title="Decirle a la IA qué está mal en esta imagen para que lo arregle"
-                        disabled={Boolean(scene.job)}
+                        disabled={Boolean(scene.job || scene.clipJob)}
                         aria-expanded={correcting === i}
                         onClick={() => openCorrector(correcting === i ? null : i)}
                       >
                         Corregir
+                      </button>
+                    )}
+                    {animation.ready && (source || scene.clipJob) && (
+                      <button
+                        className="btn btn--sm"
+                        title={`Convertir la imagen en un clip de ${seconds} s (≈ ${formatUsd(seconds * usdPerSecond)})`}
+                        disabled={!source}
+                        onClick={() => actions.animateScene(i)}
+                      >
+                        {scene.still ? "Reanimar" : "Animar"}
+                      </button>
+                    )}
+                    {scene.still && !scene.clipJob && (
+                      <button
+                        className="btn btn--sm"
+                        title={`Volver a la imagen fija (${scene.still}). El clip se queda en la galería.`}
+                        onClick={() => scenes.restoreStill(i)}
+                      >
+                        Imagen fija
                       </button>
                     )}
                     <div className="scene-start">

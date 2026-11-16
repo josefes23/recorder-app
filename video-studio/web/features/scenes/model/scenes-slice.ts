@@ -6,11 +6,17 @@ import type { ImageReview } from "@/domain/illustration";
 import {
   appended,
   withBackground,
+  withClip,
+  withClipFailure,
+  withClipFailureOn,
+  withClipJobAt,
+  withClipJobOn,
   withFailure,
   withImage,
   withJob,
   without,
   withStart,
+  withStillImage,
   type Scene,
 } from "@/domain/scene";
 
@@ -26,6 +32,15 @@ export type ScenesSlice = {
   /** Llegó la imagen de ese trabajo: la estrena la escena que la esperaba. */
   finishImage: (job: string, background: string, review?: ImageReview | null) => void;
   failImage: (job: string, error: string) => void;
+  /** La escena espera un clip animado: por posición (botón) o por su imagen (animación automática). */
+  startClipAt: (index: number, job: string) => void;
+  startClipOn: (background: string, job: string) => void;
+  /** Llegó el clip: la escena que lo esperaba lo estrena y guarda su imagen. */
+  finishClip: (job: string, clip: string) => void;
+  failClip: (job: string, error: string) => void;
+  failClipOn: (background: string, error: string) => void;
+  /** Vuelve a la imagen fija de la que salió el clip. */
+  restoreStill: (index: number) => void;
 };
 
 /*
@@ -69,6 +84,31 @@ export function useScenesSlice(): ScenesSlice {
     [],
   );
 
+  const startClipAt = useCallback(
+    (index: number, job: string) => setItems((prev) => withClipJobAt(prev, index, job)),
+    [],
+  );
+  const startClipOn = useCallback(
+    (background: string, job: string) => setItems((prev) => withClipJobOn(prev, background, job)),
+    [],
+  );
+  const finishClip = useCallback(
+    (job: string, clip: string) => setItems((prev) => withClip(prev, job, clip)),
+    [],
+  );
+  const failClip = useCallback(
+    (job: string, error: string) => setItems((prev) => withClipFailure(prev, job, error)),
+    [],
+  );
+  const failClipOn = useCallback(
+    (background: string, error: string) => setItems((prev) => withClipFailureOn(prev, background, error)),
+    [],
+  );
+  const restoreStill = useCallback(
+    (index: number) => setItems((prev) => withStillImage(prev, index)),
+    [],
+  );
+
   return useMemo(
     () => ({
       items,
@@ -79,7 +119,16 @@ export function useScenesSlice(): ScenesSlice {
       startImage,
       finishImage,
       failImage,
+      startClipAt,
+      startClipOn,
+      finishClip,
+      failClip,
+      failClipOn,
+      restoreStill,
     }),
-    [items, place, setStart, remove, startImage, finishImage, failImage],
+    [
+      items, place, setStart, remove, startImage, finishImage, failImage,
+      startClipAt, startClipOn, finishClip, failClip, failClipOn, restoreStill,
+    ],
   );
 }
