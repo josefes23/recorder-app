@@ -11,6 +11,7 @@ import {
 } from "@/application/use-cases/manage-backgrounds";
 import type { Background } from "@/domain/background";
 import { markOwned, releaseOwned, type DownloadReport, type StockSearch } from "@/domain/stock";
+import type { FormatId } from "@/domain/production";
 import type { SliceDeps } from "@/features/studio/model/deps";
 
 export type BackgroundsSlice = {
@@ -29,7 +30,8 @@ export type BackgroundsSlice = {
   fileUrl: (name: string) => string;
 };
 
-export function useBackgroundsSlice({ gateway, run }: SliceDeps): BackgroundsSlice {
+/** `format`: los clips de Pexels se buscan con la orientación del video. */
+export function useBackgroundsSlice({ gateway, run }: SliceDeps, format: FormatId = "9:16"): BackgroundsSlice {
   const [items, setItems] = useState<Background[]>([]);
   const [results, setResults] = useState<StockSearch | null>(null);
 
@@ -39,23 +41,23 @@ export function useBackgroundsSlice({ gateway, run }: SliceDeps): BackgroundsSli
 
   const search = useCallback(
     async (query: string) => {
-      const found = await run("search", () => searchStock(gateway, query));
+      const found = await run("search", () => searchStock(gateway, query, format));
       if (found) setResults(found);
     },
-    [gateway, run],
+    [gateway, run, format],
   );
 
   const download = useCallback(
     async (ids: number[]) => {
       if (!results) return undefined;
-      const result = await run("backgrounds", () => downloadStock(gateway, results.query, ids));
+      const result = await run("backgrounds", () => downloadStock(gateway, results.query, ids, format));
       if (!result) return undefined;
       setItems(result.items);
       // Los que entraron ya no se pueden volver a marcar.
       setResults((prev) => prev && { query: prev.query, clips: markOwned(prev.clips, result) });
       return result;
     },
-    [gateway, run, results],
+    [gateway, run, results, format],
   );
 
   const upload = useCallback(

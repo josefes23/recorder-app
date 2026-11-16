@@ -399,6 +399,48 @@ pide el clip con entrega por URI, espera a que el archivo esté listo y lo baja.
 Está probado contra la documentación y con un animador de mentira, pero no
 contra la API real: no había una clave con facturación a mano.
 
+## Cortometrajes: formato, duración, diálogos y música
+
+En el paso 1 se elige el **formato** y la **duración**; el resto del estudio
+se acomoda solo.
+
+| | Reel | Cortometraje |
+|---|---|---|
+| Guion | 85–120 palabras (30–45 s) | 330–780 palabras (2–5 min), con planteamiento, nudo y desenlace |
+| Escenas del guion visual | hasta 8 | hasta 30 |
+
+| | Vertical 9:16 | Horizontal 16:9 |
+|---|---|---|
+| Video | 1080x1920 | 1920x1080 |
+| Subtítulos | banda central baja | abajo, en menos líneas (se ajustan al cambiar de formato) |
+| Imágenes, clips animados y Pexels | verticales | horizontales |
+| Portada | 1080x1920 | 1280x720, la miniatura de YouTube |
+
+Una imagen vertical que se usa en un video horizontal se encuadra más arriba,
+donde las imágenes generadas ponen las caras.
+
+**Diálogos.** Con «Guion con diálogos», el modelo escribe una intervención por
+línea con el nombre en mayúsculas («ANA: ¿Viste eso?») y lo narrado con
+«NARRADOR:». En el paso 2 aparece cada personaje con su voz: se asigna sola
+—distinta de la del narrador y, a ojo, según el nombre (los terminados en «a»,
+voz de mujer)— y se cambia a mano. Al renderizar, cada intervención se
+sintetiza con su voz y se unen con una pausa corta; las etiquetas no se oyen
+ni salen en los subtítulos. Sin el modo diálogo, el guion se lee entero con
+una voz, como siempre: un «OJO: …» no pierde su primera palabra
+(`app/domain/dialogue.py`).
+
+**Música y sonido** (paso 3). La música sale de una galería propia
+(`data/music/`, fuera de git): se suben pistas libres de derechos y se elige
+una por video. Se repite hasta cubrir el video, entra y sale con un fundido y
+baja sola mientras alguien habla (a un 35 % de su volumen, con rampas de 0,3 s;
+`app/domain/music.py`). Aparte, se puede mezclar debajo de la voz el sonido
+propio de los clips: los animados con Omni traen sonido ambiente.
+
+Todo esto viaja en cada encargo (guion, guion visual, imagen, animación,
+vista previa, portada y render) y se guarda con el video dentro de su `style`,
+bajo la clave `production`: así «Reutilizar» lo recupera y la base no cambia de
+esquema (un servidor de una versión anterior la sigue leyendo).
+
 ## Portada
 
 La pestaña **Portada** del panel de salida enseña la miniatura del video: un

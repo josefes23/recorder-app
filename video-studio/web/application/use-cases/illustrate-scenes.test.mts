@@ -57,7 +57,10 @@ test("el guion visual se pide con tema, guion y estilo, y se espera por el flujo
     characters: [ANA, { name: "", traits: "", kind: "persona", saved: null }],
   });
   assert.deepEqual(storyboards, [
-    { topic: "Café", script: "Primera frase. Segunda frase.", style: "acuarela", characters: [ANA] },
+    {
+      topic: "Café", script: "Primera frase. Segunda frase.", style: "acuarela", characters: [ANA],
+      length: "reel", format: "9:16",
+    },
   ]);
   assert.deepEqual(board, STORYBOARD);
 
@@ -110,6 +113,7 @@ test("pide una imagen por escena, todas con la misma guía, y avisa de cada enca
     provider: "cloudflare",
     model: "m",
     review: true,
+    format: "9:16",
   });
   assert.equal(requests[1].seed, 7);
 });
@@ -146,6 +150,7 @@ test("corregir manda la imagen, qué está mal y la misma guía que una escena",
     provider: "cloudflare",
     model: "m",
     review: true,
+    format: "9:16",
     source: "ia-cafe_1.jpg",
     correction: "Ana tiene tres brazos",
   });

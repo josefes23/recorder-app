@@ -15,6 +15,8 @@ import type {
 } from "@/application/ports";
 import type { AnimationSettings } from "@/domain/animation";
 import type { Background } from "@/domain/background";
+import type { Track } from "@/domain/music";
+import type { FormatId } from "@/domain/production";
 import type { Style } from "@/domain/captions";
 import type { Config } from "@/domain/config";
 import { readSaved, type ImageSettings, type ImageSettingsDraft } from "@/domain/illustration";
@@ -77,7 +79,8 @@ export const httpGateway: StudioGateway = {
 
   saveWriter: (draft: WriterDraft) => post<Writer>("/api/writer", draft),
 
-  requestScript: (topic, notes) => post<JobAccepted>("/api/script", { topic, notes }),
+  requestScript: (topic, notes, length, dialogue) =>
+    post<JobAccepted>("/api/script", { topic, notes, length, dialogue }),
 
   /* Vale para cualquier trabajo encolado: guion o imagen. */
   jobStatus: (job) => request<Record<string, unknown>>(`/api/outcomes/${encodeURIComponent(job)}`),
@@ -89,15 +92,39 @@ export const httpGateway: StudioGateway = {
     return items;
   },
 
-  async searchStock(query: string): Promise<StockClip[]> {
+  async searchStock(query: string, format: FormatId): Promise<StockClip[]> {
     const { items } = await request<{ items: StockClip[] }>(
-      `/api/backgrounds/search?q=${encodeURIComponent(query)}`,
+      `/api/backgrounds/search?q=${encodeURIComponent(query)}&format=${encodeURIComponent(format)}`,
     );
     return items;
   },
 
-  downloadStock: (query, ids) =>
-    post<DownloadReport & { items: Background[] }>("/api/backgrounds/download", { query, ids }),
+  downloadStock: (query, ids, format) =>
+    post<DownloadReport & { items: Background[] }>("/api/backgrounds/download", { query, ids, format }),
+
+  async music(): Promise<Track[]> {
+    const { items } = await request<{ items: Track[] }>("/api/music");
+    return items;
+  },
+
+  async uploadMusic(file: File): Promise<Track[]> {
+    const form = new FormData();
+    form.append("file", file);
+    const response = await fetch("/api/music/upload", { method: "POST", body: form });
+    const body = (await response.json()) as { items?: Track[]; detail?: string };
+    if (!response.ok) throw new Error(body.detail ?? `Error ${response.status}`);
+    return body.items ?? [];
+  },
+
+  async deleteMusic(name: string): Promise<Track[]> {
+    const { items } = await request<{ deleted: string; items: Track[] }>(
+      `/api/music/${encodeURIComponent(name)}`,
+      { method: "DELETE" },
+    );
+    return items;
+  },
+
+  musicUrl: (name) => `/api/music/${encodeURIComponent(name)}/file`,
 
   async uploadBackground(file: File): Promise<Background[]> {
     const form = new FormData();

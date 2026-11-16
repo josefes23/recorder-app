@@ -1,6 +1,7 @@
 import type { JobTracker, StudioGateway } from "@/application/ports";
 import { clipSeconds } from "@/domain/animation";
 import type { VisualGuide } from "@/domain/illustration";
+import type { FormatId } from "@/domain/production";
 
 /**
  * Plantón para un clip animado. Generarlo tarda minutos y, con varias escenas,
@@ -16,6 +17,8 @@ export type AnimateInput = {
   topic: string;
   /** La guía del video: el estilo y el reparto ayudan a saber qué mover y cómo. */
   guide: VisualGuide;
+  /** El clip sale con la orientación del video. */
+  format?: FormatId;
 };
 
 export type SceneAnimation = {
@@ -31,7 +34,7 @@ export type SceneAnimation = {
 export async function requestSceneAnimation(
   gateway: StudioGateway,
   { source, description, span }: SceneAnimation,
-  { topic, guide }: AnimateInput,
+  { topic, guide, format = "9:16" }: AnimateInput,
 ): Promise<string> {
   if (!source) throw new Error("Esta escena no tiene imagen que animar.");
   const { job } = await gateway.requestAnimation({
@@ -42,6 +45,7 @@ export async function requestSceneAnimation(
     look: guide.look.trim(),
     characters: guide.characters.filter((c) => c.name.trim() && c.traits.trim()),
     seed: guide.seed,
+    format,
   });
   return job;
 }

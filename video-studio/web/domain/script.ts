@@ -20,12 +20,15 @@ export function estimateSeconds(script: string): number {
  * Verdicto, no mensaje: el dominio decide si la duración sirve y la interfaz
  * decide cómo decirlo.
  */
-export function durationVerdict(script: string): DurationVerdict {
+export function durationVerdict(
+  script: string,
+  [min, max]: [number, number] = [MIN_SECONDS, MAX_SECONDS],
+): DurationVerdict {
   const words = countWords(script);
   if (words === 0) return "empty";
   const seconds = words / WORDS_PER_SECOND;
-  if (seconds < MIN_SECONDS) return "short";
-  if (seconds > MAX_SECONDS) return "long";
+  if (seconds < min) return "short";
+  if (seconds > max) return "long";
   return "ok";
 }
 

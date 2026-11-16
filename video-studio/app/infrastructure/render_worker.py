@@ -141,7 +141,12 @@ def main() -> None:
 
     # Las escenas llegan en segundos estimados; con la voz ya hecha, cada una
     # entra cuando la voz dice su texto.
-    scenes = [s.as_dict() for s in synced_to_voice(map(Scene.from_dict, job.scenes), script, words or [])]
+    # Contra el guion tal cual, etiquetas «ANA:» incluidas: con él se estimaron
+    # los segundos de cada escena. La voz no dice las etiquetas y el alineador
+    # las salta, así que los cortes caen donde deben.
+    scenes = [
+        s.as_dict() for s in synced_to_voice(map(Scene.from_dict, job.scenes), clean_script(job.script), words or [])
+    ]
     background = build_track(gen, paths.backgrounds, scenes, job.topic, duration)
 
     emit(phase="render", progress=0.30, message="Renderizando…")

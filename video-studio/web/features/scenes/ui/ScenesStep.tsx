@@ -93,7 +93,7 @@ export function ScenesStep({ settings }: Props) {
 
   return (
     <Step
-      n={4}
+      n={5}
       title="Escenas"
       note={scenes.items.length ? `${scenes.items.length} sobre ${voice.toFixed(0)} s` : "fondo generado"}
     >

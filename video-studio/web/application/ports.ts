@@ -1,5 +1,7 @@
 import type { AnimationSettings } from "@/domain/animation";
 import type { Background } from "@/domain/background";
+import type { Track } from "@/domain/music";
+import type { FormatId, LengthId, forServer } from "@/domain/production";
 import type { Style } from "@/domain/captions";
 import type { Config } from "@/domain/config";
 import type { Cover } from "@/domain/cover";
@@ -60,6 +62,7 @@ export type PreviewRequest = {
   topic: string;
   background: string | null;
   style: Style;
+  format: FormatId;
 };
 
 export type StoryboardRequest = {
@@ -69,6 +72,10 @@ export type StoryboardRequest = {
   style: string;
   /** El reparto que ya está en el video: el guion visual lo incluye entero. */
   characters: Character[];
+  /** Reel (hasta 8 escenas) o cortometraje (hasta 30). */
+  length: LengthId;
+  /** Dónde caben las caras: vertical u horizontal. */
+  format: FormatId;
 };
 
 export type CharacterSaveRequest = {
@@ -102,6 +109,8 @@ export type IllustrationRequest = {
   source?: string;
   /** …y qué está mal en ella. Al corregir, la descripción puede ir vacía. */
   correction?: string;
+  /** La imagen sale con la orientación del video. */
+  format: FormatId;
 };
 
 export type AnimationRequest = {
@@ -115,6 +124,8 @@ export type AnimationRequest = {
   look: string;
   characters: Character[];
   seed: number | null;
+  /** El clip sale con la orientación del video. */
+  format: FormatId;
 };
 
 export type RenderRequest = {
@@ -129,13 +140,14 @@ export type RenderRequest = {
   /** Se guarda con el video para descargarla después; null deja la de por defecto. */
   cover: Cover | null;
   /** El texto con que se publica; se guarda con el video para copiarlo después. */
-  description: string;
+  description: string;  /** Formato, duración, voces del diálogo, música y sonido ambiente (`forServer`). */
+  production: ReturnType<typeof forServer>;
 };
 
 export type DescriptionRequest = { topic: string; script: string; title: string };
 
 /** La portada tal como está en el estudio; el tema da color al degradado si no hay imagen. */
-export type CoverRequest = Cover & { topic: string };
+export type CoverRequest = Cover & { topic: string; format: FormatId };
 
 /**
  * Puerto de salida: todo lo que la aplicación necesita del mundo exterior.
@@ -152,7 +164,8 @@ export interface StudioGateway {
   saveWriter(draft: WriterDraft): Promise<Writer>;
 
   /** Encola la redacción; contesta al instante con la clave del trabajo. */
-  requestScript(topic: string, notes: string): Promise<JobAccepted>;
+  /** Encola la redacción: un reel o un cortometraje, narrado o en diálogo. */
+  requestScript(topic: string, notes: string, length: LengthId, dialogue: boolean): Promise<JobAccepted>;
   /** Desenlace de un trabajo: la red de seguridad si su evento no llegó. */
   jobStatus(job: string): Promise<Record<string, unknown>>;
   /** La plantilla es local: se resuelve en la misma petición. */
@@ -160,9 +173,16 @@ export interface StudioGateway {
 
   backgrounds(): Promise<Background[]>;
   /** Clips de Pexels que encajan con la búsqueda, con miniatura y sin bajar nada. */
-  searchStock(query: string): Promise<StockClip[]>;
+  searchStock(query: string, format: FormatId): Promise<StockClip[]>;
   /** Baja a la galería los clips marcados de esa búsqueda; devuelve la galería al día. */
-  downloadStock(query: string, ids: number[]): Promise<DownloadReport & { items: Background[] }>;
+  downloadStock(query: string, ids: number[], format: FormatId): Promise<DownloadReport & { items: Background[] }>;
+
+  /** La galería de música: pistas que subió el usuario. */
+  music(): Promise<Track[]>;
+  uploadMusic(file: File): Promise<Track[]>;
+  deleteMusic(name: string): Promise<Track[]>;
+  /** La pista entera, para escucharla. */
+  musicUrl(name: string): string;
   uploadBackground(file: File): Promise<Background[]>;
   /** Borra un fondo de la galería, archivo incluido; devuelve la galería al día. */
   deleteBackground(name: string): Promise<Background[]>;

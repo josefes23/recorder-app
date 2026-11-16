@@ -9,6 +9,7 @@ import {
   type StoryboardScene,
   type VisualGuide,
 } from "@/domain/illustration";
+import type { FormatId, LengthId } from "@/domain/production";
 
 export type IllustrateInput = ImageChoice & {
   topic: string;
@@ -16,6 +17,8 @@ export type IllustrateInput = ImageChoice & {
   guide: VisualGuide;
   /** Que el modelo del guion revise cada imagen y repinte las que tengan fallos. */
   review: boolean;
+  /** La imagen sale con la orientación del video. */
+  format?: FormatId;
 };
 
 /** Una imagen terminada: su nombre en la galería y lo que dijo el revisor. */
@@ -27,6 +30,8 @@ export type StoryboardInput = {
   style: string;
   /** El reparto que ya está en el video: el guion visual lo incluye entero. */
   characters: Character[];
+  length?: LengthId;
+  format?: FormatId;
 };
 
 const request = (input: IllustrateInput, description: string): IllustrationRequest => ({
@@ -38,6 +43,7 @@ const request = (input: IllustrateInput, description: string): IllustrationReque
   provider: input.provider,
   model: input.model,
   review: input.review,
+  format: input.format ?? "9:16",
 });
 
 const isText = (value: unknown): value is string => typeof value === "string";
@@ -83,7 +89,7 @@ export function readStoryboard(result: Record<string, unknown>): Storyboard {
 export async function planStoryboard(
   gateway: StudioGateway,
   jobs: JobTracker,
-  { topic, script, style, characters }: StoryboardInput,
+  { topic, script, style, characters, length = "reel", format = "9:16" }: StoryboardInput,
 ): Promise<Storyboard> {
   if (!script.trim()) throw new Error("Escribe primero el guion: las escenas salen de sus frases.");
   const { job } = await gateway.requestStoryboard({
@@ -92,6 +98,8 @@ export async function planStoryboard(
     style: style.trim(),
     // Las filas a medio rellenar no viajan: el servidor las rechazaría.
     characters: characters.filter((c) => c.name.trim() && c.traits.trim()),
+    length,
+    format,
   });
   return readStoryboard(await jobs.waitFor(job));
 }

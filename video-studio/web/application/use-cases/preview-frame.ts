@@ -1,5 +1,7 @@
 import type { StudioGateway } from "@/application/ports";
 import type { Style } from "@/domain/captions";
+import { withoutLabels } from "@/domain/dialogue";
+import type { FormatId } from "@/domain/production";
 import type { Scene } from "@/domain/scene";
 import { sampleCaption } from "@/domain/script";
 
@@ -8,6 +10,7 @@ export type PreviewInput = {
   topic: string;
   scenes: Scene[];
   style: Style;
+  format?: FormatId;
 };
 
 /**
@@ -16,12 +19,14 @@ export type PreviewInput = {
  */
 export async function previewFrame(
   gateway: StudioGateway,
-  { script, topic, scenes, style }: PreviewInput,
+  { script, topic, scenes, style, format = "9:16" }: PreviewInput,
 ): Promise<Blob> {
   return gateway.previewFrame({
-    caption: sampleCaption(script),
+    // En un diálogo, el subtítulo de muestra no lleva «NARRADOR:»: la etiqueta no se oye.
+    caption: sampleCaption(withoutLabels(script)),
     topic,
     background: scenes[0]?.background ?? null,
     style,
+    format,
   });
 }

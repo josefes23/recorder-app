@@ -2,15 +2,26 @@
 
 import type { ReactNode } from "react";
 
+import { FORMATS, LENGTHS, type FormatId, type LengthId } from "@/domain/production";
+import { useProduction } from "@/features/production/model/use-production";
 import { useScript } from "@/features/script/model/use-script";
 import { useStatus, useStudioActions } from "@/features/studio/model/use-studio-actions";
 import { useWriter } from "@/features/writer/model/use-writer";
+import { Field } from "@/shared/ui/Field";
 import { Step } from "@/shared/ui/Step";
 
-const ADVICE = {
-  short: "Se queda corto para un Reel. Alarga hasta unos treinta segundos.",
-  long: "Se pasa de largo. Recorta hasta unos cuarenta y cinco segundos.",
-} as const;
+const ADVICE: Record<LengthId, { short: string; long: string; measure: string }> = {
+  reel: {
+    short: "Se queda corto para un Reel. Alarga hasta unos treinta segundos.",
+    long: "Se pasa de largo. Recorta hasta unos cuarenta y cinco segundos.",
+    measure: "30–45 s es la medida",
+  },
+  corto: {
+    short: "Se queda corto para un cortometraje: apunta a dos minutos o más.",
+    long: "Pasa de cinco minutos. Recorta un poco o divídelo en dos videos.",
+    measure: "de 2 a 5 minutos",
+  },
+};
 
 /** `settings` es el hueco donde la ruta encaja los ajustes del modelo. */
 export function ScriptStep({ settings }: { settings?: ReactNode }) {
@@ -18,8 +29,10 @@ export function ScriptStep({ settings }: { settings?: ReactNode }) {
   const { busy } = useStatus();
   const actions = useStudioActions();
   const { label } = useWriter();
+  const production = useProduction();
+  const tips = ADVICE[production.length];
 
-  const advice = script.verdict === "short" || script.verdict === "long" ? ADVICE[script.verdict] : null;
+  const advice = script.verdict === "short" || script.verdict === "long" ? tips[script.verdict] : null;
 
   return (
     <Step
@@ -32,7 +45,7 @@ export function ScriptStep({ settings }: { settings?: ReactNode }) {
             <b className="num">{script.seconds.toFixed(0)}</b> s
           </>
         ) : (
-          "30–45 s es la medida"
+          tips.measure
         )
       }
     >
@@ -62,6 +75,48 @@ export function ScriptStep({ settings }: { settings?: ReactNode }) {
           autoComplete="off"
         />
       </div>
+
+      <div className="fields">
+        <Field id="format" label="Formato">
+          <select
+            id="format"
+            value={production.format}
+            onChange={(e) => actions.chooseFormat(e.target.value as FormatId)}
+          >
+            {FORMATS.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label} · {f.hint}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field id="length" label="Duración">
+          <select
+            id="length"
+            value={production.length}
+            onChange={(e) => production.setLength(e.target.value as LengthId)}
+          >
+            {LENGTHS.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+
+      <label className="cluster check" htmlFor="dialogue">
+        <input
+          id="dialogue"
+          type="checkbox"
+          checked={production.dialogue}
+          onChange={(e) => production.setDialogue(e.target.checked)}
+        />
+        <span className="hint">
+          Guion con diálogos: cada personaje habla con su voz. Una intervención por línea, con el
+          nombre en mayúsculas — «ANA: ¿Viste eso?» —; lo demás lo dice el narrador.
+        </span>
+      </label>
 
       <div className="cluster">
         <button

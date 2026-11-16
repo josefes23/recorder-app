@@ -9,6 +9,7 @@ import { useCover } from "@/features/cover/model/use-cover";
 import { CoverControls } from "@/features/cover/ui/CoverControls";
 import { useDescription } from "@/features/description/model/use-description";
 import { useLibrary } from "@/features/library/model/use-library";
+import { useProduction } from "@/features/production/model/use-production";
 import { useRender } from "@/features/render/model/use-render";
 import { useScenes } from "@/features/scenes/model/use-scenes";
 import { useScript } from "@/features/script/model/use-script";
@@ -27,6 +28,9 @@ export function OutputPanel() {
   const scenes = useScenes();
   const voice = useVoice();
   const catalog = useVoiceCatalog();
+  const { format } = useProduction();
+  /* El cuadro toma la forma del video: vertical o apaisado. */
+  const shape = format === "16:9" ? " frame--wide" : "";
   const { busy, error } = useStatus();
   const actions = useStudioActions();
 
@@ -61,7 +65,7 @@ export function OutputPanel() {
       </div>
 
       {view === "cover" ? (
-        <div className={`frame${cover.painting ? " is-busy" : ""}`} aria-busy={cover.painting}>
+        <div className={`frame${shape}${cover.painting ? " is-busy" : ""}`} aria-busy={cover.painting}>
           {cover.imageUrl ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img src={cover.imageUrl} alt="Portada del video" />
@@ -74,7 +78,7 @@ export function OutputPanel() {
           )}
         </div>
       ) : (
-        <div className="frame">
+        <div className={`frame${shape}`}>
           {render.previewUrl ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img src={render.previewUrl} alt="Fotograma de previsualización" />

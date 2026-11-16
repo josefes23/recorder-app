@@ -258,6 +258,8 @@ label.btn, a.btn { display: inline-block; text-decoration: none; }
   /* Sin tope, al colapsar a una columna el marco se come toda la pantalla */
   max-width: 300px; width: 100%; margin-inline: auto;
 }
+/* Horizontal: el mismo marco tumbado, a lo ancho de la columna */
+.frame--wide { aspect-ratio: 16 / 9; max-width: 100%; }
 .frame img { width: 100%; height: 100%; object-fit: contain; display: block; transition: opacity 0.15s; }
 .frame-empty { color: var(--muted); font-size: var(--t-sm); padding: var(--s4); text-align: center; }
 /* Repintando: se sigue viendo la anterior, apagada, en vez de un hueco que parpadea */
@@ -551,3 +553,7 @@ label.btn, a.btn { display: inline-block; text-decoration: none; }
 
 /* Descripción: lo que se lee antes de «más», entre comillas y sin cursiva */
 .description-visible { color: var(--text); quotes: "«" "»"; }
+
+/* ------------------------------------------------------------------ música */
+
+.music-player { width: 100%; height: 36px; }

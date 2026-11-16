@@ -1,6 +1,7 @@
 import type { StudioGateway } from "@/application/ports";
 import type { Style } from "@/domain/captions";
 import type { Cover } from "@/domain/cover";
+import { DEFAULT_PRODUCTION, forServer, type Production } from "@/domain/production";
 import { forEngine, type Scene } from "@/domain/scene";
 import { canRender } from "@/domain/script";
 import { formatPitch, formatRate } from "@/domain/voice";
@@ -18,6 +19,8 @@ export type RenderInput = {
   cover: Cover | null;
   /** El texto para publicar; se guarda con el video. */
   description: string;
+  /** Formato, duración, voces, música y sonido ambiente. */
+  production?: Production;
 };
 
 /** Encola el render y devuelve el identificador del trabajo. */
@@ -35,5 +38,6 @@ export async function renderVideo(gateway: StudioGateway, input: RenderInput): P
     scenes: forEngine(input.scenes),
     cover: input.cover,
     description: input.description.trim(),
+    production: forServer(input.production ?? DEFAULT_PRODUCTION),
   });
 }

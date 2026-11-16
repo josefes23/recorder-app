@@ -42,6 +42,11 @@ WIDE, MEDIUM, CLOSE = 1.0, 1.10, 1.18
 #: Altura a la que miran los encuadres cerrados, de 0 (arriba) a 1 (abajo): la
 #: mitad superior, donde van las caras (FRAMING en `domain.illustration`).
 FOCUS_Y = 0.40
+
+#: Una imagen bastante más alta que el cuadro (una vertical en un video
+#: horizontal) se encuadra más arriba: ahí van las caras.
+TALL_SOURCE = 1.5
+TALL_FOCUS_Y = 0.25
 #: Cuánto se desplazan a un lado los encuadres cerrados, y cuánto derivan
 #: dentro del plano: lo justo para que el corte no sea solo un zoom.
 SIDE_OFFSET = 0.06
@@ -136,6 +141,11 @@ def crop_box(
     """
     sw, sh = source
     fw, fh = frame
+    # Una imagen vertical en un cuadro apaisado deja fuera dos tercios del alto,
+    # y las imágenes generadas ponen las caras en la mitad superior (FRAMING en
+    # `domain.illustration`): se mira más arriba en vez de al centro.
+    if sh / sw > (fh / fw) * TALL_SOURCE:
+        focus = (focus[0], min(focus[1], TALL_FOCUS_Y))
     cover = min(sw / fw, sh / fh)
     w, h = fw * cover / zoom, fh * cover / zoom
     left = min(max(focus[0] * sw - w / 2, 0.0), sw - w)

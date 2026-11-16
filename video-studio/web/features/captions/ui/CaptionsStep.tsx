@@ -9,7 +9,7 @@ export function CaptionsStep() {
   const { style, setField } = useCaptions();
 
   return (
-    <Step n={3} title="Subtítulos">
+    <Step n={4} title="Subtítulos">
       {/* Arriba lo que se retoca en cada video; lo demás se ajusta una vez */}
       <div className="fields">
         <Slider

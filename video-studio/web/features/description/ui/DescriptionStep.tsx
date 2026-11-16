@@ -30,7 +30,7 @@ export function DescriptionStep() {
 
   return (
     <Step
-      n={5}
+      n={6}
       title="Descripción"
       note={
         length > 0 ? (

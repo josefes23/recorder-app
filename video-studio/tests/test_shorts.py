@@ -363,3 +363,38 @@ class RenderProductionTests(unittest.TestCase):
             with self.assertRaises(ValidationError, msg=repr(bad)):
                 studio.render.start("X", "Hola " * 20, "v", "+0%", "+0Hz", {}, [Scene(None, 0)], production=bad)
         self.assertEqual(fakes.queue.enqueued, [])
+
+
+class DialogueSyncTests(unittest.TestCase):
+    def test_scenes_of_a_dialogue_cut_where_the_voice_says_their_line(self):
+        from app.domain.dialogue import split_dialogue, spoken_text
+        from app.domain.scene import Scene, synced_to_voice
+        from app.domain.script import WORDS_PER_SECOND, clean_script
+
+        raw = "NARRADOR: Uno dos tres cuatro.\nANA: Cinco seis siete ocho.\nPEDRO: Nueve diez once doce."
+        lines = split_dialogue(raw, {"ANA", "PEDRO"})
+        spoken = spoken_text(lines).split()
+        # La voz dice una palabra por segundo y no dice las etiquetas.
+        words = [{"text": w, "start": float(i), "end": i + 0.8} for i, w in enumerate(spoken)]
+        # La escena de Pedro se estimó en su etiqueta: palabra 10 del guion con etiquetas.
+        estimated = 10 / WORDS_PER_SECOND
+        synced = synced_to_voice([Scene("a.jpg", 0), Scene("b.jpg", estimated)], clean_script(raw), words)
+        # «Nueve» es la palabra 8 de lo que se oye: entra entre «ocho» (7) y «nueve» (8).
+        self.assertGreater(synced[1].start, 7.0)
+        self.assertLessEqual(synced[1].start, 8.0)
+
+
+class HorizontalFramingTests(unittest.TestCase):
+    def test_a_vertical_image_in_a_horizontal_video_looks_up_where_the_faces_are(self):
+        from app.domain.motion import crop_box
+
+        left, top, right, bottom = crop_box((864, 1536), (1920, 1080), 1.0, (0.5, 0.5))
+        self.assertAlmostEqual(right - left, 864)
+        self.assertLess(top, 1536 * 0.15)  # arriba, no en el centro (que empezaría en 525)
+
+    def test_same_shape_images_keep_their_focus(self):
+        from app.domain.motion import crop_box
+
+        self.assertEqual(crop_box((1080, 1920), (1080, 1920), 1.0, (0.5, 0.5)), (0.0, 0.0, 1080.0, 1920.0))
+        _, top, _, _ = crop_box((1536, 864), (1920, 1080), 1.2, (0.5, 0.5))
+        self.assertGreater(top, 0)  # centrado como siempre

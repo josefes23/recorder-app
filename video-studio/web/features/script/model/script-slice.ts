@@ -17,7 +17,8 @@ export type ScriptSlice = {
   verdict: DurationVerdict;
 };
 
-export function useScriptSlice(): ScriptSlice {
+/** `range`: la horquilla de duración del video (reel o cortometraje), para el veredicto. */
+export function useScriptSlice(range?: [number, number]): ScriptSlice {
   const [topic, setTopic] = useState("");
   const [notes, setNotes] = useState("");
   const [text, setText] = useState("");
@@ -29,8 +30,8 @@ export function useScriptSlice(): ScriptSlice {
       text, setText,
       words: countWords(text),
       seconds: estimateSeconds(text),
-      verdict: durationVerdict(text),
+      verdict: durationVerdict(text, range),
     }),
-    [topic, notes, text],
+    [topic, notes, text, range],
   );
 }

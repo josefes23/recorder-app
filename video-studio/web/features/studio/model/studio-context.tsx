@@ -38,6 +38,9 @@ import { isImageFile } from "@/domain/background";
 import type { Config } from "@/domain/config";
 import { firstBackground, readCover, resolveCover, type Cover } from "@/domain/cover";
 import type { VideoItem } from "@/domain/library";
+import { DEFAULT_STYLE, type Style } from "@/domain/captions";
+import { assignVoices, speakersIn, type DialogueVoices } from "@/domain/dialogue";
+import { HORIZONTAL_CAPTIONS, lengthRange, splitStoredStyle, type FormatId } from "@/domain/production";
 import { animatable, buildTimeline, fromStoryboard, withoutBackground, type Scene } from "@/domain/scene";
 import { useAnimationSlice, type AnimationSlice } from "@/features/animation/model/animation-slice";
 import { useBackgroundsSlice, type BackgroundsSlice } from "@/features/backgrounds/model/backgrounds-slice";
@@ -46,6 +49,8 @@ import { useCoverSlice, type CoverSlice } from "@/features/cover/model/cover-sli
 import { useDescriptionSlice, type DescriptionSlice } from "@/features/description/model/description-slice";
 import { useCharactersSlice, type CharactersSlice } from "@/features/illustrations/model/characters-slice";
 import { useImagesSlice, type ImagesSlice } from "@/features/illustrations/model/images-slice";
+import { useMusicSlice, type MusicSlice } from "@/features/production/model/music-slice";
+import { useProductionSlice, type ProductionSlice } from "@/features/production/model/production-slice";
 import { useLibrarySlice, type LibrarySlice } from "@/features/library/model/library-slice";
 import { useRenderSlice, type RenderSlice } from "@/features/render/model/render-slice";
 import { useScenesSlice, type ScenesSlice } from "@/features/scenes/model/scenes-slice";
@@ -100,6 +105,11 @@ export type StudioActions = {
   illustrateCover: (description: string) => Promise<boolean>;
   /** Pide al modelo del guion la descripción para publicar; sustituye a la que hubiera. */
   writeDescription: () => Promise<void>;
+  /**
+   * Cambia el formato del video. Los subtítulos se acomodan: en horizontal van
+   * más abajo, más anchos y en menos líneas.
+   */
+  chooseFormat: (format: FormatId) => void;
 };
 
 /** La portada elegida y la que sale de verdad con el tema y las escenas de ahora. */
@@ -123,6 +133,8 @@ export type Studio = {
   writer: WriterSlice;
   images: ImagesSlice;
   animation: AnimationSlice;
+  production: ProductionSlice;
+  music: MusicSlice;
   characters: CharactersSlice;
   cover: CoverState;
   description: DescriptionSlice;
@@ -158,16 +170,19 @@ export function StudioProvider({
   const deps = useMemo<SliceDeps>(() => ({ gateway, run, setError }), [gateway, run, setError]);
 
   const [config, setConfig] = useState<Config | null>(null);
-  const script = useScriptSlice();
+  const production = useProductionSlice();
+  const range = useMemo(() => lengthRange(production.length), [production.length]);
+  const script = useScriptSlice(range);
   const voice = useVoiceSlice();
   const captions = useCaptionsSlice();
   const scenes = useScenesSlice();
-  const backgrounds = useBackgroundsSlice(deps);
+  const backgrounds = useBackgroundsSlice(deps, production.format);
   const library = useLibrarySlice(deps);
   const render = useRenderSlice(deps, library.load);
   const writer = useWriterSlice(deps);
   const images = useImagesSlice(deps);
   const animation = useAnimationSlice(deps);
+  const music = useMusicSlice(deps);
   const characters = useCharactersSlice(deps);
   const coverSlice = useCoverSlice();
   const description = useDescriptionSlice();
@@ -195,12 +210,12 @@ export function StudioProvider({
     }
     const timer = setTimeout(() => {
       const ticket = beginCover();
-      paintCover(gateway, { ...resolvedCover, topic: script.topic })
+      paintCover(gateway, { ...resolvedCover, topic: script.topic, format: production.format })
         .then((image) => showCover(ticket, image))
         .catch((err: unknown) => failCover(ticket, err instanceof Error ? err.message : String(err)));
     }, COVER_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [gateway, resolvedCover, script.topic, beginCover, showCover, failCover, clearCover]);
+  }, [gateway, resolvedCover, script.topic, production.format, beginCover, showCover, failCover, clearCover]);
 
   const { setId: selectVoice } = voice;
   const { apply: applyStyle } = captions;
@@ -212,6 +227,7 @@ export function StudioProvider({
   const { startImage, finishImage, failImage } = scenes;
   const { startClipAt, startClipOn, finishClip, failClip, failClipOn } = scenes;
   const { load: loadAnimation } = animation;
+  const { load: loadMusic } = music;
 
   /* Lo último de la pantalla, para las esperas largas: cuando una imagen llega
      un minuto después, sus callbacks ven el estado de entonces, no el de ahora.
@@ -222,6 +238,7 @@ export function StudioProvider({
     auto: animation.auto,
     topic: script.topic,
     guide: images.guide,
+    format: production.format,
   });
   useEffect(() => {
     latest.current = {
@@ -230,8 +247,19 @@ export function StudioProvider({
       auto: animation.auto,
       topic: script.topic,
       guide: images.guide,
+      format: production.format,
     };
   });
+
+  /* Con el diálogo activado, cada personaje que aparece en el guion recibe una
+     voz distinta de la del narrador; las que ya se eligieron se respetan. */
+  const { dialogue, voices: dialogueVoices, setVoices } = production;
+  const voiceCatalog = config?.voices;
+  useEffect(() => {
+    if (!dialogue || !voiceCatalog) return;
+    const next = assignVoices(speakersIn(script.text), voiceCatalog, voice.id, dialogueVoices);
+    if (!sameVoices(next, dialogueVoices)) setVoices(next);
+  }, [dialogue, script.text, voiceCatalog, voice.id, dialogueVoices, setVoices]);
 
   /* Un clip tarda minutos: se espera fuera de `run`, como las imágenes. */
   const trackClip = useCallback(
@@ -250,8 +278,8 @@ export function StudioProvider({
   const animate = useCallback(
     async (scene: SceneAnimation, mark: (job: string) => void, fail: (message: string) => void) => {
       try {
-        const { topic, guide } = latest.current;
-        const job = await requestSceneAnimation(gateway, scene, { topic, guide });
+        const { topic, guide, format } = latest.current;
+        const job = await requestSceneAnimation(gateway, scene, { topic, guide, format });
         mark(job);
         trackClip(job);
       } catch (err) {
@@ -305,6 +333,7 @@ export function StudioProvider({
           loadWriter().catch(() => undefined),
           loadImages().catch(() => undefined),
           loadAnimation().catch(() => undefined),
+          loadMusic().catch(() => undefined),
           loadCharacters().catch(() => undefined),
         ]);
       } catch (err) {
@@ -313,7 +342,7 @@ export function StudioProvider({
     })();
   }, [
     gateway, applyStyle, selectVoice, loadBackgrounds, loadLibrary, loadWriter, loadImages,
-    loadAnimation, loadCharacters, setError,
+    loadAnimation, loadMusic, loadCharacters, setError,
   ]);
 
   /* La imagen de referencia tarda como cualquier imagen: se espera fuera de
@@ -334,7 +363,13 @@ export function StudioProvider({
     () => ({
       write: async (useTemplate) => {
         const text = await run(useTemplate ? "template" : "writer", () =>
-          writeScript(gateway, jobs, { topic: script.topic, notes: script.notes, useTemplate }),
+          writeScript(gateway, jobs, {
+            topic: script.topic,
+            notes: script.notes,
+            useTemplate,
+            length: production.length,
+            dialogue: production.dialogue,
+          }),
         );
         if (text !== undefined) script.setText(text);
       },
@@ -346,6 +381,7 @@ export function StudioProvider({
             topic: script.topic,
             scenes: scenes.items,
             style: captions.style,
+            format: production.format,
           }),
         );
         if (frame) render.showPreview(frame);
@@ -363,6 +399,7 @@ export function StudioProvider({
             scenes: scenes.items,
             cover: resolvedCover,
             description: description.text,
+            production,
           }),
         );
         if (id === undefined) return;
@@ -375,7 +412,10 @@ export function StudioProvider({
         script.setText(item.script);
         voice.setId(item.voice);
         scenes.replaceAll(Array.isArray(item.scenes) ? item.scenes : []);
-        captions.apply(item.style);
+        // El estilo guardado lleva dentro la producción: se separan.
+        const stored = splitStoredStyle(item.style);
+        captions.apply(stored.style);
+        production.restore(stored.production);
         coverSlice.restore(readCover(item.cover));
         coverSlice.setSuggestions([]);
         description.setText(item.description ?? "");
@@ -403,6 +443,8 @@ export function StudioProvider({
            luego falla algún encargo se puede repetir uno a uno. */
         const storyboard = await run("storyboard", () =>
           planStoryboard(gateway, jobs, {
+            length: production.length,
+            format: production.format,
             topic: script.topic,
             script: script.text,
             style: images.guide.look,
@@ -421,7 +463,7 @@ export function StudioProvider({
           requestSceneImages(
             gateway,
             descriptions,
-            { ...choice, topic: script.topic, guide: storyboard.guide, review: images.review },
+            { ...choice, topic: script.topic, guide: storyboard.guide, review: images.review, format: production.format },
             (index, job) => {
               startImage(index, job, descriptions[index]);
               trackImage(job);
@@ -442,6 +484,7 @@ export function StudioProvider({
             topic: script.topic,
             guide: images.guide,
             review: images.review,
+            format: production.format,
           }),
         );
         if (!job) return false;
@@ -464,7 +507,7 @@ export function StudioProvider({
           requestSceneCorrection(
             gateway,
             { source, correction, description },
-            { ...choice, topic: script.topic, guide: images.guide, review: images.review },
+            { ...choice, topic: script.topic, guide: images.guide, review: images.review, format: production.format },
           ),
         );
         if (!job) return false;
@@ -563,6 +606,7 @@ export function StudioProvider({
             topic: script.topic,
             guide: images.guide,
             review: images.review,
+            format: production.format,
           });
           const { name } = await awaitSceneImage(jobs, job);
           await loadBackgrounds().catch(() => undefined);
@@ -574,6 +618,14 @@ export function StudioProvider({
         } finally {
           coverSlice.setIllustrating(false);
         }
+      },
+
+      chooseFormat: (format) => {
+        production.setFormat(format);
+        // Los subtítulos de cada formato: los horizontales o los del servidor.
+        const vertical: Partial<Style> = config?.defaultStyle ?? DEFAULT_STYLE;
+        const { font_size, y_ratio, max_lines, max_chars } = vertical;
+        captions.apply(format === "16:9" ? HORIZONTAL_CAPTIONS : { font_size, y_ratio, max_lines, max_chars });
       },
 
       writeDescription: async () => {
@@ -598,20 +650,25 @@ export function StudioProvider({
       gateway, jobs, run, setError, script, voice, captions, scenes, backgrounds, render,
       loadLibrary, images, adoptGuide, startImage, trackImage, characters, setCharacters,
       loadCharacters, trackReference, coverSlice, resolvedCover, loadBackgrounds, description,
-      animate, startClipAt, startClipOn, failClipOn,
+      animate, startClipAt, startClipOn, failClipOn, production, config,
     ],
   );
 
   const studio = useMemo<Studio>(
     () => ({
       config, status, script, voice, captions, scenes, backgrounds, library, render, writer,
-      images, animation, characters, cover, description, actions,
+      images, animation, production, music, characters, cover, description, actions,
     }),
     [
       config, status, script, voice, captions, scenes, backgrounds, library, render, writer, images,
-      animation, characters, cover, description, actions,
+      animation, production, music, characters, cover, description, actions,
     ],
   );
 
   return <StudioContext.Provider value={studio}>{children}</StudioContext.Provider>;
+}
+
+function sameVoices(a: DialogueVoices, b: DialogueVoices): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
 }

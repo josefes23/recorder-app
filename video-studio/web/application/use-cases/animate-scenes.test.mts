@@ -37,6 +37,7 @@ test("pide el clip del largo del tramo, con la guía del video", async () => {
     // Las filas a medio rellenar no viajan: el servidor las rechazaría.
     characters: [ANA],
     seed: 7,
+    format: "9:16",
   });
 });
 
@@ -62,4 +63,10 @@ test("espera el clip con un plantón largo y devuelve su nombre", async () => {
 
   const empty: JobTracker = { waitFor: async () => ({}) };
   await assert.rejects(awaitSceneClip(empty, "an-2"), /sin nombre/);
+});
+
+test("un video horizontal pide el clip horizontal", async () => {
+  const { gateway, requests } = fakeGateway();
+  await requestSceneAnimation(gateway, { source: "a.jpg", description: "", span: 4 }, { ...INPUT, format: "16:9" });
+  assert.equal(requests[0].format, "16:9");
 });

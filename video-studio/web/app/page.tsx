@@ -4,6 +4,7 @@ import { CaptionsStep } from "@/features/captions/ui/CaptionsStep";
 import { DescriptionStep } from "@/features/description/ui/DescriptionStep";
 import { ImageSettingsPanel } from "@/features/illustrations/ui/ImageSettingsPanel";
 import { LibraryPanel } from "@/features/library/ui/LibraryPanel";
+import { SoundStep } from "@/features/production/ui/SoundStep";
 import { OutputPanel } from "@/features/render/ui/OutputPanel";
 import { ScenesStep } from "@/features/scenes/ui/ScenesStep";
 import { ScriptStep } from "@/features/script/ui/ScriptStep";
@@ -29,6 +30,7 @@ export default function Page() {
         <div className="panel">
           <ScriptStep settings={<WriterSettings />} />
           <VoiceStep />
+          <SoundStep />
           <CaptionsStep />
           <ScenesStep settings={<ImageSettingsPanel />} />
           <DescriptionStep />
