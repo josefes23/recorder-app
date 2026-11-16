@@ -1,0 +1,18 @@
+# Finales de línea LF para todos (Windows incluido): un run.sh con CRLF no
+# arranca en bash y los diffs no se llenan de cambios fantasma.
+# app-demo-recorder tiene el suyo, que manda dentro de su carpeta.
+* text=auto eol=lf
+
+*.mp3 binary
+*.m4a binary
+*.wav binary
+*.mp4 binary
+*.mov binary
+*.webm binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.ttf binary
+*.otf binary

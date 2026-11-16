@@ -43,6 +43,36 @@ npm --prefix web install && ./run.sh        # http://127.0.0.1:8000
 cd app-demo-recorder && uv run instalar.py
 ```
 
+### Windows 11
+
+Los tres andan en Windows. Lo del sistema se instala con `winget` (después,
+abrí una terminal nueva para que tome el PATH):
+
+```powershell
+winget install Git.Git
+winget install Python.Python.3.13
+winget install OpenJS.NodeJS.LTS
+winget install Gyan.FFmpeg
+winget install astral-sh.uv
+```
+
+Los comandos cambian en dos cosas: el entorno guarda los ejecutables en
+`.venv\Scripts` (no en `.venv/bin`) y `run.sh` es `py run.py`.
+
+```powershell
+# Motor
+cd auto-video-generator; py -3.13 -m venv .venv; .venv\Scripts\python -m pip install -r requirements.txt
+
+# Interfaz web (necesita el motor instalado)
+cd video-studio; py -3.13 -m venv .venv; .venv\Scripts\python -m pip install -r requirements.txt
+npm --prefix web install; py run.py          # http://127.0.0.1:8000
+
+# Grabador de demos
+cd app-demo-recorder; uv run instalar.py
+```
+
+`.venv` y `node_modules` no se copian entre máquinas: tienen binarios nativos.
+
 Las credenciales van en el `.env` de cada proyecto, que nunca se sube.
 
 ## Lo que no va a git
@@ -53,10 +83,15 @@ Están en los `.gitignore` de cada proyecto.
 
 ## Workflows
 
-Los de `.github/workflows/` son del grabador y corren dentro de
-`app-demo-recorder/`:
+Los del grabador corren dentro de `app-demo-recorder/`:
 
 - `prueba.yml`: graba la app de ejemplo en Windows, Linux y Mac en cada
   cambio del grabador.
 - `escenas.yml`: graba las escenas reales contra staging (ver
   [CONTRIBUTING del grabador](app-demo-recorder/CONTRIBUTING.md)).
+
+Y uno para el motor y la interfaz:
+
+- `studio.yml`: pruebas del backend y del front de `video-studio`, y el build
+  de la interfaz, en Mac y Windows, cada vez que cambia `video-studio/` o
+  `auto-video-generator/`.

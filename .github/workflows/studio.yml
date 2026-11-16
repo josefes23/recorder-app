@@ -1,0 +1,63 @@
+# Pruebas del motor y de video-studio en Mac y Windows. Si pasa, la instalación,
+# las pruebas y el build de la interfaz andan en los dos sistemas.
+# Es del motor y del estudio: solo corre cuando cambia alguno de los dos.
+# No hace un render completo: edge-tts depende del servicio de Microsoft.
+name: "Motor y video-studio: prueba en Mac y Windows"
+
+on:
+  push:
+    branches: [main]
+    paths: ["auto-video-generator/**", "video-studio/**", ".github/workflows/studio.yml"]
+  pull_request:
+    paths: ["auto-video-generator/**", "video-studio/**", ".github/workflows/studio.yml"]
+  workflow_dispatch:
+
+jobs:
+  pruebas:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash   # en Windows es el bash de Git, el mismo que usa Claude Code
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: video-studio/web/package-lock.json
+
+      - name: Entornos de Python
+        run: |
+          BIN=bin; [ "$RUNNER_OS" = "Windows" ] && BIN=Scripts
+          for d in auto-video-generator video-studio; do
+            python -m venv "$d/.venv"
+            "$d/.venv/$BIN/python" -m pip install -r "$d/requirements.txt"
+          done
+          echo "PY=.venv/$BIN/python" >> "$GITHUB_ENV"
+
+      - name: "Motor: encuentra una fuente y escribe UTF-8 en un pipe"
+        working-directory: auto-video-generator
+        run: |
+          $PY -c "import sys; sys.path.insert(0, 'scripts'); import generate; print(generate.resolve_font(None))"
+          $PY scripts/generate.py --topic "Prueba ✅ → fin" --script "Hola. Esto es una prueba." --dry-run | cat
+
+      - name: Pruebas del backend
+        working-directory: video-studio
+        run: $PY -m unittest discover -s tests -t .
+
+      - name: Front (pruebas, tipos y build exportado)
+        working-directory: video-studio/web
+        run: |
+          npm ci
+          npm test
+          npm run typecheck
+          npm run export
+          test -s out/index.html
