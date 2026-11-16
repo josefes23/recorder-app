@@ -47,26 +47,42 @@ class Variant:
         return self.height > self.width
 
 
-def best_vertical(variants: list[Variant], max_bytes: int = MAX_SIZE_BYTES) -> Variant | None:
+def _short_side(variant: Variant) -> int:
+    return min(variant.width, variant.height)
+
+
+def best_variant(
+    variants: list[Variant], vertical: bool = True, max_bytes: int = MAX_SIZE_BYTES
+) -> Variant | None:
     """
-    La versión vertical que merece la pena: la más pequeña que llegue a 1080 de
-    ancho. Si ninguna llega, la más ancha que haya. Las que pasan del tope de
-    tamaño se descartan antes de elegir, salvo que no quede otra.
+    La versión con la orientación del video que merece la pena: la más pequeña
+    cuyo lado corto llegue a 1080. Si ninguna llega, la más grande que haya.
+    Las que pasan del tope de tamaño se descartan antes de elegir, salvo que no
+    quede otra.
     """
-    vertical = [v for v in variants if v.vertical]
-    if not vertical:
+    matching = [v for v in variants if v.vertical == vertical and v.width != v.height]
+    if not matching:
         return None
-    affordable = [v for v in vertical if v.size <= max_bytes] or vertical
-    big_enough = [v for v in affordable if v.width >= TARGET_WIDTH]
+    affordable = [v for v in matching if v.size <= max_bytes] or matching
+    big_enough = [v for v in affordable if _short_side(v) >= TARGET_WIDTH]
     if big_enough:
-        return min(big_enough, key=lambda v: v.width)
-    return max(affordable, key=lambda v: v.width)
+        return min(big_enough, key=_short_side)
+    return max(affordable, key=_short_side)
+
+
+def best_vertical(variants: list[Variant], max_bytes: int = MAX_SIZE_BYTES) -> Variant | None:
+    """La versión vertical que merece la pena (ver `best_variant`)."""
+    return best_variant(variants, True, max_bytes)
+
+
+def smallest_variant(variants: list[Variant], vertical: bool = True) -> Variant | None:
+    """La versión más ligera con esa orientación: para reproducir una muestra en el navegador, no para bajarla."""
+    matching = [v for v in variants if v.vertical == vertical and v.width != v.height]
+    return min(matching, key=_short_side) if matching else None
 
 
 def smallest_vertical(variants: list[Variant]) -> Variant | None:
-    """La versión vertical más ligera: para reproducir una muestra en el navegador, no para bajarla."""
-    vertical = [v for v in variants if v.vertical]
-    return min(vertical, key=lambda v: v.width) if vertical else None
+    return smallest_variant(variants, True)
 
 
 @dataclass(frozen=True)

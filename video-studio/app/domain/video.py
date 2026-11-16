@@ -68,6 +68,15 @@ class RenderSpec:
     scenes: list[dict] = field(default_factory=list)
     output: str = ""
     keep_audio: bool = False
+    #: «9:16» (vertical, reels) o «16:9» (horizontal). Ver `domain.formats`.
+    format: str = "9:16"
+    #: Voz de cada personaje del diálogo; vacío = el guion se lee con una sola voz.
+    voices: dict = field(default_factory=dict)
+    #: Pista de la galería de música, o vacío para ninguna.
+    music: str = ""
+    music_volume: float = 0.25
+    #: Mezclar debajo de la voz el sonido de los clips (los animados lo traen).
+    ambient: bool = False
 
     @classmethod
     def from_dict(cls, data: dict) -> RenderSpec:
@@ -81,6 +90,11 @@ class RenderSpec:
             scenes=data.get("scenes") or [],
             output=data.get("output", ""),
             keep_audio=bool(data.get("keep_audio", False)),
+            format=data.get("format") or "9:16",
+            voices=data.get("voices") or {},
+            music=data.get("music") or "",
+            music_volume=float(data.get("music_volume", 0.25)),
+            ambient=bool(data.get("ambient", False)),
         )
 
     def as_dict(self) -> dict:

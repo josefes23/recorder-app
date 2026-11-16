@@ -25,6 +25,7 @@ from app.application.use_cases.description import DescriptionUseCases
 from app.application.use_cases.illustrations import CONSUMER_GROUP as ILLUSTRATOR_GROUP
 from app.application.use_cases.illustrations import IllustrationUseCases, ImageSettings, ReviewedPainter
 from app.application.use_cases.library import LibraryUseCases
+from app.application.use_cases.music import MusicUseCases
 from app.application.use_cases.preview import PreviewUseCase
 from app.application.use_cases.render import RenderUseCases
 from app.application.use_cases.scripts import CONSUMER_GROUP, ScriptUseCases
@@ -48,6 +49,7 @@ from app.infrastructure.files import LocalVideoFiles
 from app.infrastructure.generator import GeneratorTemplate, load_generator
 from app.infrastructure.imaging.illustrator import HttpIllustrator
 from app.infrastructure.llm.composer import HttpScriptComposer
+from app.infrastructure.music import FileMusicStore
 from app.infrastructure.paths import Paths
 from app.infrastructure.pexels import PexelsLibrary
 from app.infrastructure.preview import GeneratorPreviewer
@@ -121,6 +123,7 @@ def build_container(paths: Paths | None = None) -> Container:
             store,
             PexelsLibrary(lambda: credentials.get("PEXELS_API_KEY")),
         ),
+        music=MusicUseCases(FileMusicStore(paths.music)),
         preview=PreviewUseCase(GeneratorPreviewer(gen, paths.backgrounds, paths.previews)),
         render=RenderUseCases(videos, queue, jobs),
         library=LibraryUseCases(videos, LocalVideoFiles()),

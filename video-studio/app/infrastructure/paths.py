@@ -32,6 +32,11 @@ class Paths:
         return self.data / "references"
 
     @property
+    def music(self) -> Path:
+        """La galería de música: pistas que sube el usuario."""
+        return self.data / "music"
+
+    @property
     def previews(self) -> Path:
         return self.data / "previews"
 

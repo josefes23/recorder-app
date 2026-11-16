@@ -28,9 +28,11 @@ class HttpAnimator:
         image: GeneratedImage,
         prompt: str,
         seconds: int,
+        aspect: str = "9:16",
     ) -> GeneratedClip:
         if provider.id == "google":
             return gemini_omni.animate(
-                credentials.get(provider.key_env), model, image, prompt, seconds, provider.resolution, self._timeout
+                credentials.get(provider.key_env), model, image, prompt, seconds, provider.resolution, self._timeout,
+                aspect=aspect,
             )
         raise AnimatorError(f"No hay adaptador para {provider.name}.")

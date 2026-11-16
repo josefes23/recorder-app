@@ -19,6 +19,7 @@ from app.application.use_cases.cover import CoverUseCases
 from app.application.use_cases.description import DescriptionUseCases
 from app.application.use_cases.illustrations import IllustrationUseCases, ImageSettings, ReviewedPainter
 from app.application.use_cases.library import LibraryUseCases
+from app.application.use_cases.music import MusicUseCases
 from app.application.use_cases.preview import PreviewUseCase
 from app.application.use_cases.render import RenderUseCases
 from app.application.use_cases.scripts import ScriptUseCases
@@ -26,6 +27,7 @@ from app.application.use_cases.storyboard import StoryboardUseCases
 from app.application.use_cases.writer_settings import WriterSettings
 from app.domain.animation import GeneratedClip
 from app.domain.background import Background
+from app.domain.music import Track
 from app.domain.cover import CoverWord
 from app.domain.errors import EngineError, NotFoundError
 from app.domain.events import Event
@@ -246,13 +248,15 @@ class FakeStockLibrary:
                           link="https://cdn/12.mp4"),
         }
         self.searched: list[str] = []
+        self.orientations: list[str] = []
         self.broken: set[int] = set()
 
-    def search(self, query: str) -> list[StockClip]:
+    def search(self, query: str, orientation: str = "portrait") -> list[StockClip]:
         self.searched.append(query)
+        self.orientations.append(orientation)
         return list(self.clips.values())
 
-    def clip(self, clip_id: int) -> StockClip:
+    def clip(self, clip_id: int, orientation: str = "portrait") -> StockClip:
         if clip_id not in self.clips:
             raise NotFoundError(f"Pexels ya no tiene el clip {clip_id}.")
         return self.clips[clip_id]
@@ -272,18 +276,39 @@ class FakeIllustrator:
         self.fail_from = fail_from
         self.calls: list[tuple[str, str, dict, str, int | None]] = []
         self.references: list[list[bytes]] = []
+        #: El formato de cada imagen pedida.
+        self.aspects: list[str] = []
 
     def illustrate(
         self, provider: ImageProvider, model: str, credentials, prompt: str, seed: int | None = None,
-        references=(),
+        references=(), aspect: str = "9:16",
     ) -> GeneratedImage:
         self.calls.append((provider.id, model, dict(credentials), prompt, seed))
+        self.aspects.append(aspect)
         #: Las referencias de cada llamada, en orden.
         self.references.append([r.data for r in references])
         if self.error and (self.fail_from is None or len(self.calls) > self.fail_from):
             raise self.error
         # La semilla va dentro para saber qué intento acabó en la galería.
         return GeneratedImage(b"\xff\xd8jpeg" + str(seed).encode(), ".jpg")
+
+
+class FakeMusicStore:
+    def __init__(self) -> None:
+        self.tracks: dict[str, bytes] = {"calma.mp3": b"ID3musica"}
+
+    def list(self) -> list[Track]:
+        return [Track(name, 60.0, len(data) / 1e6) for name, data in sorted(self.tracks.items())]
+
+    def path(self, name: str) -> Path | None:
+        return Path("/music") / name if name in self.tracks else None
+
+    def save(self, name: str, stream: BinaryIO) -> str:
+        self.tracks[name] = stream.read()
+        return name
+
+    def remove(self, name: str) -> None:
+        self.tracks.pop(name, None)
 
 
 class FakeAnimator:
@@ -293,9 +318,11 @@ class FakeAnimator:
         self.error = error
         #: (proveedor, modelo, credenciales, bytes de la imagen, encargo, segundos) de cada llamada.
         self.calls: list[tuple[str, str, dict, bytes, str, int]] = []
+        self.aspects: list[str] = []
 
-    def animate(self, provider, model, credentials, image, prompt, seconds) -> GeneratedClip:
+    def animate(self, provider, model, credentials, image, prompt, seconds, aspect="9:16") -> GeneratedClip:
         self.calls.append((provider.id, model, dict(credentials), image.data, prompt, seconds))
+        self.aspects.append(aspect)
         if self.error:
             raise self.error
         return GeneratedClip(b"\x00\x00\x00\x18ftypmp42" + str(seconds).encode())
@@ -363,18 +390,23 @@ class FakeReferenceStore:
 class FakePreviewer:
     def __init__(self) -> None:
         self.calls: list[tuple[str, CaptionStyle, str | None, str]] = []
+        self.formats: list[str] = []
 
-    def render(self, text: str, style: CaptionStyle, background: str | None, topic: str) -> bytes:
+    def render(self, text: str, style: CaptionStyle, background: str | None, topic: str, fmt=None) -> bytes:
         self.calls.append((text, style, background, topic))
+        self.formats.append(fmt.id if fmt else "9:16")
         return b"\x89PNG" + text.encode()
 
 
 class FakeCoverPainter:
     def __init__(self) -> None:
         self.calls: list[tuple[list[CoverWord], str, Path | None, str]] = []
+        #: El tamaño de cada portada, en el mismo orden.
+        self.sizes: list[tuple[int, int]] = []
 
-    def paint(self, words, design: str, background: Path | None, topic: str) -> bytes:
+    def paint(self, words, design: str, background: Path | None, topic: str, size=(1080, 1920)) -> bytes:
         self.calls.append((list(words), design, background, topic))
+        self.sizes.append(size)
         return b"\xff\xd8JPEG " + " ".join(w.text for w in words).encode()
 
 
@@ -397,11 +429,13 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
     references = FakeReferenceStore()
     painter = ReviewedPainter(images, illustrator, writer, composer)
     animator = FakeAnimator()
+    music = FakeMusicStore()
     cover_painter = FakeCoverPainter()
     studio = Studio(
         writer=writer,
         scripts=ScriptUseCases(events, writer, composer, FakeTemplate()),
         backgrounds=BackgroundUseCases(backgrounds, stock),
+        music=MusicUseCases(music),
         preview=PreviewUseCase(previewer),
         render=RenderUseCases(videos, queue, jobs),
         library=LibraryUseCases(videos, files),
@@ -420,6 +454,6 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
         videos=videos, events=events, credentials=credentials, composer=composer,
         queue=queue, files=files, backgrounds=backgrounds, stock=stock, previewer=previewer, jobs=jobs,
         illustrator=illustrator, painter=painter, character_library=character_library, references=references,
-        cover_painter=cover_painter, animator=animator,
+        cover_painter=cover_painter, animator=animator, music=music,
     )
     return studio, fakes

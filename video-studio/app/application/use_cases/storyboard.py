@@ -27,7 +27,8 @@ from app.domain.events import (
 )
 from app.domain.illustration import Character, split_sentences, validate_guide
 from app.domain.script import clean_script
-from app.domain.storyboard import SYSTEM_PROMPT, Storyboard, build_prompt, new_seed, parse_storyboard
+from app.domain.production import format_by_id, length_by_id
+from app.domain.storyboard import Storyboard, build_prompt, new_seed, parse_storyboard, system_prompt
 
 CONSUMER_GROUP = "storyboarder"
 
@@ -46,7 +47,13 @@ class StoryboardUseCases:
     # Desde la API ------------------------------------------------------------ #
 
     def request(
-        self, topic: str, script: str, style: str = "", characters: list[Mapping] | None = None
+        self,
+        topic: str,
+        script: str,
+        style: str = "",
+        characters: list[Mapping] | None = None,
+        length: str = "reel",
+        format: str = "9:16",
     ) -> Event:
         """
         Encola el guion visual y devuelve el evento con la clave del trabajo.
@@ -54,6 +61,7 @@ class StoryboardUseCases:
         """
         self._sentences(script)
         current = validate_guide("", characters, None).characters
+        length_by_id(length), format_by_id(format)  # que fallen aquí, no en el consumidor
         if not self._writer.available():
             raise ValidationError(
                 "Lo que se ve en cada escena lo decide el modelo del guion: añade una clave en "
@@ -67,16 +75,25 @@ class StoryboardUseCases:
                 "script": script,
                 "style": style.strip(),
                 "characters": [c.as_dict() for c in current],
+                "length": length or "reel",
+                "format": format or "9:16",
             },
         )
 
     # Desde el consumidor ------------------------------------------------------ #
 
     def compose(
-        self, topic: str, script: str, style: str = "", current: Sequence[Character] = ()
+        self,
+        topic: str,
+        script: str,
+        style: str = "",
+        current: Sequence[Character] = (),
+        length: str = "reel",
+        format: str = "9:16",
     ) -> Storyboard:
         """Escribe el guion visual ahora, bloqueando. Lo llama el consumidor, nunca la API."""
         sentences = self._sentences(script)
+        target, fmt = length_by_id(length), format_by_id(format)
         provider = self._writer.active()
         if provider is None:
             raise WriterError("No hay clave de API configurada. Añade una en «Modelo del guion».")
@@ -84,10 +101,10 @@ class StoryboardUseCases:
             provider,
             self._writer.model_for(provider),
             self._writer.api_key(provider),
-            SYSTEM_PROMPT,
-            build_prompt(topic, style, sentences, current),
+            system_prompt(fmt, target),
+            build_prompt(topic, style, sentences, current, target.max_scenes),
         )
-        return parse_storyboard(raw, sentences, new_seed(), current)
+        return parse_storyboard(raw, sentences, new_seed(), current, target.max_scenes)
 
     def handle_request(self, event: Event) -> None:
         """Atiende un `storyboard.requested` y publica su desenlace."""
@@ -101,7 +118,8 @@ class StoryboardUseCases:
         try:
             current = validate_guide("", payload.get("characters"), None).characters
             storyboard = self.compose(
-                payload.get("topic", ""), payload.get("script", ""), payload.get("style", ""), current
+                payload.get("topic", ""), payload.get("script", ""), payload.get("style", ""), current,
+                payload.get("length") or "reel", payload.get("format") or "9:16",
             )
         except DomainError as exc:
             self._events.publish(STORYBOARD_FAILED, event.key, {"detail": str(exc)})

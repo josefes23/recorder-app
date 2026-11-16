@@ -14,6 +14,7 @@ from app.application.use_cases.cover import CoverUseCases
 from app.application.use_cases.description import DescriptionUseCases
 from app.application.use_cases.illustrations import IllustrationUseCases, ImageSettings
 from app.application.use_cases.library import LibraryUseCases
+from app.application.use_cases.music import MusicUseCases
 from app.application.use_cases.preview import PreviewUseCase
 from app.application.use_cases.render import RenderUseCases
 from app.application.use_cases.scripts import ScriptUseCases
@@ -26,6 +27,7 @@ class Studio:
     writer: WriterSettings
     scripts: ScriptUseCases
     backgrounds: BackgroundUseCases
+    music: MusicUseCases
     preview: PreviewUseCase
     render: RenderUseCases
     library: LibraryUseCases

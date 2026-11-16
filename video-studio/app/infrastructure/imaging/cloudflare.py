@@ -31,6 +31,9 @@ URL = "https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model}"
 #: motor lo lleva a 1080x1920 con un reescalado suave; más grande gasta cupo.
 WIDTH, HEIGHT = 864, 1536
 
+#: Lo mismo por formato: el horizontal es el vertical girado (1920x1080 en el motor).
+SIZES = {"9:16": (WIDTH, HEIGHT), "16:9": (HEIGHT, WIDTH)}
+
 #: Lado mayor de cada imagen de referencia: una vertical queda en 432x768, dos
 #: teselas de entrada (unas 11 neuronas con el 4B).
 REFERENCE_SIDE = 768
@@ -56,11 +59,13 @@ def paint(
     timeout: int,
     seed: int | None = None,
     references: Sequence[GeneratedImage] = (),
+    aspect: str = "9:16",
 ) -> GeneratedImage:
+    width, height = SIZES.get(aspect, SIZES["9:16"])
     form = {
         "prompt": (None, prompt),
-        "width": (None, str(WIDTH)),
-        "height": (None, str(HEIGHT)),
+        "width": (None, str(width)),
+        "height": (None, str(height)),
     }
     if seed is not None:
         form["seed"] = (None, str(seed))

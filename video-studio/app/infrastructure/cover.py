@@ -65,14 +65,19 @@ BOX_WIDTH = 0.86
 
 class PillowCoverPainter:
     def __init__(self, gen: ModuleType) -> None:
-        # Del motor solo se leen el tamaño del cuadro, la fuente y el degradado:
-        # nada de lo que `apply_style` sobrescribe, así que no hace falta cerrojo.
+        # Del motor solo se leen la fuente y el degradado: nada de lo que
+        # `apply_style` o `apply_format` sobrescriben, así que no hace falta
+        # cerrojo. El tamaño llega de fuera, según el formato del video.
         self._gen = gen
 
     def paint(
-        self, words: Sequence[CoverWord], design: str, background: Path | None, topic: str
+        self,
+        words: Sequence[CoverWord],
+        design: str,
+        background: Path | None,
+        topic: str,
+        size: tuple[int, int] = (1080, 1920),
     ) -> bytes:
-        size = (self._gen.WIDTH, self._gen.HEIGHT)
         layout = LAYOUTS.get(design, LAYOUTS["impacto"])
 
         frame = _punch(self._background(background, topic, size)).convert("RGBA")

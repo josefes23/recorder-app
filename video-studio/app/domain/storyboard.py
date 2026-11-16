@@ -49,6 +49,7 @@ from app.domain.illustration import (
     fold,
     plan_cuts,
 )
+from app.domain.production import REEL, VERTICAL, Format, Length
 from app.domain.script import WORDS_PER_SECOND
 from app.domain.writer import strip_reasoning
 
@@ -60,7 +61,7 @@ SCENE_LIMIT = 700
 #: Fija cuántas escenas se piden como mínimo; el encargo dice «de 3 a 9 segundos».
 LONGEST_SCENE_SECONDS = 9.0
 
-SYSTEM_PROMPT = """Eres director de arte de videos cortos verticales (Reels, Shorts, TikTok). Recibes el guion de un video dividido en frases numeradas, decides en qué frases cambia la imagen y qué imagen acompaña a cada tramo.
+_SYSTEM_TEMPLATE = """Eres director de arte de {kind}. Recibes el guion de un video dividido en frases numeradas, decides en qué frases cambia la imagen y qué imagen acompaña a cada tramo.
 
 Un modelo de texto a imagen pintará cada escena por separado. No ve el guion ni las otras escenas: solo lee lo que tú escribas. Tu trabajo es que todas las imágenes cuenten la misma historia y parezcan del mismo video.
 
@@ -81,11 +82,25 @@ Un modelo de texto a imagen pintará cada escena por separado. No ve el guion ni
 - Las escenas siguen un hilo, como los planos de una película: si alguien empieza algo, las siguientes lo continúan o muestran su consecuencia.
 - El modelo dibuja como letras cualquier palabra que lea como texto. No cites frases del guion ni pongas en la imagen carteles, letreros, libros abiertos, pantallas, pancartas u otros objetos con letras. Describe solo lo que se ve, nunca lo que no debe aparecer.
 - El generador tiene un filtro que bloquea la imagen entera si ve cuerpos mojados o con poca ropa, heridas o violencia. Cuéntalo con planos que no los muestren: ropa seca, un plano más abierto, el gesto o la cara en vez del cuerpo.
-- El video es vertical y los subtítulos ocupan la franja central baja: el motivo principal y las caras van en la mitad superior.
+- {frame_rule}
 
 Responde solo con un objeto JSON, sin markdown ni comentarios, todo en español:
-{"look": "...", "characters": [{"name": "...", "kind": "persona", "traits": "..."}], "scenes": [{"from": 1, "description": "..."}, {"from": 3, "description": "..."}]}
+{{"look": "...", "characters": [{{"name": "...", "kind": "persona", "traits": "..."}}], "scenes": [{{"from": 1, "description": "..."}}, {{"from": 3, "description": "..."}}]}}
 "from" es el número de la frase con la que empieza la escena. La primera empieza en la frase 1, cada una en una frase posterior a la de la anterior, y dura hasta la frase antes de la siguiente."""
+
+
+def system_prompt(fmt: Format = VERTICAL, length: Length = REEL) -> str:
+    """El encargo del director de arte, con el tipo de video y dónde caben las caras."""
+    if length is REEL and fmt.vertical:
+        kind = "videos cortos verticales (Reels, Shorts, TikTok)"
+    elif length is REEL:
+        kind = "videos cortos horizontales"
+    else:
+        kind = f"cortometrajes en formato {'vertical' if fmt.vertical else 'horizontal'}"
+    return _SYSTEM_TEMPLATE.format(kind=kind, frame_rule=fmt.storyboard_rule)
+
+
+SYSTEM_PROMPT = system_prompt()
 
 
 @dataclass(frozen=True)
@@ -118,13 +133,13 @@ def _seconds(sentence: str) -> float:
     return len(sentence.split()) / WORDS_PER_SECOND
 
 
-def scene_range(sentences: Sequence[str]) -> tuple[int, int]:
+def scene_range(sentences: Sequence[str], max_scenes: int = MAX_SCENES) -> tuple[int, int]:
     """
     Cuántas escenas pedir: como mucho `MAX_SCENES` (cada imagen cuesta) y una
     por frase; como poco, las que hacen falta para que ninguna pase, de media,
     de `LONGEST_SCENE_SECONDS`.
     """
-    high = min(MAX_SCENES, len(sentences))
+    high = min(max_scenes, len(sentences))
     low = math.ceil(sum(map(_seconds, sentences)) / LONGEST_SCENE_SECONDS)
     return min(high, max(1, low)), high
 
@@ -134,6 +149,7 @@ def build_prompt(
     style: str,
     sentences: Sequence[str],
     current: Sequence[Character] = (),
+    max_scenes: int = MAX_SCENES,
 ) -> str:
     """
     El encargo del guion visual: el guion en frases numeradas, con lo que
@@ -152,7 +168,7 @@ def build_prompt(
         lines += ["", "Elementos que ya están en el video (mantén los que encajen):", *_listed(current)]
     lines += ["", f"Guion en {len(sentences)} frases, con lo que tarda cada una en decirse:"]
     lines += [f"{n}. ({max(1, round(_seconds(s)))} s) {s}" for n, s in enumerate(sentences, start=1)]
-    low, high = scene_range(sentences)
+    low, high = scene_range(sentences, max_scenes)
     lines += ["", f"Escenas: {high}." if low == high else f"Escenas: entre {low} y {high}."]
     return "\n".join(lines)
 
@@ -220,7 +236,7 @@ def _cast(items: object, current: Sequence[Character]) -> list[Character]:
     return cast[:MAX_CHARACTERS]
 
 
-def _cuts(items: object, sentences: Sequence[str]) -> list[tuple[int, str]]:
+def _cuts(items: object, sentences: Sequence[str], max_scenes: int = MAX_SCENES) -> list[tuple[int, str]]:
     """
     Dónde empieza cada escena (índice de su primera frase, desde 0) y qué se ve.
 
@@ -246,11 +262,11 @@ def _cuts(items: object, sentences: Sequence[str]) -> list[tuple[int, str]]:
     if not cuts:
         return []
     cuts[0] = (0, cuts[0][1])
-    if len(cuts) <= MAX_SCENES:
+    if len(cuts) <= max_scenes:
         return cuts
 
     kept: list[tuple[int, str]] = []
-    for first in plan_cuts(sentences):
+    for first in plan_cuts(sentences, max_scenes=max_scenes):
         cover = next(cut for cut in reversed(cuts) if cut[0] <= first)
         if not kept or kept[-1] != cover:
             kept.append(cover)
@@ -262,6 +278,7 @@ def parse_storyboard(
     sentences: Sequence[str],
     seed: int,
     current: Sequence[Character] = (),
+    max_scenes: int = MAX_SCENES,
 ) -> Storyboard:
     """
     Lee la respuesta del modelo. Las escenas salen de sus cortes; el segundo
@@ -275,7 +292,7 @@ def parse_storyboard(
 
     characters = _cast(data.get("characters"), current)
 
-    cuts = _cuts(data.get("scenes"), sentences)
+    cuts = _cuts(data.get("scenes"), sentences, max_scenes)
     if not cuts:
         raise WriterError("El guion visual llegó sin escenas que encajen con el guion. Vuelve a intentarlo.")
 

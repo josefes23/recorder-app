@@ -18,16 +18,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from app.domain.background import VIDEO_EXTS  # noqa: E402
 from app.domain.captions import clip_to_duration  # noqa: E402
+from app.domain.dialogue import NARRATOR, Line, split_dialogue, spoken_text, validate_voices  # noqa: E402
+from app.domain.music import validate_volume  # noqa: E402
+from app.domain.production import format_by_id  # noqa: E402
 from app.domain.motion import scene_seed  # noqa: E402
 from app.domain.scene import Scene, synced_to_voice, timeline_spans  # noqa: E402
 from app.domain.script import clean_script  # noqa: E402
 from app.domain.style import CaptionStyle  # noqa: E402
 from app.domain.video import RenderSpec  # noqa: E402
 from app.domain.voice import DEFAULT_PITCH, DEFAULT_RATE, DEFAULT_VOICE  # noqa: E402
-from app.infrastructure.generator import apply_style, load_generator  # noqa: E402
+from app.infrastructure.generator import apply_format, apply_style, load_generator  # noqa: E402
 from app.infrastructure.motion import moving_image  # noqa: E402
 from app.infrastructure.paths import Paths  # noqa: E402
+from app.infrastructure.soundtrack import ambient_sound, music_bed, soundtrack, synthesize_dialogue  # noqa: E402
 
 
 def emit(**payload) -> None:
@@ -69,6 +74,28 @@ def build_track(gen, backgrounds_dir: Path, scenes: list[dict], topic: str, dura
     return concatenate_videoclips(clips) if clips else gen.build_background(None, topic, duration)
 
 
+def sound_layers(job: RenderSpec, paths: Paths, scenes: list[dict], words: list[dict], duration: float) -> list:
+    """Lo que suena debajo de la voz: la música elegida y el sonido de los clips."""
+    layers = []
+    if job.music:
+        track = paths.music / Path(job.music).name
+        if track.is_file():
+            emit(phase="render", progress=0.28, message=f"Música: {track.name}")
+            layers.append(music_bed(track, duration, words, validate_volume(job.music_volume)))
+        else:
+            emit(phase="render", progress=0.28, message=f"«{job.music}» ya no está en la galería de música: va sin música")
+    if job.ambient:
+        spans = timeline_spans((Scene.from_dict(s) for s in scenes), duration)
+        clips = [
+            (paths.backgrounds / span.background, span.start, span.duration)
+            for span in spans
+            if (paths.backgrounds / span.background).suffix.lower() in VIDEO_EXTS
+            and (paths.backgrounds / span.background).is_file()
+        ]
+        layers += ambient_sound(clips)
+    return layers
+
+
 def main() -> None:
     paths = Paths.default()
     gen = load_generator(paths.generator)
@@ -76,6 +103,7 @@ def main() -> None:
     job = RenderSpec.from_dict(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")))
     style = CaptionStyle.from_dict(job.style)
     apply_style(gen, style)
+    apply_format(gen, format_by_id(job.format))
 
     script = clean_script(job.script)
     if not script:
@@ -86,9 +114,16 @@ def main() -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_mp3 = out_path.with_suffix(".voz.mp3")
 
-    emit(phase="tts", progress=0.05, message="Generando voz…")
-    words = gen.synthesize_voice(
-        script, job.voice or DEFAULT_VOICE, job.rate or DEFAULT_RATE, job.pitch or DEFAULT_PITCH, tmp_mp3,
+    # Con voces asignadas, el guion es un diálogo: cada intervención con la voz
+    # de su personaje. Sin ellas, una sola voz, como siempre.
+    voices = validate_voices(job.voices)
+    lines = split_dialogue(job.script, voices.keys()) if voices else [Line(NARRATOR, script)]
+    if voices:
+        script = spoken_text(lines)  # sin etiquetas: es lo que se oye y se subtitula
+
+    emit(phase="tts", progress=0.05, message="Generando voz…" if not voices else f"Generando {len(lines)} intervenciones…")
+    words = synthesize_dialogue(
+        gen, lines, voices, job.voice or DEFAULT_VOICE, job.rate or DEFAULT_RATE, job.pitch or DEFAULT_PITCH, tmp_mp3,
     )
 
     from moviepy import AudioFileClip
@@ -133,7 +168,7 @@ def main() -> None:
     video = (
         CompositeVideoClip([background, *caption_clips], size=(gen.WIDTH, gen.HEIGHT))
         .with_duration(duration)
-        .with_audio(audio)
+        .with_audio(soundtrack(audio, sound_layers(job, paths, scenes, words or [], duration)))
     )
     video.write_videofile(
         str(out_path), fps=gen.FPS, codec="libx264", audio_codec="aac",

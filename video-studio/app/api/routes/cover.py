@@ -13,7 +13,7 @@ JPEG = "image/jpeg"
 @router.post("/cover")
 def paint_cover(req: CoverRequest, studio: StudioDep):
     """La portada con lo que hay en el estudio ahora, a tamaño completo."""
-    jpeg = studio.cover.paint(req.title, req.design, req.background, req.topic)
+    jpeg = studio.cover.paint(req.title, req.design, req.background, req.topic, req.format)
     return Response(jpeg, media_type=JPEG, headers={"Cache-Control": "no-store"})
 
 

@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from app.domain.production import REEL, Length, minutes_or_seconds
+
 from app.domain.errors import WriterError
 from app.domain.script import clean_script
 
@@ -22,21 +24,44 @@ PROVIDER_SETTING = "SCRIPT_PROVIDER"
 # a 120 palabras; esto solo caza lo que llega roto.
 MIN_WORDS = 50
 
-SYSTEM_PROMPT = """Escribes guiones para Reels y Shorts verticales en español.
+#: Cómo se escribe un diálogo para que el render reparta las voces
+#: (`domain.dialogue`): una intervención por línea, con el nombre en mayúsculas.
+DIALOGUE_RULE = """- Escríbelo como una escena con diálogos. Cada intervención va en su propia línea
+  y empieza con el nombre del personaje en MAYÚSCULAS y dos puntos: «ANA: ¿Viste eso?».
+  Lo que cuenta el narrador va con «NARRADOR:». Como mucho cuatro personajes además
+  del narrador, y siempre con el mismo nombre. Nada de acotaciones entre paréntesis:
+  solo lo que se dice en voz alta."""
 
-Reglas que no puedes saltarte:
-- Entre 85 y 120 palabras. Es el rango que produce entre 30 y 45 segundos de voz.
-- Español natural y hablado. El texto se va a ESCUCHAR, no a leer: frases cortas,
-  sin subordinadas largas, sin viñetas, sin markdown, sin emojis.
-- Nada de cifras en dígitos: escribe "treinta por ciento", no "30%". El sintetizador
-  de voz las pronuncia peor y descuadra la sincronía de los subtítulos.
-- Puntuación cuidada. Los cortes de subtítulo se calculan a partir de las comas,
-  los puntos y las interrogaciones, así que un texto mal puntuado se lee fatal.
-- Estructura: gancho en los tres primeros segundos, luego dos o tres ideas
-  concretas, y cierre con una llamada a la acción.
 
-Devuelve únicamente el texto del guion. Sin título, sin comillas, sin explicaciones,
-sin acotaciones de escena."""
+def system_prompt(length: Length = REEL, dialogue: bool = False) -> str:
+    """El encargo del redactor según la duración y si el guion es un diálogo."""
+    low, high = length.words
+    rules = [
+        f"- Entre {low} y {high} palabras. Es el rango que produce {minutes_or_seconds(length)} de voz.",
+        """- Español natural y hablado. El texto se va a ESCUCHAR, no a leer: frases cortas,
+  sin subordinadas largas, sin viñetas, sin markdown, sin emojis.""",
+        """- Nada de cifras en dígitos: escribe "treinta por ciento", no "30%". El sintetizador
+  de voz las pronuncia peor y descuadra la sincronía de los subtítulos.""",
+        """- Puntuación cuidada. Los cortes de subtítulo se calculan a partir de las comas,
+  los puntos y las interrogaciones, así que un texto mal puntuado se lee fatal.""",
+        f"- Estructura: {length.structure}",
+    ]
+    if dialogue:
+        rules.append(DIALOGUE_RULE)
+    closing = (
+        "Devuelve únicamente el texto del guion, una intervención por línea. Sin título, "
+        "sin comillas, sin explicaciones."
+        if dialogue
+        else "Devuelve únicamente el texto del guion. Sin título, sin comillas, sin explicaciones,\n"
+        "sin acotaciones de escena."
+    )
+    return (
+        f"Escribes guiones para {length.kind} en español.\n\n"
+        "Reglas que no puedes saltarte:\n" + "\n".join(rules) + f"\n\n{closing}"
+    )
+
+
+SYSTEM_PROMPT = system_prompt()
 
 
 @dataclass(frozen=True)
@@ -92,9 +117,17 @@ def strip_reasoning(raw: str | None) -> str:
     return re.sub(r"<think>.*?</think>", " ", raw or "", flags=re.DOTALL | re.IGNORECASE)
 
 
-def validate_script(raw: str | None) -> str:
-    """Limpia la respuesta del modelo y la rechaza si no vale como guion."""
-    text = clean_script(strip_reasoning(raw))
+def validate_script(raw: str | None, min_words: int = MIN_WORDS, keep_lines: bool = False) -> str:
+    """
+    Limpia la respuesta del modelo y la rechaza si no vale como guion. Con
+    `keep_lines` (diálogos) cada línea se limpia aparte y los saltos se
+    conservan: las etiquetas «ANA:» tienen que quedar al principio de línea.
+    """
+    reply = strip_reasoning(raw)
+    if keep_lines:
+        text = "\n".join(line for line in map(clean_script, reply.splitlines()) if line)
+    else:
+        text = clean_script(reply)
     if not text:
         raise WriterError("La respuesta llegó vacía. Vuelve a intentarlo.")
 
@@ -103,7 +136,7 @@ def validate_script(raw: str | None) -> str:
     # cortado a mitad de palabra declarando que terminó bien, así que mirar el
     # `finish_reason` no basta.
     words = len(text.split())
-    if words < MIN_WORDS:
+    if words < min_words:
         raise WriterError(
             f"El guion llegó incompleto ({words} palabras). "
             "Vuelve a intentarlo, o cambia de modelo en «Modelo del guion»."

@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+from app.domain.production import Format
 from app.domain.style import CaptionStyle
 
 
@@ -42,6 +43,15 @@ def apply_style(gen: ModuleType, style: CaptionStyle) -> None:
     gen.MAX_WORDS_PER_CAPTION = style.max_words
     gen.MAX_CAPTION_LINES = style.max_lines
     gen.MIN_CAPTION_FONT_SIZE = style.min_font_size
+
+
+def apply_format(gen: ModuleType, fmt: Format) -> None:
+    """
+    Pone el tamaño del cuadro y el alto de la banda de subtítulos del formato.
+    Globales del proceso, como `apply_style`: mismo cuidado al llamarla.
+    """
+    gen.WIDTH, gen.HEIGHT = fmt.width, fmt.height
+    gen.CAPTION_BOX_H = fmt.caption_box_h
 
 
 class GeneratorTemplate:

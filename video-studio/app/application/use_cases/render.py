@@ -8,7 +8,9 @@ from app.application.ports import RenderQueue, VideoRepository
 from app.application.render_jobs import RenderJobs
 from app.domain.cover import read_cover
 from app.domain.description import clean_description
+from app.domain.dialogue import clean_lines
 from app.domain.errors import NotFoundError, ValidationError
+from app.domain.production import PRODUCTION_KEY, validate_production
 from app.domain.scene import Scene
 from app.domain.script import clean_script, estimate_seconds
 from app.domain.video import NewVideo, RenderSpec
@@ -31,26 +33,34 @@ class RenderUseCases:
         scenes: list[Scene],
         cover: Mapping | None = None,
         description: str = "",
+        production: Mapping | None = None,
     ) -> tuple[int, float]:
         """
         Abre la ficha, encola el trabajo y devuelve (id, segundos estimados).
         La portada y la descripción se guardan con la ficha para recuperarlas
-        al publicar.
+        al publicar; los ajustes de producción (formato, voces, música), dentro
+        del estilo, para que «Reutilizar» los recupere sin tocar el esquema.
         """
-        text = clean_script(script)
+        prod = validate_production(production)
+        # Un diálogo conserva sus líneas: las etiquetas «ANA:» van al principio.
+        text = clean_lines(script) if prod.voices else clean_script(script)
         if not text:
             raise ValidationError("El guion está vacío.")
 
         scene_dicts = [scene.as_dict() for scene in scenes]
+        stored_style = {**(style or {}), PRODUCTION_KEY: prod.as_dict()}
         video_id = self._videos.add(
             NewVideo(
-                topic, text, voice, style, scene_dicts, read_cover(cover), clean_description(description),
+                topic, text, voice, stored_style, scene_dicts, read_cover(cover), clean_description(description),
             )
         )
         self._queue.enqueue(
             video_id,
-            RenderSpec(topic=topic, script=text, voice=voice, rate=rate, pitch=pitch,
-                       style=style, scenes=scene_dicts),
+            RenderSpec(
+                topic=topic, script=text, voice=voice, rate=rate, pitch=pitch, style=style, scenes=scene_dicts,
+                format=prod.format, voices=prod.voices, music=prod.music, music_volume=prod.music_volume,
+                ambient=prod.ambient,
+            ),
         )
         return video_id, round(estimate_seconds(text), 1)
 

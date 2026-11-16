@@ -10,6 +10,10 @@ from app.domain.voice import DEFAULT_PITCH, DEFAULT_RATE, DEFAULT_VOICE
 class ScriptRequest(BaseModel):
     topic: str
     notes: str = ""
+    #: «reel» (30–45 s) o «corto» (2–5 min): cuánto se escribe.
+    length: str = "reel"
+    #: Escribirlo como diálogo, con «NOMBRE:» al principio de cada intervención.
+    dialogue: bool = False
 
 
 class WriterRequest(BaseModel):
@@ -28,6 +32,8 @@ class PreviewRequest(BaseModel):
     topic: str = ""
     background: str | None = None
     style: dict = Field(default_factory=dict)
+    #: «9:16» o «16:9».
+    format: str = "9:16"
 
 
 class CoverIn(BaseModel):
@@ -41,6 +47,8 @@ class CoverIn(BaseModel):
 class CoverRequest(CoverIn):
     #: Da color al degradado cuando no hay imagen, como en el render.
     topic: str = ""
+    #: «9:16» o «16:9»: decide el tamaño de la portada.
+    format: str = "9:16"
 
 
 class TitlesRequest(BaseModel):
@@ -67,6 +75,8 @@ class RenderRequest(BaseModel):
     cover: CoverIn | None = None
     #: El texto con que se publica; se guarda con el video para copiarlo después.
     description: str = ""
+    #: Formato, duración, voces del diálogo, música y sonido ambiente.
+    production: dict = Field(default_factory=dict)
 
 
 class DownloadRequest(BaseModel):
@@ -74,6 +84,8 @@ class DownloadRequest(BaseModel):
 
     query: str
     ids: list[int] = Field(default_factory=list)
+    #: La orientación de los clips: la del video.
+    format: str = "9:16"
 
 
 class ImageSettingsRequest(BaseModel):
@@ -99,6 +111,10 @@ class StoryboardRequest(BaseModel):
     style: str = ""
     #: Lo que ya está en el video: el guion visual mantiene lo que encaje.
     characters: list[CharacterIn] = Field(default_factory=list)
+    #: «reel» (hasta 8 escenas) o «corto» (hasta 30).
+    length: str = "reel"
+    #: «9:16» o «16:9»: dónde caben las caras.
+    format: str = "9:16"
 
 
 class CharacterSave(BaseModel):
@@ -135,6 +151,8 @@ class IllustrationRequest(BaseModel):
     #: galería) y qué está mal. Al corregir, la descripción es opcional.
     source: str = ""
     correction: str = ""
+    #: «9:16» o «16:9»: la imagen sale con la orientación del video.
+    format: str = "9:16"
 
 
 class AnimationRequest(BaseModel):
@@ -149,3 +167,5 @@ class AnimationRequest(BaseModel):
     look: str = ""
     characters: list[CharacterIn] = Field(default_factory=list)
     seed: int | None = None
+    #: «9:16» o «16:9»: el clip sale con la orientación del video.
+    format: str = "9:16"

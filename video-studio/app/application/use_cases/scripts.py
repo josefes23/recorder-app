@@ -24,7 +24,8 @@ from app.domain.events import (
     outcome_of,
 )
 from app.domain.script import ScriptEstimate, clean_script, estimate, estimate_seconds
-from app.domain.writer import SYSTEM_PROMPT, build_prompt, validate_script
+from app.domain.production import length_by_id
+from app.domain.writer import MIN_WORDS, build_prompt, system_prompt, validate_script
 
 CONSUMER_GROUP = "scriptgen"
 
@@ -50,13 +51,21 @@ class ScriptUseCases:
 
     # Desde la API ------------------------------------------------------------ #
 
-    def request(self, topic: str, notes: str = "") -> Event:
-        """Encola la redacción y devuelve el evento con la clave del trabajo."""
+    def request(self, topic: str, notes: str = "", length: str = "reel", dialogue: bool = False) -> Event:
+        """
+        Encola la redacción y devuelve el evento con la clave del trabajo. La
+        duración (reel o cortometraje) y el diálogo cambian lo que se pide.
+        """
         if not topic.strip():
             raise ValidationError("Falta el tema.")
+        length_by_id(length)  # que falle aquí, no en el consumidor
         if not self._writer.available():
             raise ValidationError("No hay clave de API configurada para redactar.")
-        return self._events.publish(SCRIPT_REQUESTED, new_job_key(), {"topic": topic, "notes": notes})
+        return self._events.publish(
+            SCRIPT_REQUESTED,
+            new_job_key(),
+            {"topic": topic, "notes": notes, "length": length or "reel", "dialogue": bool(dialogue)},
+        )
 
     def outcome(self, job: str) -> dict:
         """Desenlace de un encargo, para quien no haya visto pasar su evento.
@@ -79,8 +88,9 @@ class ScriptUseCases:
 
     # Desde el consumidor ------------------------------------------------------ #
 
-    def write(self, topic: str, notes: str = "") -> str:
+    def write(self, topic: str, notes: str = "", length: str = "reel", dialogue: bool = False) -> str:
         """Redacta ahora, bloqueando. Lo llama el consumidor, nunca la API."""
+        target = length_by_id(length)
         provider = self._writer.active()
         if provider is None:
             raise WriterError(
@@ -91,10 +101,11 @@ class ScriptUseCases:
             provider,
             self._writer.model_for(provider),
             self._writer.api_key(provider),
-            SYSTEM_PROMPT,
+            system_prompt(target, dialogue),
             build_prompt(topic, notes),
         )
-        return validate_script(raw)
+        # Muy por debajo de lo pedido no es un guion corto: es uno cortado.
+        return validate_script(raw, min_words=max(MIN_WORDS, target.words[0] // 2), keep_lines=dialogue)
 
     def handle_request(self, event: Event) -> None:
         """Atiende un `script.requested` y publica su desenlace."""
@@ -108,7 +119,11 @@ class ScriptUseCases:
             return
 
         try:
-            text = self.write(event.payload.get("topic", ""), event.payload.get("notes", ""))
+            payload = event.payload
+            text = self.write(
+                payload.get("topic", ""), payload.get("notes", ""),
+                payload.get("length") or "reel", bool(payload.get("dialogue")),
+            )
         except DomainError as exc:
             # Mensaje ya redactado para el usuario: viaja tal cual.
             self._events.publish(SCRIPT_FAILED, event.key, {"detail": str(exc)})

@@ -51,7 +51,9 @@ NO_FREE_TIER = (
 )
 
 
-def request_body(model: str, image: GeneratedImage, prompt: str, seconds: int, resolution: str) -> dict:
+def request_body(
+    model: str, image: GeneratedImage, prompt: str, seconds: int, resolution: str, aspect: str = ASPECT_RATIO
+) -> dict:
     data = shrink(image.data, IMAGE_SIDE)  # siempre JPEG
     return {
         "model": model,
@@ -61,7 +63,7 @@ def request_body(model: str, image: GeneratedImage, prompt: str, seconds: int, r
         ],
         "response_format": {
             "type": "video",
-            "aspect_ratio": ASPECT_RATIO,
+            "aspect_ratio": aspect,
             "resolution": resolution,
             "duration": f"{seconds}s",
             "delivery": "uri",
@@ -81,13 +83,14 @@ def animate(
     resolution: str,
     timeout: int,
     sleep: Callable[[float], None] = time.sleep,
+    aspect: str = ASPECT_RATIO,
 ) -> GeneratedClip:
     headers = {"x-goog-api-key": api_key or ""}
     try:
         response = requests.post(
             INTERACTIONS,
             headers={**headers, "Content-Type": "application/json"},
-            json=request_body(model, image, prompt, seconds, resolution),
+            json=request_body(model, image, prompt, seconds, resolution, aspect),
             timeout=timeout,
         )
     except requests.Timeout:

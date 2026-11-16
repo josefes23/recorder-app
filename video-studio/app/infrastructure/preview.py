@@ -7,10 +7,9 @@ import threading
 from pathlib import Path
 from types import ModuleType
 
+from app.domain.production import VERTICAL, Format
 from app.domain.style import CaptionStyle
-from app.infrastructure.generator import apply_style
-
-PREVIEW_SIZE = (405, 720)
+from app.infrastructure.generator import apply_format, apply_style
 
 
 class GeneratorPreviewer:
@@ -23,16 +22,23 @@ class GeneratorPreviewer:
         # vez, o cada una devolvería el fotograma de la otra.
         self._lock = threading.Lock()
 
-    def render(self, text: str, style: CaptionStyle, background: str | None, topic: str) -> bytes:
+    def render(
+        self, text: str, style: CaptionStyle, background: str | None, topic: str, fmt: Format = VERTICAL
+    ) -> bytes:
         with self._lock:
-            return self._compose(text, style, background, topic)
+            try:
+                return self._compose(text, style, background, topic, fmt)
+            finally:
+                # El motor queda en vertical, como lo carga el contenedor.
+                apply_format(self._gen, VERTICAL)
 
-    def _compose(self, text: str, style: CaptionStyle, background: str | None, topic: str) -> bytes:
+    def _compose(self, text: str, style: CaptionStyle, background: str | None, topic: str, fmt: Format) -> bytes:
         import numpy as np
         from PIL import Image
 
         gen = self._gen
         apply_style(gen, style)
+        apply_format(gen, fmt)
         self._previews.mkdir(parents=True, exist_ok=True)
 
         bg_path = self._backgrounds / background if background else None
@@ -62,7 +68,7 @@ class GeneratorPreviewer:
         )
 
         buffer = io.BytesIO()
-        frame.convert("RGB").resize(PREVIEW_SIZE, Image.LANCZOS).save(buffer, format="PNG")
+        frame.convert("RGB").resize(fmt.preview_size, Image.LANCZOS).save(buffer, format="PNG")
         png = buffer.getvalue()
 
         # Se deja copia en disco para poder mirarla al depurar, pero lo que

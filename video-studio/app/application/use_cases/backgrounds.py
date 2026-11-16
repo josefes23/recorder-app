@@ -11,6 +11,7 @@ from typing import BinaryIO
 
 from app.application.ports import BackgroundStore, StockLibrary
 from app.domain.background import Background, extension_of, is_supported
+from app.domain.production import format_by_id
 from app.domain.errors import DomainError, EngineError, NotFoundError, ValidationError
 from app.domain.stock import StockClip, clip_name
 
@@ -39,18 +40,22 @@ class BackgroundUseCases:
         name = self._store.save(PurePath(filename or "").name, stream)
         return name, self._store.list()
 
-    def search(self, query: str) -> list[StockClip]:
-        """Clips del catálogo para la búsqueda, señalando los que ya están en la galería."""
+    def search(self, query: str, format: str = "9:16") -> list[StockClip]:
+        """
+        Clips del catálogo para la búsqueda, con la orientación del video,
+        señalando los que ya están en la galería.
+        """
         query = query.strip()
         if not query:
             raise ValidationError("Escribe qué clips buscar.")
+        orientation = format_by_id(format).stock_orientation
         clips = []
-        for clip in self._stock.search(query):
+        for clip in self._stock.search(query, orientation):
             name = clip_name(query, clip.id)
             clips.append(replace(clip, name=name, owned=self._store.has(name)))
         return clips
 
-    def download(self, query: str, ids: list[int]) -> tuple[DownloadReport, list[Background]]:
+    def download(self, query: str, ids: list[int], format: str = "9:16") -> tuple[DownloadReport, list[Background]]:
         """
         Baja a la galería los clips marcados de una búsqueda. Cada uno se vuelve
         a pedir al catálogo por su id: la interfaz manda ids, no URLs.
@@ -61,6 +66,7 @@ class BackgroundUseCases:
         if not ids:
             raise ValidationError("Marca al menos un clip para descargar.")
 
+        orientation = format_by_id(format).stock_orientation
         report = DownloadReport()
         first_failure: str | None = None
         for clip_id in dict.fromkeys(ids):  # sin repetidos, en el orden en que se marcaron
@@ -69,7 +75,7 @@ class BackgroundUseCases:
                 report.existing.append(name)
                 continue
             try:
-                with self._stock.open(self._stock.clip(clip_id)) as stream:
+                with self._stock.open(self._stock.clip(clip_id, orientation)) as stream:
                     self._store.save(name, stream)
             except DomainError as exc:
                 report.failed.append(f"{name}: {exc}")

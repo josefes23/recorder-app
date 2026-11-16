@@ -112,7 +112,7 @@ class ScriptTests(unittest.TestCase):
         f.credentials.values["GEMINI_API_KEY"] = "g-key"
         event = studio.scripts.request("gatos", "serio")
         self.assertEqual(event.topic, SCRIPT_REQUESTED)
-        self.assertEqual(event.payload, {"topic": "gatos", "notes": "serio"})
+        self.assertEqual(event.payload, {"topic": "gatos", "notes": "serio", "length": "reel", "dialogue": False})
         self.assertEqual(studio.scripts.outcome(event.key), {"status": "pending"})
 
     def test_handle_request_writes_with_active_provider_and_publishes(self):
@@ -368,6 +368,7 @@ class IllustrationTests(unittest.TestCase):
             "provider": "google", "model": "gemini-nano-banana-2.1",
             # Gemini también redacta y ve imágenes: revisa con su modelo del guion.
             "review": {"provider": "google", "model": "gemini-3.6-flash"},
+            "format": "9:16",
         })
 
     def test_request_validates_before_publishing(self):
@@ -642,7 +643,7 @@ class StoryboardTests(unittest.TestCase):
         event = studio.storyboards.request(" Bautismo ", self.SCRIPT, " acuarela ")
         self.assertEqual(event.topic, STORYBOARD_REQUESTED)
         self.assertTrue(event.key.startswith("sb-"))
-        self.assertEqual(event.payload, {"topic": "Bautismo", "script": self.SCRIPT, "style": "acuarela", "characters": []})
+        self.assertEqual(event.payload, {"topic": "Bautismo", "script": self.SCRIPT, "style": "acuarela", "characters": [], "length": "reel", "format": "9:16"})
 
     def test_handle_request_asks_the_writer_once_and_publishes_the_storyboard(self):
         studio, f = self.studio()

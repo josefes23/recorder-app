@@ -27,6 +27,7 @@ from app.domain.background import is_image
 from app.domain.errors import AnimatorError, DomainError, NotFoundError, ValidationError
 from app.domain.events import ANIMATION_COMPLETED, ANIMATION_FAILED, ANIMATION_REQUESTED, ANIMATION_TERMINAL, Event
 from app.domain.illustration import GeneratedImage, validate_description, validate_guide
+from app.domain.production import format_by_id
 
 CONSUMER_GROUP = "animator"
 
@@ -73,6 +74,7 @@ class AnimationUseCases:
         look: str = "",
         characters: list[Mapping] | None = None,
         seed: int | None = None,
+        format: str = "9:16",
     ) -> Event:
         """
         Encola la animación de una imagen de la galería y devuelve el evento
@@ -83,6 +85,7 @@ class AnimationUseCases:
         seconds = validate_seconds(seconds)
         description = validate_description(description, required=False)
         guide = validate_guide(look, characters, seed)
+        fmt = format_by_id(format)
         if not self._credentials.get(self._provider.key_env):
             raise ValidationError(
                 f"Para animar escenas hace falta la clave de Google ({self._provider.key_env}) "
@@ -100,6 +103,7 @@ class AnimationUseCases:
                 **guide.as_dict(),
                 "provider": self._provider.id,
                 "model": self.model(),
+                "format": fmt.id,
             },
         )
 
@@ -120,6 +124,7 @@ class AnimationUseCases:
             GeneratedImage(data, Path(source).suffix.lower()),
             animation_prompt(payload.get("description") or "", guide),
             int(payload.get("seconds") or 0),
+            format_by_id(payload.get("format")).id,
         )
         return self._store.save(animation_name(source, key), io.BytesIO(clip.data))
 

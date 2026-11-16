@@ -483,13 +483,13 @@ class ImagingTests(unittest.TestCase):
         illustrator = HttpIllustrator(timeout=9)
         with mock.patch.object(gemini, "paint", return_value=image) as paint:
             illustrator.illustrate(image_provider_by_id("google"), "m", {"GEMINI_API_KEY": "k"}, "p", 7, [image])
-        paint.assert_called_once_with("k", "m", "p", 9, [image])
+        paint.assert_called_once_with("k", "m", "p", 9, [image], "9:16")
         with mock.patch.object(cloudflare, "paint", return_value=image) as paint:
             illustrator.illustrate(
                 image_provider_by_id("cloudflare"), "m",
                 {"CLOUDFLARE_ACCOUNT_ID": "a", "CLOUDFLARE_API_TOKEN": "t"}, "p", 7,
             )
-        paint.assert_called_once_with("a", "t", "m", "p", 9, 7, ())
+        paint.assert_called_once_with("a", "t", "m", "p", 9, 7, (), "9:16")
 
 
 if __name__ == "__main__":
@@ -619,7 +619,7 @@ class CoverPainterTests(unittest.TestCase):
         from app.domain.cover import cover_words
         from app.infrastructure.cover import PillowCoverPainter
 
-        data = PillowCoverPainter(self.gen).paint(cover_words(title), design, background, "tema")
+        data = PillowCoverPainter(self.gen).paint(cover_words(title), design, background, "tema", (self.gen.WIDTH, self.gen.HEIGHT))
         return Image.open(io.BytesIO(data))
 
     def test_every_design_paints_a_full_size_jpeg_with_the_title_in_the_safe_area(self):

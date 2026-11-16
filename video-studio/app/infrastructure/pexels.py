@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterator
 import requests
 
 from app.domain.errors import EngineError, NotFoundError
-from app.domain.stock import MIN_DURATION, StockClip, Variant, best_vertical, smallest_vertical
+from app.domain.stock import MIN_DURATION, StockClip, Variant, best_variant, smallest_variant
 
 SEARCH_URL = "https://api.pexels.com/videos/search"
 CLIP_URL = "https://api.pexels.com/videos/videos/{id}"
@@ -22,17 +22,17 @@ TIMEOUT = 30
 PER_PAGE = 30
 
 
-def parse_video(video: dict) -> StockClip | None:
-    """Traduce un vídeo del catálogo. None si no tiene versión vertical en mp4."""
+def parse_video(video: dict, vertical: bool = True) -> StockClip | None:
+    """Traduce un vídeo del catálogo. None si no tiene versión en mp4 con esa orientación."""
     variants = [
         Variant(int(f["width"]), int(f["height"]), int(f.get("size") or 0), f["link"])
         for f in video.get("video_files") or []
         if f.get("file_type") == "video/mp4" and f.get("width") and f.get("height") and f.get("link")
     ]
-    chosen = best_vertical(variants)
+    chosen = best_variant(variants, vertical)
     if chosen is None:
         return None
-    lightest = smallest_vertical(variants) or chosen
+    lightest = smallest_variant(variants, vertical) or chosen
     return StockClip(
         id=int(video["id"]),
         preview=video.get("image") or "",
@@ -88,17 +88,20 @@ class PexelsLibrary:
         self._api_key = api_key
         self._timeout = timeout
 
-    def search(self, query: str) -> list[StockClip]:
+    def search(self, query: str, orientation: str = "portrait") -> list[StockClip]:
         data = self._get(
-            SEARCH_URL, {"query": query, "orientation": "portrait", "per_page": PER_PAGE},
+            SEARCH_URL, {"query": query, "orientation": orientation, "per_page": PER_PAGE},
         )
-        clips = (parse_video(video) for video in data.get("videos") or [])
+        vertical = orientation == "portrait"
+        clips = (parse_video(video, vertical) for video in data.get("videos") or [])
         return [clip for clip in clips if clip and clip.duration >= MIN_DURATION]
 
-    def clip(self, clip_id: int) -> StockClip:
-        clip = parse_video(self._get(CLIP_URL.format(id=clip_id), {}, clip_id=clip_id))
+    def clip(self, clip_id: int, orientation: str = "portrait") -> StockClip:
+        vertical = orientation == "portrait"
+        clip = parse_video(self._get(CLIP_URL.format(id=clip_id), {}, clip_id=clip_id), vertical)
         if clip is None:
-            raise EngineError(f"El clip {clip_id} no tiene versión vertical en mp4.")
+            shape = "vertical" if vertical else "horizontal"
+            raise EngineError(f"El clip {clip_id} no tiene versión {shape} en mp4.")
         return clip
 
     def open(self, clip: StockClip) -> ClipStream:

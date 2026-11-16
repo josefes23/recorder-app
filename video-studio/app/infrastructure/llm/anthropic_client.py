@@ -16,7 +16,7 @@ def compose(
     messages = [{"role": "user", "content": user_content(prompt, image)}]
 
     def create(**extra):
-        return client.messages.create(model=model, max_tokens=2000, system=system, messages=messages, **extra)
+        return client.messages.create(model=model, max_tokens=4096, system=system, messages=messages, **extra)
 
     try:
         try:

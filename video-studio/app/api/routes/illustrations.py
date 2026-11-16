@@ -27,7 +27,7 @@ def request_storyboard(req: StoryboardRequest, studio: StudioDep) -> dict:
     por /api/events como `storyboard.completed`.
     """
     event = studio.storyboards.request(
-        req.topic, req.script, req.style, [c.model_dump() for c in req.characters]
+        req.topic, req.script, req.style, [c.model_dump() for c in req.characters], req.length, req.format
     )
     return {"job": event.key, "offset": event.offset}
 
@@ -49,5 +49,6 @@ def request_illustration(req: IllustrationRequest, studio: StudioDep) -> dict:
         req.review,
         req.source,
         req.correction,
+        req.format,
     )
     return {"job": event.key, "offset": event.offset}

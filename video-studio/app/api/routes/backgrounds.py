@@ -13,14 +13,14 @@ def backgrounds(studio: StudioDep) -> dict:
 
 
 @router.get("/backgrounds/search")
-def search_backgrounds(q: str, studio: StudioDep) -> dict:
-    """Clips de Pexels para la búsqueda, con miniatura, para elegir antes de bajar nada."""
-    return {"items": [c.as_dict() for c in studio.backgrounds.search(q)]}
+def search_backgrounds(q: str, studio: StudioDep, format: str = "9:16") -> dict:
+    """Clips de Pexels para la búsqueda, con miniatura y la orientación del video, para elegir antes de bajar nada."""
+    return {"items": [c.as_dict() for c in studio.backgrounds.search(q, format)]}
 
 
 @router.post("/backgrounds/download")
 def download_backgrounds(req: DownloadRequest, studio: StudioDep) -> dict:
-    report, items = studio.backgrounds.download(req.query, req.ids)
+    report, items = studio.backgrounds.download(req.query, req.ids, req.format)
     return {
         "added": report.added,
         "existing": report.existing,

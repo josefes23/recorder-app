@@ -18,6 +18,8 @@ from app.domain.background import Background
 from app.domain.cover import CoverWord
 from app.domain.events import Event
 from app.domain.illustration import Character, GeneratedImage, ImageProvider
+from app.domain.music import Track
+from app.domain.production import VERTICAL, Format
 from app.domain.saved_characters import SavedCharacter
 from app.domain.stock import StockClip
 from app.domain.style import CaptionStyle
@@ -94,30 +96,48 @@ class BackgroundStore(Protocol):
     def thumbnail_path(self, thumb: str) -> Path | None: ...
 
 
+class MusicStore(Protocol):
+    """La galería de música: pistas que subió el usuario."""
+
+    def list(self) -> list[Track]: ...
+    def path(self, name: str) -> Path | None: ...
+    def save(self, name: str, stream: Readable) -> str: ...
+    def remove(self, name: str) -> None: ...
+
+
 class StockLibrary(Protocol):
     """Catálogo de clips de stock: buscar, situar uno por su id y abrirlo para bajarlo."""
 
-    def search(self, query: str) -> list[StockClip]: ...
-    def clip(self, clip_id: int) -> StockClip: ...
+    #: `orientation`: «portrait» para videos verticales, «landscape» para horizontales.
+    def search(self, query: str, orientation: str = "portrait") -> list[StockClip]: ...
+    def clip(self, clip_id: int, orientation: str = "portrait") -> StockClip: ...
     def open(self, clip: StockClip) -> AbstractContextManager[Readable]: ...
 
 
 class FramePreviewer(Protocol):
-    """Compone un fotograma con fondo y subtítulo. Devuelve un PNG."""
+    """Compone un fotograma con fondo y subtítulo en el formato del video. Devuelve un PNG."""
 
-    def render(self, text: str, style: CaptionStyle, background: str | None, topic: str) -> bytes: ...
+    def render(
+        self, text: str, style: CaptionStyle, background: str | None, topic: str, fmt: Format = VERTICAL
+    ) -> bytes: ...
 
 
 class CoverPainter(Protocol):
     """
-    Pinta la portada a tamaño completo (1080x1920) y devuelve un JPEG.
+    Pinta la portada a tamaño completo (`size`: 1080x1920 en vertical, 1280x720
+    en horizontal) y devuelve un JPEG.
 
     `background` es el archivo de la galería, imagen o clip; None pinta el
     degradado del tema, el mismo que usa el motor cuando no hay fondo.
     """
 
     def paint(
-        self, words: Sequence[CoverWord], design: str, background: Path | None, topic: str
+        self,
+        words: Sequence[CoverWord],
+        design: str,
+        background: Path | None,
+        topic: str,
+        size: tuple[int, int] = (1080, 1920),
     ) -> bytes: ...
 
 
@@ -149,7 +169,7 @@ class ScriptComposer(Protocol):
 
 class Illustrator(Protocol):
     """
-    Pinta una imagen vertical a partir de un encargo de texto, con el
+    Pinta una imagen (vertical u horizontal según `aspect`) a partir de un encargo de texto, con el
     generador y el modelo que toquen. Los fallos llegan como `DomainError` con
     el motivo ya redactado: sin cupo, clave mala, imagen bloqueada…
 
@@ -165,6 +185,7 @@ class Illustrator(Protocol):
         prompt: str,
         seed: int | None = None,
         references: Sequence[GeneratedImage] = (),
+        aspect: str = "9:16",
     ) -> GeneratedImage: ...
 
 
@@ -183,6 +204,7 @@ class Animator(Protocol):
         image: GeneratedImage,
         prompt: str,
         seconds: int,
+        aspect: str = "9:16",
     ) -> GeneratedClip: ...
 
 

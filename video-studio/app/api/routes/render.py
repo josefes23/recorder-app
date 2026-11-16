@@ -10,7 +10,7 @@ router = APIRouter(prefix="/api", tags=["render"])
 @router.post("/preview")
 def preview(req: PreviewRequest, studio: StudioDep):
     try:
-        png = studio.preview.frame(req.caption, req.style, req.background, req.topic)
+        png = studio.preview.frame(req.caption, req.style, req.background, req.topic, req.format)
     except Exception as exc:  # noqa: BLE001 - cualquier fallo del motor debe verse en la UI
         raise HTTPException(400, f"{type(exc).__name__}: {exc}") from exc
     return Response(png, media_type="image/png", headers={"Cache-Control": "no-store"})
@@ -23,6 +23,7 @@ def render(req: RenderRequest, studio: StudioDep) -> dict:
         style=req.style, scenes=[Scene(s.background, s.start) for s in req.scenes],
         cover=req.cover.model_dump() if req.cover else None,
         description=req.description,
+        production=req.production,
     )
     return {"id": video_id, "seconds": seconds}
 

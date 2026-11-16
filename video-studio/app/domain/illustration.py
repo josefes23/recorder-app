@@ -321,7 +321,10 @@ def reference_line(referenced: Sequence[Character], first: int = 0) -> str:
 
 
 def image_prompt(
-    description: str, guide: VisualGuide | None = None, referenced: Sequence[Character] = ()
+    description: str,
+    guide: VisualGuide | None = None,
+    referenced: Sequence[Character] = (),
+    framing: str = FRAMING,
 ) -> str:
     """
     El encargo completo para el generador, en el orden que pide FLUX.2: primero
@@ -338,7 +341,7 @@ def image_prompt(
     if referenced:
         lines.append(reference_line(referenced[:MAX_REFERENCES]))
     lines.append(f"Estilo: {as_sentence(guide.look or DEFAULT_STYLE)}")
-    lines.append(FRAMING)
+    lines.append(framing)
     return "\n".join(lines)
 
 

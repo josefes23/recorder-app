@@ -62,6 +62,7 @@ from app.domain.illustration import (
     validate_description,
     validate_guide,
 )
+from app.domain.production import format_by_id
 from app.domain.review import ReviewReport
 from app.domain.writer import mask_key, provider_by_id, short_label
 
@@ -226,6 +227,7 @@ class ReviewedPainter:
         started: datetime | None = None,
         references: Sequence[GeneratedImage] = (),
         correction: str = "",
+        aspect: str = "9:16",
     ) -> tuple[GeneratedImage, ReviewReport | None]:
         """
         Con revisor (`review`, lo que eligió `choose_reviewer` al encargarla),
@@ -242,7 +244,7 @@ class ReviewedPainter:
         while True:
             attempt_seed = quality.retry_seed(seed, len(shots))
             try:
-                image = self._paint_once(provider, model, prompt, attempt_seed, references)
+                image = self._paint_once(provider, model, prompt, attempt_seed, references, aspect)
             except DomainError:
                 if not shots:
                     raise
@@ -272,6 +274,7 @@ class ReviewedPainter:
         prompt: str,
         seed: int | None,
         references: Sequence[GeneratedImage],
+        aspect: str = "9:16",
     ) -> GeneratedImage:
         image = self._illustrator.illustrate(
             provider,
@@ -280,6 +283,7 @@ class ReviewedPainter:
             prompt,
             seed,
             references,
+            aspect,
         )
         if not image.data:
             raise IllustratorError(f"{provider.name} devolvió una imagen vacía. Vuelve a intentarlo.")
@@ -339,6 +343,7 @@ class IllustrationUseCases:
         review: bool = True,
         source: str = "",
         correction: str = "",
+        format: str = "9:16",
     ) -> Event:
         """
         Encola una imagen y devuelve el evento con la clave del trabajo.
@@ -357,6 +362,7 @@ class IllustrationUseCases:
             source = self._correctable(source)
         description = validate_description(description, required=not fixing)
         guide = validate_guide(look, characters, seed)
+        fmt = format_by_id(format)
         provider = self._settings.resolve(provider_id)
         model = model.strip() or self._settings.model_for(provider)
         if not provider.has_model(model):
@@ -371,6 +377,7 @@ class IllustrationUseCases:
                 "provider": provider.id,
                 "model": model,
                 "review": self._painter.choose_reviewer() if review else None,
+                "format": fmt.id,
                 **({"source": source, "correction": correction} if fixing else {}),
             },
         )
@@ -394,6 +401,7 @@ class IllustrationUseCases:
         description = payload.get("description", "")
         correction = payload.get("correction") or ""
         guide = validate_guide(payload.get("look"), payload.get("characters"), payload.get("seed"))
+        fmt = format_by_id(payload.get("format"))
 
         if correction:
             original = self._original(payload.get("source") or "")
@@ -404,7 +412,7 @@ class IllustrationUseCases:
             references = [original, *references]
         else:
             referenced, references = self._references_for(cast_in(description, guide.characters))
-            prompt = image_prompt(description, guide, referenced)
+            prompt = image_prompt(description, guide, referenced, fmt.framing)
 
         image, report = self._painter.paint(
             provider,
@@ -416,6 +424,7 @@ class IllustrationUseCases:
             requested_at,
             references,
             correction=correction,
+            aspect=fmt.id,
         )
         name = illustration_name(payload.get("topic", ""), key, image.extension)
         return self._store.save(name, io.BytesIO(image.data)), report

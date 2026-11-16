@@ -9,7 +9,7 @@ router = APIRouter(prefix="/api", tags=["script"])
 @router.post("/script", status_code=202)
 def write_script(req: ScriptRequest, studio: StudioDep) -> dict:
     """Encola la redacción. El guion llega por /api/events, no por aquí."""
-    event = studio.scripts.request(req.topic, req.notes)
+    event = studio.scripts.request(req.topic, req.notes, req.length, req.dialogue)
     return {"job": event.key, "offset": event.offset}
 
 

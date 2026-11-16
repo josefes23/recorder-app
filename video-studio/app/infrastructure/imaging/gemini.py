@@ -48,6 +48,7 @@ def paint(
     prompt: str,
     timeout: int,
     references: Sequence[GeneratedImage] = (),
+    aspect: str = "9:16",
 ) -> GeneratedImage:
     parts: list[dict] = [{"text": prompt}]
     for reference in references[:MAX_REFERENCES]:
@@ -57,7 +58,7 @@ def paint(
         "contents": [{"parts": parts}],
         "generationConfig": {
             "responseModalities": ["IMAGE"],
-            "imageConfig": {"aspectRatio": "9:16", "imageSize": IMAGE_SIZE.get(model, DEFAULT_SIZE)},
+            "imageConfig": {"aspectRatio": aspect, "imageSize": IMAGE_SIZE.get(model, DEFAULT_SIZE)},
         },
     }
     try:

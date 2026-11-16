@@ -27,12 +27,13 @@ class HttpIllustrator:
         prompt: str,
         seed: int | None = None,
         references: Sequence[GeneratedImage] = (),
+        aspect: str = "9:16",
     ) -> GeneratedImage:
         if provider.id == "google":
             # Gemini no documenta semilla para imágenes. Las referencias sí
             # viajan —sin ellas no se podría corregir una imagen—, aunque con
             # Nano Banana no están probadas (sin facturación no hay cupo).
-            return gemini.paint(credentials.get("GEMINI_API_KEY"), model, prompt, self._timeout, references)
+            return gemini.paint(credentials.get("GEMINI_API_KEY"), model, prompt, self._timeout, references, aspect)
         if provider.id == "cloudflare":
             return cloudflare.paint(
                 credentials.get("CLOUDFLARE_ACCOUNT_ID"),
@@ -42,5 +43,6 @@ class HttpIllustrator:
                 self._timeout,
                 seed,
                 references,
+                aspect,
             )
         raise IllustratorError(f"No hay adaptador para {provider.name}.")

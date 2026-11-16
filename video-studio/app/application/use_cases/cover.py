@@ -22,6 +22,7 @@ from app.domain.cover import (
     stored_cover,
     validate_cover,
 )
+from app.domain.production import VERTICAL, Format, format_by_id, format_of
 from app.domain.errors import DomainError, NotFoundError, ValidationError, WriterError
 from app.domain.events import (
     TITLES_COMPLETED,
@@ -55,9 +56,9 @@ class CoverUseCases:
 
     # Desde la API ------------------------------------------------------------ #
 
-    def paint(self, title: str, design: str, background: str | None, topic: str) -> bytes:
-        """La portada tal como está ahora en el estudio."""
-        return self._paint(validate_cover(title, design, background), topic)
+    def paint(self, title: str, design: str, background: str | None, topic: str, format: str = "9:16") -> bytes:
+        """La portada tal como está ahora en el estudio, del tamaño de su formato."""
+        return self._paint(validate_cover(title, design, background), topic, format_by_id(format))
 
     def of_video(self, video_id: int) -> tuple[bytes, str]:
         """La portada guardada con ese video y el nombre con que se descarga."""
@@ -65,7 +66,7 @@ class CoverUseCases:
         if record is None:
             raise NotFoundError("No existe ese video.")
         cover = stored_cover(record.cover, record.topic, record.scenes or [])
-        return self._paint(cover, record.topic), cover_filename(record.topic)
+        return self._paint(cover, record.topic, format_of(record.style)), cover_filename(record.topic)
 
     def request_titles(self, topic: str, script: str) -> Event:
         """Encola la propuesta de títulos y devuelve el evento con la clave del trabajo."""
@@ -116,8 +117,8 @@ class CoverUseCases:
 
     # ------------------------------------------------------------------------ #
 
-    def _paint(self, cover: Cover, topic: str) -> bytes:
+    def _paint(self, cover: Cover, topic: str, fmt: Format = VERTICAL) -> bytes:
         # Un fondo que ya no está en la galería no tumba la portada: sale el
         # degradado del tema, como en un render sin fondo.
         path = self._store.path(cover.background) if cover.background else None
-        return self._painter.paint(cover_words(cover.title), cover.design, path, topic or cover.title)
+        return self._painter.paint(cover_words(cover.title), cover.design, path, topic or cover.title, fmt.cover_size)

@@ -26,5 +26,6 @@ def request_animation(req: AnimationRequest, studio: StudioDep) -> dict:
         req.look,
         [c.model_dump() for c in req.characters],
         req.seed,
+        req.format,
     )
     return {"job": event.key, "offset": event.offset}
