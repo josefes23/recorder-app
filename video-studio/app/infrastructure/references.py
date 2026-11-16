@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 from app.domain.saved_characters import is_reference_name
+from app.infrastructure.files import unlink
 
 
 class FileReferenceStore:
@@ -35,7 +36,7 @@ class FileReferenceStore:
     def remove(self, name: str) -> None:
         path = self.path(name)
         if path:
-            path.unlink(missing_ok=True)
+            unlink(path)
 
     def _target(self, name: str) -> Path:
         if not is_reference_name(name):

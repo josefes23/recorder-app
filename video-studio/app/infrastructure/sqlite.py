@@ -47,6 +47,11 @@ class Database:
             conn.executescript(schema)
             conn.commit()
 
+    def close(self) -> None:
+        """Suelta el archivo. En Windows no se puede borrar mientras siga abierto."""
+        with self._lock:
+            self._conn.close()
+
 
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")

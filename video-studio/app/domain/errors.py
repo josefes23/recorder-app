@@ -23,3 +23,7 @@ class IllustratorError(DomainError):
 
 class EngineError(DomainError):
     """El motor o una herramienta externa (ffmpeg, un script) falló."""
+
+
+class FileInUseError(DomainError):
+    """No se pudo borrar un archivo: en Windows pasa si otro programa lo tiene abierto."""

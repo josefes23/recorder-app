@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 from pathlib import Path
 
 from app.application.ports import Readable
 from app.domain.background import Background, is_supported
+from app.domain.errors import FileInUseError
 from app.infrastructure import ffmpeg
+from app.infrastructure.files import unlink
 
 
 class FileBackgroundStore:
@@ -62,9 +65,14 @@ class FileBackgroundStore:
         path = self.path(name)
         if path is None:
             return
-        # La miniatura va ligada al archivo: sin él solo ocupa sitio.
-        ffmpeg.thumbnail_file(path, self._thumbs).unlink(missing_ok=True)
-        path.unlink()
+        # La miniatura va ligada al archivo: sin él solo ocupa sitio. Su nombre
+        # sale del archivo, así que se calcula antes de borrarlo. El fondo va
+        # primero: si está abierto (Windows), no se toca nada. Una miniatura
+        # abierta, en cambio, no merece un error: se queda y ya.
+        thumb = ffmpeg.thumbnail_file(path, self._thumbs)
+        unlink(path)
+        with contextlib.suppress(FileInUseError):
+            unlink(thumb)
 
     def thumbnail_path(self, thumb: str) -> Path | None:
         path = self._thumbs / Path(thumb).name

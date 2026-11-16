@@ -26,8 +26,10 @@ exterior, un puerto en `ports.py` y su adaptador en `infrastructure`.
 
 ## Comandos
 
-- Servir: `./run.sh` (o `./run.sh --dev`).
+- Servir: `./run.sh` (o `./run.sh --dev`). En Windows: `py run.py` (o `--dev`).
+  `run.sh` solo llama a `run.py`: la lógica de arranque va ahí, no en bash.
 - Pruebas del backend: `./.venv/bin/python -m unittest discover -s tests -t .`
+  (en Windows, `.venv/Scripts/python`).
 - Pruebas del front: `cd web && npm test` · tipos: `npm run typecheck`.
 - El contrato HTTP lo fija `web/infrastructure/http-gateway.ts`; si cambia una
   respuesta, cambia también `tests/test_api.py` y ese adaptador.

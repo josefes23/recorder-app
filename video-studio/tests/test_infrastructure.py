@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+import os
 import tempfile
 import threading
 import unittest
@@ -45,7 +46,8 @@ class EnvCredentialsTests(unittest.TestCase):
             self.assertEqual(creds.get("NVIDIA_API_KEY"), "nuevo")
             self.assertEqual(environ["SCRIPT_PROVIDER"], "nvidia")
             self.assertEqual(env_file.read_text(encoding="utf-8"), "NVIDIA_API_KEY=nuevo\nOTRA=1\nSCRIPT_PROVIDER=nvidia\n")
-            self.assertEqual(env_file.stat().st_mode & 0o777, 0o600)
+            if os.name != "nt":  # Windows no tiene permisos de Unix: chmod solo toca "solo lectura"
+                self.assertEqual(env_file.stat().st_mode & 0o777, 0o600)
 
             creds.save({"SCRIPT_PROVIDER": None})
             self.assertNotIn("SCRIPT_PROVIDER", environ)
@@ -58,6 +60,7 @@ class SqliteTests(unittest.TestCase):
         self.db = Database(Path(self._tmp.name) / "nested" / "studio.db")
 
     def tearDown(self):
+        self.db.close()
         self._tmp.cleanup()
 
     def test_video_repository_round_trip(self):
@@ -493,6 +496,63 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class RenderQueueTests(unittest.TestCase):
+    def test_progress_and_errors_travel_in_utf8(self):
+        from app.domain.video import RenderSpec
+        from app.infrastructure.render_queue import SubprocessRenderQueue
+
+        class Listener:
+            def __init__(self):
+                self.messages: list[str] = []
+                self.done = threading.Event()
+
+            def queued(self, video_id): pass
+            def started(self, video_id): pass
+
+            def progressed(self, video_id, progress, message, phase):
+                self.messages.append(message)
+
+            def finished(self, video_id, result):
+                self.done.set()
+
+            def failed(self, video_id, detail):
+                self.messages.append(detail)
+                self.done.set()
+
+        topic = "Café ✅ → fin"
+        listener = Listener()
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = SubprocessRenderQueue(
+                Path(tmp) / "jobs", Path(tmp) / "out", root, listener,
+                worker_module="tests.fake_render_worker",
+            )
+            # Así escribe Python en un pipe en Windows si nadie le pide UTF-8.
+            with mock.patch.dict(os.environ, {"PYTHONIOENCODING": "cp1252"}):
+                queue.enqueue(1, RenderSpec(topic, "g", "v", "+0%", "+0Hz"))
+                queue.start()
+                self.assertTrue(listener.done.wait(30), "el worker no terminó")
+        self.assertEqual(listener.messages, [topic, f"falló: {topic}"])
+
+
+class UnlinkTests(unittest.TestCase):
+    def test_a_file_in_use_becomes_a_message_for_the_user(self):
+        from app.domain.errors import FileInUseError
+        from app.infrastructure.files import unlink
+
+        # Lo que hace Windows al borrar un video que se está reproduciendo.
+        with mock.patch.object(Path, "unlink", side_effect=PermissionError(13, "en uso")):
+            with self.assertRaises(FileInUseError) as caught:
+                unlink(Path("video.mp4"))
+        self.assertIn("video.mp4", str(caught.exception))
+
+    def test_a_missing_file_is_not_an_error(self):
+        from app.infrastructure.files import unlink
+
+        with tempfile.TemporaryDirectory() as tmp:
+            unlink(Path(tmp) / "no-existe.mp4")
+
+
 class VideoCoverColumnTests(unittest.TestCase):
     def test_old_databases_get_the_cover_column(self):
         import sqlite3
@@ -516,20 +576,26 @@ class VideoCoverColumnTests(unittest.TestCase):
             conn.commit()
             conn.close()
 
-            repo = SqliteVideoRepository(Database(path))
+            db = Database(path)
+            repo = SqliteVideoRepository(db)
             self.assertEqual((repo.get(1).cover, repo.get(1).description), ({}, ""))
             new = repo.add(NewVideo(
                 "Otro", "g", "v", {}, [], {"title": "Hola", "design": "franja", "background": None}, "Texto\n#tag",
             ))
             self.assertEqual(repo.get(new).cover, {"title": "Hola", "design": "franja", "background": None})
             self.assertEqual(repo.get(new).description, "Texto\n#tag")
+            db.close()
             # Abrir otra vez no intenta añadirla de nuevo.
-            SqliteVideoRepository(Database(path))
+            again = Database(path)
+            SqliteVideoRepository(again)
+            again.close()
 
 
 FONTS = [p for p in (
     Path("/System/Library/Fonts/Supplemental/Arial Black.ttf"),
     Path("/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
+    Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "ariblk.ttf",
+    Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "arialbd.ttf",
     Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
 ) if p.is_file()]
 

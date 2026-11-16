@@ -14,12 +14,15 @@ cd video-studio
 ./run.sh                 # http://127.0.0.1:8000
 ```
 
+En Windows, `run.sh` no corre (es bash): usa `py run.py`, que hace lo mismo.
+`run.sh` solo llama a `run.py`, así que las dos formas arrancan igual.
+
 Compila la interfaz si hace falta y la sirve junto a la API en un solo proceso.
 
 Para trabajar sobre la interfaz, con recarga en caliente:
 
 ```bash
-./run.sh --dev           # interfaz :3000 · API :8000
+./run.sh --dev           # interfaz :3000 · API :8000  (Windows: py run.py --dev)
 ```
 
 Equivale a `cd web && npm run dev`, que levanta ambos procesos con la salida
@@ -620,6 +623,7 @@ proceso e importa solo `domain` y el puente al motor: ni FastAPI ni SQLite.
 
 ```bash
 ./.venv/bin/python -m unittest discover -s tests -t .
+# Windows: .venv\Scripts\python -m unittest discover -s tests -t .
 ```
 
 No necesita ffmpeg, red ni el motor: los puertos se sustituyen por los dobles
@@ -627,7 +631,34 @@ de `tests/fakes.py`. Las de SQLite usan una base temporal.
 
 ## Requisitos
 
-- Python 3.11+ (probado en 3.13)
-- Node.js 18+ (probado en 24) — solo para compilar la interfaz
-- ffmpeg (`brew install ffmpeg`)
-- Internet para la síntesis de voz
+Anda en Mac, Linux y Windows. El workflow `studio.yml` corre las pruebas en Mac
+y Windows en cada cambio.
+
+| | Mac | Windows |
+|---|---|---|
+| Python 3.11+ (probado en 3.13) | `brew install python@3.13` | `winget install Python.Python.3.13` |
+| Node.js 20.9+ (22.18+ para `npm test`; probado en 24) | `brew install node` | `winget install OpenJS.NodeJS.LTS` |
+| ffmpeg y ffprobe | `brew install ffmpeg` | `winget install Gyan.FFmpeg` |
+
+Además hace falta internet para la síntesis de voz. En Windows, después de cada
+`winget install` abre una terminal nueva para que tome el PATH.
+
+Instalación en Windows (PowerShell), con el motor ya instalado al lado:
+
+```powershell
+cd video-studio
+py -3.13 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+npm --prefix web install
+py run.py
+```
+
+Notas de Windows:
+
+- El entorno guarda los ejecutables en `.venv\Scripts`, no en `.venv/bin`.
+- `.venv` y `web/node_modules` no se copian desde otra máquina: tienen binarios
+  nativos. Se crean en cada una.
+- El `.env` con las claves no queda restringido al usuario como en Mac
+  (`chmod 600` no existe en Windows): queda con los permisos de la carpeta.
+- Windows no deja borrar un archivo abierto. Si borras un video mientras se
+  reproduce, la interfaz avisa; pausa y vuelve a intentar.

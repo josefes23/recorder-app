@@ -10,6 +10,7 @@ el servidor, y así su progreso se lee línea a línea por stdout.
 from __future__ import annotations
 
 import json
+import os
 import queue
 import subprocess
 import sys
@@ -31,12 +32,14 @@ class SubprocessRenderQueue:
         root: Path,
         listener: RenderListener,
         python: str = sys.executable,
+        worker_module: str = WORKER_MODULE,
     ) -> None:
         self._jobs_dir = jobs_dir
         self._outputs = outputs_dir
         self._root = root
         self._listener = listener
         self._python = python
+        self._worker_module = worker_module
         self._queue: queue.Queue[int] = queue.Queue()
 
     def enqueue(self, video_id: int, spec: RenderSpec) -> None:
@@ -62,10 +65,14 @@ class SubprocessRenderQueue:
     def _run(self, video_id: int) -> None:
         self._listener.started(video_id)
 
+        # UTF-8 en los dos extremos del pipe. Sin esto, en Windows el worker
+        # escribe y el servidor lee en cp1252, y un emoji o una flecha en el
+        # guion o en el nombre de un fondo corta el render con UnicodeEncodeError.
         process = subprocess.Popen(
-            [self._python, "-m", WORKER_MODULE, str(self._job_file(video_id))],
+            [self._python, "-m", self._worker_module, str(self._job_file(video_id))],
             cwd=str(self._root), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, bufsize=1,
+            text=True, encoding="utf-8", errors="replace", bufsize=1,
+            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
         )
 
         result: dict = {}
