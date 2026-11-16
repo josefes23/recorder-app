@@ -51,6 +51,16 @@ REFERENCE_COMPLETED = "reference.completed"
 REFERENCE_FAILED = "reference.failed"
 REFERENCE_TERMINAL = (REFERENCE_COMPLETED, REFERENCE_FAILED)
 
+TITLES_REQUESTED = "titles.requested"
+TITLES_COMPLETED = "titles.completed"
+TITLES_FAILED = "titles.failed"
+TITLES_TERMINAL = (TITLES_COMPLETED, TITLES_FAILED)
+
+DESCRIPTION_REQUESTED = "description.requested"
+DESCRIPTION_COMPLETED = "description.completed"
+DESCRIPTION_FAILED = "description.failed"
+DESCRIPTION_TERMINAL = (DESCRIPTION_COMPLETED, DESCRIPTION_FAILED)
+
 Outcome = Literal["completed", "failed", "pending"]
 
 

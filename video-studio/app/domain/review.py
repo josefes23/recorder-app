@@ -98,8 +98,24 @@ class ReviewReport:
         }
 
 
-def review_prompt(description: str) -> str:
-    return f"Descripción de la escena: {' '.join(description.split())}"
+def review_prompt(description: str, correction: str = "") -> str:
+    """
+    Lo que acompaña a la imagen. Al corregir, además, lo que se pidió
+    arreglar: si sigue a la vista, la corrección no sirvió y se repinta. Va
+    aquí y no en SYSTEM_PROMPT para que la revisión de siempre no cambie.
+    """
+    description = " ".join(description.split())
+    lines = [
+        f"Descripción de la escena: {description}"
+        if description
+        else "No hay descripción de la escena: no apliques el punto 4."
+    ]
+    if correction:
+        lines.append(
+            f"Esta imagen es una corrección de otra. Se pidió arreglar: {' '.join(correction.split())} "
+            "Si eso sigue sin arreglar, recházala y dilo como problema."
+        )
+    return "\n".join(lines)
 
 
 def _clip(text: str) -> str:

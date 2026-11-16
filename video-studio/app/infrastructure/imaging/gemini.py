@@ -6,17 +6,22 @@ su respuesta y con una clave del nivel gratuito no se puede ver: los modelos de
 imagen tienen cupo cero ahí. `generateContent` es la vía estable que estos
 modelos anuncian en el catálogo (`supportedGenerationMethods`) y su respuesta
 está documentada desde hace tiempo.
+
+Las imágenes de referencia van detrás del texto como partes `inline_data`, en
+orden: es como la guía de Gemini enseña a editar una imagen o a combinar
+varias. Sin probar contra la API (sin facturación no hay cupo de imagen).
 """
 
 from __future__ import annotations
 
 import base64
+from collections.abc import Sequence
 
 import requests
 
 from app.domain.errors import IllustratorError
 from app.domain.illustration import GeneratedImage
-from app.infrastructure.imaging import compact, sniff_extension
+from app.infrastructure.imaging import compact, shrink, sniff_extension
 
 URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
@@ -31,9 +36,25 @@ FREE_TIER = (
 )
 
 
-def paint(api_key: str | None, model: str, prompt: str, timeout: int) -> GeneratedImage:
+#: Lado mayor de cada referencia. Más que en Cloudflare: al corregir, la
+#: referencia es la imagen entera que se edita, y aquí no se paga por teselas.
+REFERENCE_SIDE = 1536
+MAX_REFERENCES = 4
+
+
+def paint(
+    api_key: str | None,
+    model: str,
+    prompt: str,
+    timeout: int,
+    references: Sequence[GeneratedImage] = (),
+) -> GeneratedImage:
+    parts: list[dict] = [{"text": prompt}]
+    for reference in references[:MAX_REFERENCES]:
+        data = shrink(reference.data, REFERENCE_SIDE)
+        parts.append({"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(data).decode("ascii")}})
     body = {
-        "contents": [{"parts": [{"text": prompt}]}],
+        "contents": [{"parts": parts}],
         "generationConfig": {
             "responseModalities": ["IMAGE"],
             "imageConfig": {"aspectRatio": "9:16", "imageSize": IMAGE_SIZE.get(model, DEFAULT_SIZE)},

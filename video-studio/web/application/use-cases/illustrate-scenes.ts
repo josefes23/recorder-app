@@ -127,6 +127,36 @@ export async function requestSceneImage(
   return job;
 }
 
+export type CorrectionInput = {
+  /** La imagen de la galería que se corrige. */
+  source: string;
+  /** Qué está mal, contado por el usuario. */
+  correction: string;
+  /** Lo que debía mostrar, si se sabe: ayuda al generador y al revisor. */
+  description: string;
+};
+
+/**
+ * Pide corregir una imagen: el generador parte de ella y cambia solo lo que se
+ * le dice. La corregida llega como cualquier otra imagen y con nombre propio;
+ * la original se queda en la galería.
+ */
+export async function requestSceneCorrection(
+  gateway: StudioGateway,
+  { source, correction, description }: CorrectionInput,
+  input: IllustrateInput,
+): Promise<string> {
+  const text = correction.trim();
+  if (!source) throw new Error("Esta escena no tiene imagen que corregir.");
+  if (!text) throw new Error("Cuenta qué está mal en la imagen para que la IA lo corrija.");
+  const { job } = await gateway.requestIllustration({
+    ...request(input, description.trim()),
+    source,
+    correction: text,
+  });
+  return job;
+}
+
 /** Espera la imagen y devuelve su nombre en la galería y su revisión. */
 export async function awaitSceneImage(jobs: JobTracker, job: string): Promise<SceneImage> {
   const result = await jobs.waitFor(job);

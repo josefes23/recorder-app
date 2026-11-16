@@ -17,6 +17,10 @@ export type VideoItem = {
   status: VideoStatus;
   error: string | null;
   created_at: string;
+  /** La portada guardada con el render; se lee con `readCover`, vacía en los de antes. */
+  cover?: unknown;
+  /** El texto para publicar guardado con el render; vacío si no se escribió. */
+  description?: string;
   /* Presentes solo mientras el trabajo sigue en la cola en memoria. */
   progress?: number;
   message?: string;

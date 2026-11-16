@@ -26,6 +26,10 @@ class NewVideo:
     voice: str
     style: dict
     scenes: list[dict]
+    #: Título, diseño e imagen de la portada (`domain.cover`); {} si no llegó.
+    cover: dict = field(default_factory=dict)
+    #: El texto con que se publica (`domain.description`); vacío si no se escribió.
+    description: str = ""
 
 
 @dataclass(frozen=True)
@@ -43,6 +47,9 @@ class Video:
     status: str
     error: str | None
     created_at: str
+    #: Vacía en los videos de antes de que hubiera portadas.
+    cover: dict = field(default_factory=dict)
+    description: str = ""
 
     def as_dict(self) -> dict:
         return asdict(self)

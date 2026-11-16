@@ -6,6 +6,7 @@ import {
   awaitSceneImage,
   planStoryboard,
   readStoryboard,
+  requestSceneCorrection,
   requestSceneImage,
   requestSceneImages,
 } from "./illustrate-scenes.ts";
@@ -130,6 +131,28 @@ test("una imagen suelta exige descripción", async () => {
   assert.equal(await requestSceneImage(gateway, "  una taza  ", INPUT), "im-1");
   assert.equal(requests[0].description, "una taza");
   assert.equal(requests[0].look, "acuarela");
+});
+
+test("corregir manda la imagen, qué está mal y la misma guía que una escena", async () => {
+  const { gateway, requests } = fakes();
+  const fix = { source: "ia-cafe_1.jpg", correction: "  Ana tiene tres brazos ", description: " Ana sirve " };
+  assert.equal(await requestSceneCorrection(gateway, fix, INPUT), "im-1");
+  assert.deepEqual(requests[0], {
+    topic: "Café",
+    description: "Ana sirve",
+    look: "acuarela",
+    characters: [ANA],
+    seed: 7,
+    provider: "cloudflare",
+    model: "m",
+    review: true,
+    source: "ia-cafe_1.jpg",
+    correction: "Ana tiene tres brazos",
+  });
+
+  await assert.rejects(requestSceneCorrection(gateway, { ...fix, correction: " " }, INPUT), /qué está mal/);
+  await assert.rejects(requestSceneCorrection(gateway, { ...fix, source: "" }, INPUT), /no tiene imagen/);
+  assert.equal(requests.length, 1);
 });
 
 test("la imagen terminada devuelve su nombre en la galería y lo que dijo el revisor", async () => {

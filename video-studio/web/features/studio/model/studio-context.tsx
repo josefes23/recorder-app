@@ -19,17 +19,23 @@ import {
 import {
   awaitSceneImage,
   planStoryboard,
+  requestSceneCorrection,
   requestSceneImage,
   requestSceneImages,
 } from "@/application/use-cases/illustrate-scenes";
+import { paintCover, suggestTitles } from "@/application/use-cases/design-cover";
 import { previewFrame } from "@/application/use-cases/preview-frame";
 import { renderVideo } from "@/application/use-cases/render-video";
+import { writeDescription } from "@/application/use-cases/write-description";
 import { writeScript } from "@/application/use-cases/write-script";
 import type { Config } from "@/domain/config";
+import { firstBackground, readCover, resolveCover, type Cover } from "@/domain/cover";
 import type { VideoItem } from "@/domain/library";
 import { fromStoryboard, withoutBackground } from "@/domain/scene";
 import { useBackgroundsSlice, type BackgroundsSlice } from "@/features/backgrounds/model/backgrounds-slice";
 import { useCaptionsSlice, type CaptionsSlice } from "@/features/captions/model/captions-slice";
+import { useCoverSlice, type CoverSlice } from "@/features/cover/model/cover-slice";
+import { useDescriptionSlice, type DescriptionSlice } from "@/features/description/model/description-slice";
 import { useCharactersSlice, type CharactersSlice } from "@/features/illustrations/model/characters-slice";
 import { useImagesSlice, type ImagesSlice } from "@/features/illustrations/model/images-slice";
 import { useLibrarySlice, type LibrarySlice } from "@/features/library/model/library-slice";
@@ -68,12 +74,28 @@ export type StudioActions = {
   illustrateAll: () => Promise<void>;
   /** Pide una imagen para esa escena; `null` añade una escena nueva al final. */
   illustrateScene: (index: number | null, description: string) => Promise<boolean>;
+  /** Pide corregir la imagen de esa escena contando qué está mal; llega en su lugar. */
+  correctScene: (index: number, correction: string) => Promise<boolean>;
   /** Guarda en la biblioteca ese elemento del reparto y le encarga su imagen de referencia. */
   saveCharacter: (index: number) => Promise<void>;
   /** Pinta otra imagen de referencia, con el estilo del video abierto. */
   repaintReference: (id: number) => Promise<void>;
   /** Lo borra de la biblioteca; en el reparto del video se queda, sin referencia. */
   deleteSaved: (id: number) => Promise<void>;
+  /** Pide al modelo del guion títulos gancho para la portada. */
+  suggestTitles: () => Promise<void>;
+  /** Pinta una imagen solo para la portada; al llegar, la portada la usa. */
+  illustrateCover: (description: string) => Promise<boolean>;
+  /** Pide al modelo del guion la descripción para publicar; sustituye a la que hubiera. */
+  writeDescription: () => Promise<void>;
+};
+
+/** La portada elegida y la que sale de verdad con el tema y las escenas de ahora. */
+export type CoverState = CoverSlice & {
+  /** La que se ve, se renderiza y se descarga; null mientras no haya título. */
+  resolved: Cover | null;
+  /** La imagen que usa si no se elige otra: la de la primera escena con imagen. */
+  automatic: string | null;
 };
 
 export type Studio = {
@@ -89,8 +111,13 @@ export type Studio = {
   writer: WriterSlice;
   images: ImagesSlice;
   characters: CharactersSlice;
+  cover: CoverState;
+  description: DescriptionSlice;
   actions: StudioActions;
 };
+
+/** Espera tras el último cambio antes de repintar la portada: no una por tecla. */
+const COVER_DEBOUNCE_MS = 450;
 
 const StudioContext = createContext<Studio | null>(null);
 
@@ -128,6 +155,38 @@ export function StudioProvider({
   const writer = useWriterSlice(deps);
   const images = useImagesSlice(deps);
   const characters = useCharactersSlice(deps);
+  const coverSlice = useCoverSlice();
+  const description = useDescriptionSlice();
+
+  /* La portada que sale de verdad. Depende del nombre de la imagen automática
+     y no de la lista de escenas: esa cambia cada vez que una imagen pedida
+     avanza, y la portada se repintaría sin motivo. */
+  const automaticCover = firstBackground(scenes.items);
+  const resolvedCover = useMemo(
+    () => resolveCover(coverSlice.draft, script.topic, automaticCover),
+    [coverSlice.draft, script.topic, automaticCover],
+  );
+  const cover = useMemo<CoverState>(
+    () => ({ ...coverSlice, resolved: resolvedCover, automatic: automaticCover }),
+    [coverSlice, resolvedCover, automaticCover],
+  );
+
+  /* Se repinta sola al cambiar título, diseño, imagen o tema, como un espejo.
+     Fuera de `run`: es local, tarda medio segundo y no debe bloquear botones. */
+  const { begin: beginCover, show: showCover, fail: failCover, clear: clearCover } = coverSlice;
+  useEffect(() => {
+    if (!resolvedCover) {
+      clearCover();
+      return;
+    }
+    const timer = setTimeout(() => {
+      const ticket = beginCover();
+      paintCover(gateway, { ...resolvedCover, topic: script.topic })
+        .then((image) => showCover(ticket, image))
+        .catch((err: unknown) => failCover(ticket, err instanceof Error ? err.message : String(err)));
+    }, COVER_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [gateway, resolvedCover, script.topic, beginCover, showCover, failCover, clearCover]);
 
   const { setId: selectVoice } = voice;
   const { apply: applyStyle } = captions;
@@ -223,6 +282,8 @@ export function StudioProvider({
             pitch: voice.pitch,
             style: captions.style,
             scenes: scenes.items,
+            cover: resolvedCover,
+            description: description.text,
           }),
         );
         if (id === undefined) return;
@@ -236,6 +297,9 @@ export function StudioProvider({
         voice.setId(item.voice);
         scenes.replaceAll(Array.isArray(item.scenes) ? item.scenes : []);
         captions.apply(item.style);
+        coverSlice.restore(readCover(item.cover));
+        coverSlice.setSuggestions([]);
+        description.setText(item.description ?? "");
         window.scrollTo({ top: 0, behavior: "smooth" });
       },
 
@@ -244,6 +308,8 @@ export function StudioProvider({
         if (items === undefined) return false;
         // Una escena con un fondo que ya no existe haría fallar el render.
         scenes.replaceAll(withoutBackground(scenes.items, name));
+        // La portada vuelve a la imagen automática en vez de quedarse sin ninguna.
+        if (coverSlice.draft.background === name) coverSlice.setBackground(null);
         return true;
       },
 
@@ -261,13 +327,15 @@ export function StudioProvider({
             topic: script.topic,
             script: script.text,
             style: images.guide.look,
-            // Lo que el usuario ya puso entra entero; de la biblioteca, lo que encaje.
+            // Solo lo que está en el reparto: lo guardado entra a mano, nunca solo.
             characters: images.guide.characters,
           }),
         );
         if (!storyboard) return;
         adoptGuide(storyboard.guide);
         scenes.replaceAll(fromStoryboard(storyboard.scenes));
+        // Escenas nuevas: la portada estrena la primera imagen que llegue.
+        coverSlice.setBackground(null);
 
         const descriptions = storyboard.scenes.map((scene) => scene.description);
         await run("illustrate", () =>
@@ -303,6 +371,30 @@ export function StudioProvider({
         return true;
       },
 
+      correctScene: async (index, correction) => {
+        const { choice } = images;
+        const scene = scenes.items[index];
+        if (!choice) {
+          setError("Configura un generador de imágenes en «Generador de imágenes».");
+          return false;
+        }
+        const source = scene?.background;
+        if (!source) return false;
+        const description = scene.prompt ?? "";
+        const job = await run(`correct-${index}`, () =>
+          requestSceneCorrection(
+            gateway,
+            { source, correction, description },
+            { ...choice, topic: script.topic, guide: images.guide, review: images.review },
+          ),
+        );
+        if (!job) return false;
+        // La escena conserva lo que debía mostrar: la corregida es la misma escena.
+        startImage(index, job, description);
+        trackImage(job);
+        return true;
+      },
+
       saveCharacter: async (index) => {
         const character = images.guide.characters[index];
         if (!character) return;
@@ -330,22 +422,85 @@ export function StudioProvider({
         if (!(await characters.remove(id))) return;
         setCharacters((cast) => cast.map((c) => (c.saved === id ? { ...c, saved: null } : c)));
       },
+
+      /* Los títulos y la imagen de portada tardan lo que tarde el modelo: se
+         esperan fuera de `run` para no bloquear el resto de botones, y cada uno
+         enseña su propio «trabajando». */
+      suggestTitles: async () => {
+        setError(null);
+        coverSlice.setSuggesting(true);
+        try {
+          coverSlice.setSuggestions(
+            await suggestTitles(gateway, jobs, { topic: script.topic, script: script.text }),
+          );
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+        } finally {
+          coverSlice.setSuggesting(false);
+        }
+      },
+
+      illustrateCover: async (description) => {
+        const { choice } = images;
+        if (!choice) {
+          setError("Configura un generador de imágenes en «Generador de imágenes».");
+          return false;
+        }
+        setError(null);
+        coverSlice.setIllustrating(true);
+        try {
+          // Con la guía del video: mismo estilo, mismo reparto y misma semilla que sus escenas.
+          const job = await requestSceneImage(gateway, description, {
+            ...choice,
+            topic: script.topic,
+            guide: images.guide,
+            review: images.review,
+          });
+          const { name } = await awaitSceneImage(jobs, job);
+          await loadBackgrounds().catch(() => undefined);
+          coverSlice.setBackground(name);
+          return true;
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+          return false;
+        } finally {
+          coverSlice.setIllustrating(false);
+        }
+      },
+
+      writeDescription: async () => {
+        setError(null);
+        description.setWriting(true);
+        try {
+          description.setText(
+            await writeDescription(gateway, jobs, {
+              topic: script.topic,
+              script: script.text,
+              title: resolvedCover?.title ?? "",
+            }),
+          );
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+        } finally {
+          description.setWriting(false);
+        }
+      },
     }),
     [
       gateway, jobs, run, setError, script, voice, captions, scenes, backgrounds, render,
       loadLibrary, images, adoptGuide, startImage, trackImage, characters, setCharacters,
-      loadCharacters, trackReference,
+      loadCharacters, trackReference, coverSlice, resolvedCover, loadBackgrounds, description,
     ],
   );
 
   const studio = useMemo<Studio>(
     () => ({
       config, status, script, voice, captions, scenes,
-      backgrounds, library, render, writer, images, characters, actions,
+      backgrounds, library, render, writer, images, characters, cover, description, actions,
     }),
     [
       config, status, script, voice, captions, scenes, backgrounds, library, render, writer, images,
-      characters, actions,
+      characters, cover, description, actions,
     ],
   );
 

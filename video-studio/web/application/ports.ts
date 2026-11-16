@@ -1,6 +1,7 @@
 import type { Background } from "@/domain/background";
 import type { Style } from "@/domain/captions";
 import type { Config } from "@/domain/config";
+import type { Cover } from "@/domain/cover";
 import type {
   Character,
   ImageSettings,
@@ -88,6 +89,10 @@ export type IllustrationRequest = {
   model: string;
   /** Que el modelo del guion la revise y la repinte si ve fallos. */
   review: boolean;
+  /** Para corregir una imagen en vez de pintar otra: su nombre en la galería… */
+  source?: string;
+  /** …y qué está mal en ella. Al corregir, la descripción puede ir vacía. */
+  correction?: string;
 };
 
 export type RenderRequest = {
@@ -99,7 +104,16 @@ export type RenderRequest = {
   pitch: string;
   style: Style;
   scenes: Scene[];
+  /** Se guarda con el video para descargarla después; null deja la de por defecto. */
+  cover: Cover | null;
+  /** El texto con que se publica; se guarda con el video para copiarlo después. */
+  description: string;
 };
+
+export type DescriptionRequest = { topic: string; script: string; title: string };
+
+/** La portada tal como está en el estudio; el tema da color al degradado si no hay imagen. */
+export type CoverRequest = Cover & { topic: string };
 
 /**
  * Puerto de salida: todo lo que la aplicación necesita del mundo exterior.
@@ -150,6 +164,13 @@ export interface StudioGateway {
 
   previewFrame(request: PreviewRequest): Promise<Blob>;
 
+  /** La portada a tamaño completo (1080x1920, JPEG): la misma sirve para verla y para bajarla. */
+  coverImage(request: CoverRequest): Promise<Blob>;
+  /** Encola la propuesta de títulos gancho; llegan por el flujo de eventos. */
+  requestTitles(topic: string, script: string): Promise<JobAccepted>;
+  /** Encola la descripción para publicar; llega por el flujo de eventos. */
+  requestDescription(request: DescriptionRequest): Promise<JobAccepted>;
+
   startRender(request: RenderRequest): Promise<number>;
   job(id: number): Promise<VideoItem>;
 
@@ -163,4 +184,6 @@ export interface StudioGateway {
   /** La imagen de referencia de un elemento guardado; `version` evita la copia vieja del navegador al repintarla. */
   referenceUrl(name: string, version: string): string;
   videoUrl(id: number): string;
+  /** La portada guardada con ese video, como descarga. */
+  coverUrl(id: number): string;
 }

@@ -29,10 +29,10 @@ class HttpIllustrator:
         references: Sequence[GeneratedImage] = (),
     ) -> GeneratedImage:
         if provider.id == "google":
-            # Gemini no documenta semilla para imágenes, y las referencias no
-            # están probadas con Nano Banana (sin facturación no hay cupo): ahí
-            # la coherencia la dan solo el estilo y los rasgos repetidos.
-            return gemini.paint(credentials.get("GEMINI_API_KEY"), model, prompt, self._timeout)
+            # Gemini no documenta semilla para imágenes. Las referencias sí
+            # viajan —sin ellas no se podría corregir una imagen—, aunque con
+            # Nano Banana no están probadas (sin facturación no hay cupo).
+            return gemini.paint(credentials.get("GEMINI_API_KEY"), model, prompt, self._timeout, references)
         if provider.id == "cloudflare":
             return cloudflare.paint(
                 credentials.get("CLOUDFLARE_ACCOUNT_ID"),

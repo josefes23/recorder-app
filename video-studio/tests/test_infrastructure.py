@@ -268,6 +268,8 @@ class BackgroundStoreTests(unittest.TestCase):
             self.assertEqual(store.save("/sub/mar_1.mp4", io.BytesIO(b"abc")), "mar_1.mp4")
             self.assertTrue(store.has("mar_1.mp4"))
             self.assertEqual((folder / "mar_1.mp4").read_bytes(), b"abc")
+            self.assertEqual(store.read("mar_1.mp4"), b"abc")
+            self.assertIsNone(store.read("mar_9.mp4"))
             # Un nombre con ruta se reduce al archivo: nada sale de la carpeta.
             self.assertEqual(store.path("../../mar_1.mp4"), folder / "mar_1.mp4")
             (folder / "notas.txt").write_text("x")
@@ -449,13 +451,36 @@ class ImagingTests(unittest.TestCase):
         config = post.call_args.kwargs["json"]["generationConfig"]
         self.assertEqual(config["responseModalities"], ["IMAGE"])
         self.assertEqual(config["imageConfig"], {"aspectRatio": "9:16", "imageSize": "1K"})
+        self.assertEqual(post.call_args.kwargs["json"]["contents"], [{"parts": [{"text": "una taza"}]}])
+
+    def test_gemini_sends_the_references_after_the_text_in_order(self):
+        from PIL import Image
+
+        def png(width, height, color):
+            out = io.BytesIO()
+            Image.new("RGB", (width, height), color).save(out, "PNG")
+            return GeneratedImage(out.getvalue(), ".png")
+
+        refs = [png(1728, 3072, "red"), png(300, 300, "blue")]
+        with mock.patch.object(gemini.requests, "post") as post:
+            post.return_value = fake_response(200, {"candidates": [{"content": {"parts": [
+                {"inlineData": {"mimeType": "image/jpeg", "data": b64(b"\xff\xd8ok")}},
+            ]}}]})
+            gemini.paint("key", "gemini-nano-banana-2.1", "corrige", 30, refs)
+        text, first, second = post.call_args.kwargs["json"]["contents"][0]["parts"]
+        self.assertEqual(text, {"text": "corrige"})
+        self.assertEqual(first["inline_data"]["mime_type"], "image/jpeg")
+        big = Image.open(io.BytesIO(base64.b64decode(first["inline_data"]["data"])))
+        self.assertEqual((big.format, big.size), ("JPEG", (864, 1536)))
+        small = Image.open(io.BytesIO(base64.b64decode(second["inline_data"]["data"])))
+        self.assertEqual((small.size, small.getpixel((0, 0))[2] > 200), ((300, 300), True))
 
     def test_illustrator_routes_by_provider(self):
         image = GeneratedImage(b"x", ".jpg")
         illustrator = HttpIllustrator(timeout=9)
         with mock.patch.object(gemini, "paint", return_value=image) as paint:
-            illustrator.illustrate(image_provider_by_id("google"), "m", {"GEMINI_API_KEY": "k"}, "p")
-        paint.assert_called_once_with("k", "m", "p", 9)
+            illustrator.illustrate(image_provider_by_id("google"), "m", {"GEMINI_API_KEY": "k"}, "p", 7, [image])
+        paint.assert_called_once_with("k", "m", "p", 9, [image])
         with mock.patch.object(cloudflare, "paint", return_value=image) as paint:
             illustrator.illustrate(
                 image_provider_by_id("cloudflare"), "m",
@@ -466,3 +491,101 @@ class ImagingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VideoCoverColumnTests(unittest.TestCase):
+    def test_old_databases_get_the_cover_column(self):
+        import sqlite3
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "studio.db"
+            # La tabla tal como era antes de las portadas, con un video dentro.
+            old = (
+                SqliteVideoRepository.SCHEMA
+                .replace(",\n        cover       TEXT    NOT NULL DEFAULT '{}'", "")
+                .replace(",\n        description TEXT    NOT NULL DEFAULT ''", "")
+            )
+            self.assertNotIn("cover", old)
+            self.assertNotIn("description", old)
+            conn = sqlite3.connect(path)
+            conn.executescript(old)
+            conn.execute(
+                "INSERT INTO videos (topic, script, voice, style, scenes, created_at) "
+                "VALUES ('t', 'g', 'v', '{}', '[]', 'ahora')"
+            )
+            conn.commit()
+            conn.close()
+
+            repo = SqliteVideoRepository(Database(path))
+            self.assertEqual((repo.get(1).cover, repo.get(1).description), ({}, ""))
+            new = repo.add(NewVideo(
+                "Otro", "g", "v", {}, [], {"title": "Hola", "design": "franja", "background": None}, "Texto\n#tag",
+            ))
+            self.assertEqual(repo.get(new).cover, {"title": "Hola", "design": "franja", "background": None})
+            self.assertEqual(repo.get(new).description, "Texto\n#tag")
+            # Abrir otra vez no intenta añadirla de nuevo.
+            SqliteVideoRepository(Database(path))
+
+
+FONTS = [p for p in (
+    Path("/System/Library/Fonts/Supplemental/Arial Black.ttf"),
+    Path("/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+) if p.is_file()]
+
+
+@unittest.skipUnless(FONTS, "Hace falta una fuente TTF del sistema")
+class CoverPainterTests(unittest.TestCase):
+    """El pintor de verdad, con un motor de mentira a tamaño reducido."""
+
+    def setUp(self):
+        import numpy as np
+
+        self.gen = SimpleNamespace(
+            WIDTH=270, HEIGHT=480,
+            resolve_font=lambda explicit: str(FONTS[0]),
+            gradient_image=lambda hue, w, h, seed: np.full((h, w, 3), 90, dtype="uint8"),
+        )
+
+    def paint(self, title, design, background=None):
+        from PIL import Image
+
+        from app.domain.cover import cover_words
+        from app.infrastructure.cover import PillowCoverPainter
+
+        data = PillowCoverPainter(self.gen).paint(cover_words(title), design, background, "tema")
+        return Image.open(io.BytesIO(data))
+
+    def test_every_design_paints_a_full_size_jpeg_with_the_title_in_the_safe_area(self):
+        import numpy as np
+
+        for design in ("impacto", "franja", "titular"):
+            with self.subTest(design=design):
+                image = self.paint("El *error* que todos cometen", design)
+                self.assertEqual((image.format, image.size), ("JPEG", (270, 480)))
+                plain = np.asarray(self.paint("", design).convert("L"), dtype=np.int16)
+                diff = np.abs(np.asarray(image.convert("L"), dtype=np.int16) - plain) > 40
+                rows = np.where(diff.any(axis=1))[0]
+                self.assertTrue(rows.size, "el título no se pintó")
+                # Dentro del centro 3:4 que enseña la cuadrícula del perfil.
+                self.assertGreaterEqual(rows.min(), 480 * 0.125)
+                self.assertLessEqual(rows.max(), 480 * 0.875)
+
+    def test_highlighted_words_change_color(self):
+        import numpy as np
+
+        def yellowish(image):
+            px = np.asarray(image.convert("RGB"), dtype=np.int16)
+            return int(((px[..., 0] > 200) & (px[..., 1] > 170) & (px[..., 2] < 90)).sum())
+
+        self.assertGreater(yellowish(self.paint("El *error* fatal", "impacto")), yellowish(self.paint("El error fatal", "impacto")) + 50)
+
+    def test_an_image_background_fills_the_frame(self):
+        from PIL import Image
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ia-1.jpg"
+            Image.new("RGB", (100, 300), (0, 120, 255)).save(path)
+            image = self.paint("Hola", "titular", path).convert("RGB")
+            r, g, b = image.getpixel((135, 470))
+            self.assertGreater(b, r + 60)  # el azul de la imagen, no el gris del degradado

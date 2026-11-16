@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 
 from app.domain import (
     background,
+    cover,
+    description,
     events,
     illustration,
     motion,
@@ -19,7 +21,7 @@ from app.domain import (
 )
 from app.domain.captions import clip_to_duration
 from app.domain.errors import ValidationError, WriterError
-from app.domain.scene import Scene, Span, timeline_spans
+from app.domain.scene import Scene, Span, synced_to_voice, timeline_spans
 
 
 class ScriptTests(unittest.TestCase):
@@ -67,6 +69,45 @@ class SceneTests(unittest.TestCase):
     def test_scene_from_dict_tolerates_missing_values(self):
         self.assertEqual(Scene.from_dict({"background": "", "start": None}), Scene(None, 0.0))
         self.assertEqual(Scene.from_dict(None), Scene())
+
+    @staticmethod
+    def _voice(*marks):
+        return [{"text": text, "start": start, "end": end} for text, start, end in marks]
+
+    def test_synced_scenes_enter_when_the_voice_says_their_first_word(self):
+        # Voz más lenta que la estimada y con pausa en cada punto: a 2,7
+        # palabras/s, «Cuatro» caería en 1,1 s y «Siete» en 2,2 s.
+        text = "Uno dos tres. Cuatro cinco seis. Siete ocho nueve."
+        words = self._voice(
+            ("Uno", 0.0, 0.9), ("dos", 1.0, 1.9), ("tres", 2.0, 2.9),
+            ("Cuatro", 3.5, 4.4), ("cinco", 4.5, 5.4), ("seis", 5.5, 6.4),
+            ("Siete", 7.0, 7.9), ("ocho", 8.0, 8.9), ("nueve", 9.0, 9.9),
+        )
+        beats = illustration.plan_beats(text, seconds_per_scene=1.0)
+        self.assertEqual([b.start for b in beats], [0.0, 1.1, 2.2])
+
+        scenes = [Scene(f"{i}.jpg", b.start) for i, b in enumerate(beats)]
+        # El corte cae en mitad del silencio que precede a la frase.
+        self.assertEqual([s.start for s in synced_to_voice(scenes, text, words)], [0.0, 3.2, 6.7])
+
+    def test_synced_scene_on_a_number_cuts_after_the_last_marked_word(self):
+        # El TTS dice «ciento quince» donde el guion pone «115»: esas marcas no
+        # casan con ninguna palabra, y la escena entra al acabar «dos».
+        text = "Uno dos. 115 años después."
+        words = self._voice(
+            ("Uno", 0.0, 0.5), ("dos", 0.6, 1.0), ("ciento", 1.5, 1.9),
+            ("quince", 2.0, 2.4), ("años", 2.5, 2.9), ("después", 3.0, 3.5),
+        )
+        self.assertEqual(synced_to_voice([Scene("a.jpg", 0.7)], text, words), [Scene("a.jpg", 1.0)])
+
+    def test_synced_scenes_keep_the_first_and_the_late_ones_relative_to_the_end(self):
+        text = "Uno dos tres."
+        words = self._voice(("Uno", 0.0, 1.0), ("dos", 1.0, 2.0), ("tres", 2.0, 3.0))
+        scenes = [Scene("a.jpg", 0.0), Scene("b.jpg", 2.0)]
+        # «b» entraba 0,89 s después del final estimado (1,11 s); sigue igual de
+        # lejos del final real.
+        self.assertEqual(synced_to_voice(scenes, text, words), [Scene("a.jpg", 0.0), Scene("b.jpg", 3.89)])
+        self.assertEqual(synced_to_voice(scenes, text, []), scenes)
 
 
 class CaptionTests(unittest.TestCase):
@@ -265,55 +306,112 @@ class IllustrationTests(unittest.TestCase):
 
 
 class StoryboardTests(unittest.TestCase):
-    BEATS = [illustration.Beat(0.0, "Jesús se bautizó."), illustration.Beat(6.3, "Hazlo tú también.")]
+    SENTENCES = ["Jesús se bautizó.", "Hazlo tú también."]
 
     def answer(self, **overrides) -> str:
         data = {
             "look": "Fotografía cinematográfica, luz dorada",
             "characters": [{"name": "Jesús", "traits": "pelo castaño, túnica crema"}],
-            "scenes": [{"n": 1, "description": "Jesús entra en el Jordán"}, {"n": 2, "description": "Una mujer sonríe"}],
+            "scenes": [{"from": 1, "description": "Jesús entra en el Jordán"}, {"from": 2, "description": "Una mujer sonríe"}],
         }
         data.update(overrides)
         return json.dumps(data, ensure_ascii=False)
 
-    def test_prompt_numbers_each_scene_and_carries_style_and_script(self):
-        prompt = storyboard.build_prompt("Bautismo", "", "Jesús se bautizó. Hazlo tú también.", self.BEATS)
+    def test_prompt_numbers_each_sentence_with_its_seconds_and_asks_for_a_scene_count(self):
+        prompt = storyboard.build_prompt("Bautismo", "", self.SENTENCES)
         self.assertIn("Tema: Bautismo", prompt)
         self.assertIn(f"Estilo que pide el usuario: {illustration.DEFAULT_STYLE}", prompt)
-        self.assertIn("Escenas (2):\n1. Jesús se bautizó.\n2. Hazlo tú también.", prompt)
-        self.assertIn('"scenes"', storyboard.SYSTEM_PROMPT)
+        self.assertIn(
+            "Guion en 2 frases, con lo que tarda cada una en decirse:\n"
+            "1. (1 s) Jesús se bautizó.\n2. (1 s) Hazlo tú también.\n\nEscenas: entre 1 y 2.",
+            prompt,
+        )
+        self.assertIn('"from"', storyboard.SYSTEM_PROMPT)
 
-    def test_parse_reads_guide_and_keeps_timing_from_the_beats(self):
-        board = storyboard.parse_storyboard(self.answer(), self.BEATS, seed=9)
+    def test_parse_reads_guide_and_times_each_scene_by_the_words_before_it(self):
+        board = storyboard.parse_storyboard(self.answer(), self.SENTENCES, seed=9)
         self.assertEqual(board.guide.look, "Fotografía cinematográfica, luz dorada")
         self.assertEqual(board.guide.characters, (illustration.Character("Jesús", "pelo castaño, túnica crema"),))
         self.assertEqual(board.guide.seed, 9)
-        self.assertEqual(board.scenes[1], storyboard.StoryboardScene(6.3, "Hazlo tú también.", "Una mujer sonríe"))
+        self.assertEqual(board.scenes[1], storyboard.StoryboardScene(1.1, "Hazlo tú también.", "Una mujer sonríe"))
         self.assertEqual(board.as_dict()["scenes"][0]["description"], "Jesús entra en el Jordán")
 
     def test_parse_tolerates_fences_reasoning_and_numbers_as_text(self):
         raw = "<think>pienso</think>```json\n" + self.answer(scenes=[
-            {"n": "2", "description": "dos"}, {"n": "1", "description": "uno"},
+            {"from": "2", "description": "dos"}, {"from": "1", "description": "uno"},
         ]) + "\n```"
-        board = storyboard.parse_storyboard(raw, self.BEATS, seed=1)
+        board = storyboard.parse_storyboard(raw, self.SENTENCES, seed=1)
         self.assertEqual([s.description for s in board.scenes], ["uno", "dos"])
+
+    # Tres ideas en seis frases, de 4, 3, 3, 4, 5 y 4 palabras.
+    STORY = [
+        "Tácito escribió sobre Jesús.",
+        "No era cristiano.",
+        "Segundo, la crucifixión.",
+        "Nadie inventaría algo así.",
+        "Tercero, las cartas de Pablo.",
+        "Pablo conoció a Pedro.",
+    ]
+
+    def test_parse_cuts_where_the_model_says_and_times_by_the_words_before(self):
+        scenes = [
+            {"from": 1, "description": "Tácito escribe"},
+            {"from": 3, "description": "Tres cruces"},
+            {"from": 5, "description": "Pablo escribe"},
+        ]
+        board = storyboard.parse_storyboard(self.answer(scenes=scenes), self.STORY, seed=1)
+        self.assertEqual([(s.start, s.text, s.description) for s in board.scenes], [
+            (0.0, "Tácito escribió sobre Jesús. No era cristiano.", "Tácito escribe"),
+            # 7 palabras antes ≈ 2,6 s; 14 ≈ 5,2 s.
+            (2.6, "Segundo, la crucifixión. Nadie inventaría algo así.", "Tres cruces"),
+            (5.2, "Tercero, las cartas de Pablo. Pablo conoció a Pedro.", "Pablo escribe"),
+        ])
+
+    def test_parse_repairs_the_cuts_without_inventing_scenes(self):
+        scenes = [
+            {"from": 5, "description": "Pablo escribe"},
+            # La primera empieza tarde: abre el video igual.
+            {"from": 2, "description": "Tácito duda"},
+            {"from": 5, "description": "repetida"},
+            {"from": 40, "description": "fuera del guion"},
+            {"from": 3},
+            "basura",
+        ]
+        board = storyboard.parse_storyboard(self.answer(scenes=scenes), self.STORY, seed=1)
+        self.assertEqual([(s.start, s.description) for s in board.scenes], [(0.0, "Tácito duda"), (5.2, "Pablo escribe")])
+        self.assertEqual(board.scenes[0].text, " ".join(self.STORY[:4]))
+
+    def test_parse_keeps_at_most_max_scenes_and_cuts_where_the_model_did(self):
+        # 16 frases de 9 palabras ≈ 53 s: el reparto por longitud da 8 tramos.
+        sentences = [f"Frase número {i} con algo más de texto aquí." for i in range(16)]
+        scenes = [{"from": n, "description": f"plano {n}"} for n in range(1, 17)]
+        board = storyboard.parse_storyboard(self.answer(scenes=scenes), sentences, seed=1)
+
+        cuts = illustration.plan_cuts(sentences)
+        self.assertEqual(len(cuts), illustration.MAX_SCENES)
+        self.assertEqual([s.description for s in board.scenes], [f"plano {c + 1}" for c in cuts])
+        self.assertEqual(" ".join(s.text for s in board.scenes), " ".join(sentences))
+
+    def test_scene_range_keeps_images_under_nine_seconds_and_at_most_eight(self):
+        self.assertEqual(storyboard.scene_range(self.SENTENCES), (1, 2))
+        sentences = [f"Frase número {i} con algo más de texto aquí." for i in range(16)]
+        self.assertEqual(storyboard.scene_range(sentences), (6, 8))
 
     def test_parse_drops_broken_or_repeated_characters_and_caps_the_cast(self):
         cast = [{"name": "Ana", "traits": "a"}, {"name": "ana", "traits": "b"}, {"name": "Sin rasgos"}, "basura"]
         cast += [{"name": f"P{i}", "traits": "t"} for i in range(8)]
-        board = storyboard.parse_storyboard(self.answer(characters=cast), self.BEATS, seed=1)
+        board = storyboard.parse_storyboard(self.answer(characters=cast), self.SENTENCES, seed=1)
         self.assertEqual([c.name for c in board.guide.characters], ["Ana", "P0", "P1", "P2", "P3", "P4"])
 
-    def test_prompt_lists_the_fixed_cast_and_the_library(self):
+    def test_prompt_lists_the_fixed_cast_and_nothing_from_the_library(self):
         fixed = [illustration.Character("Lucía", "mujer de 30 años", "persona", 3)]
-        offered = [illustration.Character("Pincel", "robot de dibujo naranja", "objeto", 7)]
-        prompt = storyboard.build_prompt("t", "", "Hola. Adiós.", self.BEATS, fixed, offered)
+        prompt = storyboard.build_prompt("t", "", self.SENTENCES, fixed)
         self.assertIn("Elementos que ya están en el video (mantén los que encajen):\n- Lucía (persona): mujer de 30 años", prompt)
-        self.assertIn("Elementos guardados de otros videos (usa los que encajen):\n- Pincel (objeto): robot de dibujo naranja", prompt)
-        bare = storyboard.build_prompt("t", "", "Hola. Adiós.", self.BEATS)
+        bare = storyboard.build_prompt("t", "", self.SENTENCES)
         self.assertNotIn("ya están en el video", bare)
-        self.assertNotIn("guardados", bare)
-        for word in ('"kind"', "animal", "objeto", "lugar", "elementos guardados"):
+        # La biblioteca solo entra a mano: el encargo ni la menciona.
+        self.assertNotIn("guardados", prompt + storyboard.SYSTEM_PROMPT)
+        for word in ('"kind"', "animal", "objeto", "lugar", "ya están en el video"):
             self.assertIn(word, storyboard.SYSTEM_PROMPT)
 
     def test_parse_keeps_what_the_model_reuses_exactly_as_it_was(self):
@@ -322,18 +420,17 @@ class StoryboardTests(unittest.TestCase):
             # De otro video: el modelo lo deja fuera y no se fuerza.
             illustration.Character("Jesús", "túnica crema", "persona", 9),
         )
-        offered = (illustration.Character("Pincel", "robot de dibujo naranja", "objeto", 7),)
         cast = [
             {"name": "LUCIA", "kind": "persona", "traits": "otra mujer"},
-            # El modelo reescribe lo de la biblioteca: manda la biblioteca.
-            {"name": "pincel", "kind": "persona", "traits": "un robot cualquiera"},
+            # Se llama como algo guardado, pero no está en el video: es nuevo, sin enlazar.
+            {"name": "pincel", "kind": "objeto", "traits": "un robot cualquiera"},
             {"name": "Firulais", "kind": "animal", "traits": "perro salchicha"},
             {"name": "La mesa", "kind": "dragón", "traits": "mesa de roble"},
         ]
-        board = storyboard.parse_storyboard(self.answer(characters=cast), self.BEATS, 1, current, offered)
+        board = storyboard.parse_storyboard(self.answer(characters=cast), self.SENTENCES, 1, current)
         self.assertEqual(board.guide.characters, (
             current[0],
-            offered[0],
+            illustration.Character("pincel", "un robot cualquiera", "objeto"),
             illustration.Character("Firulais", "perro salchicha", "animal"),
             illustration.Character("La mesa", "mesa de roble", "persona"),
         ))
@@ -343,10 +440,11 @@ class StoryboardTests(unittest.TestCase):
             ("no es json", "formato esperado"),
             ("[1, 2]", "formato esperado"),
             (self.answer(look=" "), "sin estilo"),
-            (self.answer(scenes=[{"n": 1, "description": "uno"}]), "faltan 1 de 2"),
+            (self.answer(scenes=[]), "sin escenas"),
+            (self.answer(scenes=[{"from": 9, "description": "fuera"}, {"from": 1}]), "sin escenas"),
         ):
             with self.subTest(raw=raw[:20]), self.assertRaisesRegex(WriterError, message):
-                storyboard.parse_storyboard(raw, self.BEATS, seed=1)
+                storyboard.parse_storyboard(raw, self.SENTENCES, seed=1)
 
     def test_seed_fits_in_32_bits(self):
         self.assertTrue(all(0 < storyboard.new_seed() < 2**31 for _ in range(50)))
@@ -415,6 +513,12 @@ class ReviewTests(unittest.TestCase):
 
     def test_review_prompt_and_rules(self):
         self.assertEqual(review.review_prompt("  Ana   sirve café "), "Descripción de la escena: Ana sirve café")
+        fixed = review.review_prompt("Ana sirve café", " tiene  tres brazos ").splitlines()
+        self.assertEqual(fixed[0], "Descripción de la escena: Ana sirve café")
+        self.assertIn("Se pidió arreglar: tiene tres brazos", fixed[1])
+        # Una imagen puesta a mano no trae descripción: no se juzga por «otra escena».
+        self.assertIn("no apliques el punto 4", review.review_prompt("", "sobra la taza"))
+        self.assertIn("4. Otra escena", review.SYSTEM_PROMPT)
         for rule in ("Anatomía", "fundidos", "Letras", "JSON"):
             self.assertIn(rule, review.SYSTEM_PROMPT)
 
@@ -442,6 +546,49 @@ class ReferenceTests(unittest.TestCase):
         ))
         self.assertNotIn("imagen 0", line)
         self.assertNotIn("imagen 1", line)
+
+        # Al corregir, la primera referencia es la imagen y la biblioteca va detrás.
+        self.assertTrue(illustration.reference_line([self.ANA], first=1).startswith(
+            "Ana se ve igual que en la segunda imagen de referencia:"
+        ))
+        self.assertTrue(illustration.reference_line([self.ANA, self.LUIS], first=1).startswith(
+            "Ana se ve igual que en la segunda imagen de referencia; Luis, que en la tercera:"
+        ))
+
+    def test_correction_prompt_asks_to_edit_the_first_reference(self):
+        guide = illustration.VisualGuide("acuarela", (self.ANA, self.LUIS, self.PINCEL), 1)
+        lines = illustration.correction_prompt(
+            "Luis tiene tres brazos", "Ana enciende a Pincel", guide, [self.ANA, self.LUIS, self.PINCEL, self.ANA],
+        ).splitlines()
+        self.assertEqual(lines[:3], [
+            "Corrige la primera imagen de referencia. Lo que hay que arreglar: Luis tiene tres brazos.",
+            illustration.KEEP_THE_REST,
+            "La escena muestra: Ana enciende a Pincel.",
+        ])
+        # Quien nombra la corrección también lleva sus rasgos, aunque la descripción no lo nombre.
+        self.assertEqual(lines[3:6], ["Ana: pelo rojo.", "Luis: barba negra.", "Pincel: robot de dibujo naranja."])
+        # Caben tres referencias de la biblioteca: la cuarta posición es la imagen.
+        self.assertTrue(lines[6].endswith("Pincel, que en la cuarta: mismo aspecto (cara, pelo, ropa, forma y colores), "
+                                          "en la postura y el lugar que pide la escena."))
+        self.assertEqual(len(lines), 7)
+        # Ni estilo ni encuadre: ya están en la imagen.
+        self.assertNotIn("Estilo", "\n".join(lines))
+
+        bare = illustration.correction_prompt("quita las letras del cielo")
+        self.assertEqual(bare.splitlines(), [
+            "Corrige la primera imagen de referencia. Lo que hay que arreglar: quita las letras del cielo.",
+            illustration.KEEP_THE_REST,
+        ])
+
+    def test_correction_and_description_validation(self):
+        self.assertEqual(illustration.validate_correction("  tres   brazos "), "tres brazos")
+        with self.assertRaisesRegex(ValidationError, "qué está mal"):
+            illustration.validate_correction(" ")
+        with self.assertRaisesRegex(ValidationError, "demasiado larga"):
+            illustration.validate_correction("x" * (illustration.CORRECTION_LIMIT + 1))
+        self.assertEqual(illustration.validate_description("  ", required=False), "")
+        with self.assertRaisesRegex(ValidationError, "Describe"):
+            illustration.validate_description("  ")
 
     def test_image_prompt_puts_the_references_after_the_cast(self):
         guide = illustration.VisualGuide("acuarela", (self.ANA, self.PINCEL), 1)
@@ -525,3 +672,144 @@ class MotionTests(unittest.TestCase):
         self.assertEqual(motion.scene_seed(2, "ia-cafe_1.jpg"), motion.scene_seed(2, "ia-cafe_1.jpg"))
         self.assertNotEqual(motion.scene_seed(1, "ia-cafe_1.jpg"), motion.scene_seed(2, "ia-cafe_1.jpg"))
 
+
+
+class CoverTests(unittest.TestCase):
+    def words(self, title):
+        return [(w.text, w.highlighted) for w in cover.cover_words(title)]
+
+    def test_asterisks_mark_what_stands_out(self):
+        self.assertEqual(
+            self.words("El *error* que todos cometen"),
+            [("EL", False), ("ERROR", True), ("QUE", False), ("TODOS", False), ("COMETEN", False)],
+        )
+        # Dos palabras seguidas, y las tildes en mayúscula.
+        self.assertEqual(self.words("*Nadie te* lo dirá"), [("NADIE", True), ("TE", True), ("LO", False), ("DIRÁ", False)])
+        # Un asterisco sin pareja no resalta hasta el final: se descarta.
+        self.assertEqual(self.words("El *mejor truco* del *año"), [
+            ("EL", False), ("MEJOR", True), ("TRUCO", True), ("DEL", False), ("AÑO", False),
+        ])
+        # La puntuación pegada a lo resaltado se queda con su palabra, no suelta.
+        self.assertEqual(self.words("Lo llamó *Padre*, no juez"), [
+            ("LO", False), ("LLAMÓ", False), ("PADRE,", True), ("NO", False), ("JUEZ", False),
+        ])
+        self.assertEqual(self.words("a * b"), [("A", False), ("B", False)])
+        self.assertEqual(cover.plain_title("El *error*  que"), "El error que")
+
+    def test_clean_title_trims_quotes_period_and_length(self):
+        self.assertEqual(cover.clean_title('  «El  *error* que cometes».  '), "El *error* que cometes")
+        self.assertEqual(cover.clean_title('"Hola".'), "Hola")
+        self.assertEqual(cover.clean_title("¿De verdad?"), "¿De verdad?")
+        long = " ".join(f"p{i}" for i in range(20))
+        self.assertEqual(len(cover.clean_title(long).split()), cover.MAX_TITLE_WORDS)
+
+    def test_default_title_highlights_the_longest_word_of_the_topic(self):
+        self.assertEqual(cover.default_title("los beneficios del ayuno"), "los *beneficios* del ayuno")
+        self.assertEqual(cover.default_title("¿Por qué el café?"), "¿Por qué el *café?*")
+        self.assertEqual(cover.default_title("el sol"), "el sol")  # nada de cuatro letras o más
+        self.assertEqual(cover.default_title("ya *marcado* aquí"), "ya *marcado* aquí")
+        self.assertEqual(cover.default_title("   "), "")
+
+    def test_validate_cover(self):
+        self.assertEqual(
+            cover.validate_cover(" El *truco* ", "franja", " ia-1.jpg "),
+            cover.Cover("El *truco*", "franja", "ia-1.jpg"),
+        )
+        self.assertEqual(cover.validate_cover("Hola", None, "").design, cover.DEFAULT_DESIGN)
+        self.assertIsNone(cover.validate_cover("Hola", "impacto", "").background)
+        with self.assertRaisesRegex(ValidationError, "título"):
+            cover.validate_cover(" ** ")
+        with self.assertRaisesRegex(ValidationError, "desconocido: neón"):
+            cover.validate_cover("Hola", "neón")
+
+    def test_the_cover_uses_the_first_scene_with_an_image(self):
+        scenes = [{"background": "rio.mp4"}, {"background": None}, {"background": "ia-2.jpg"}]
+        self.assertEqual(cover.first_background(scenes), "ia-2.jpg")
+        self.assertEqual(cover.first_background([{"background": "rio.mp4"}]), "rio.mp4")
+        self.assertIsNone(cover.first_background([]))
+
+    def test_stored_cover_falls_back_for_old_videos(self):
+        scenes = [{"background": "ia-2.jpg", "start": 0}]
+        saved = {"title": "El *truco*", "design": "titular", "background": "otra.jpg"}
+        self.assertEqual(cover.stored_cover(saved, "tema", scenes), cover.Cover("El *truco*", "titular", "otra.jpg"))
+        self.assertEqual(
+            cover.stored_cover({}, "ayuno intermitente", scenes),
+            cover.Cover("ayuno *intermitente*", "impacto", "ia-2.jpg"),
+        )
+        self.assertEqual(cover.stored_cover(None, "", []).title, "Sin título")
+
+    def test_read_cover_keeps_only_what_is_valid(self):
+        self.assertEqual(
+            cover.read_cover({"title": "Hola", "design": "franja", "background": None}),
+            {"title": "Hola", "design": "franja", "background": None},
+        )
+        self.assertEqual(cover.read_cover({"title": "", "design": "franja"}), {})
+        self.assertEqual(cover.read_cover(None), {})
+        self.assertEqual(cover.cover_filename("¡Ayuno 101!"), "portada-ayuno-101.jpg")
+
+    def test_parse_titles_from_json(self):
+        raw = (
+            '<think>a ver</think>```json\n{"titles": ["El *error* que cometes.", "«Nadie lo *sabe*»", '
+            '"el error que cometes", 3, "", "' + " ".join(["muy"] * 20) + '", "Uno *más*", "Otro *más*", "Sobra"]}\n```'
+        )
+        self.assertEqual(
+            cover.parse_titles(raw), ["El *error* que cometes", "Nadie lo *sabe*", "Uno *más*", "Otro *más*"],
+        )
+
+    def test_parse_titles_from_a_plain_list(self):
+        raw = "Aquí tienes cuatro títulos:\n1. El *error* fatal\n- *3* trucos\n\n• Lo que *nadie* dice"
+        self.assertEqual(cover.parse_titles(raw), ["El *error* fatal", "*3* trucos", "Lo que *nadie* dice"])
+
+    def test_parse_titles_fails_with_the_reason(self):
+        with self.assertRaisesRegex(WriterError, "títulos"):
+            cover.parse_titles('{"titles": []}')
+        with self.assertRaisesRegex(WriterError, "títulos"):
+            cover.parse_titles(None)
+
+    def test_prompt_carries_topic_and_script(self):
+        prompt = cover.build_titles_prompt(" ayuno ", " Guion. ")
+        self.assertEqual(prompt, "Tema: ayuno\n\nGuion del video:\nGuion.")
+        self.assertIn('{"titles"', cover.TITLES_SYSTEM_PROMPT)
+
+
+class DescriptionTests(unittest.TestCase):
+    GOOD = (
+        "Qué dijo Jesús sobre Dios según los evangelios: tres enseñanzas que cambian cómo lo ves. "
+        "Lo llamó Padre, dijo que es espíritu y contó la parábola del hijo pródigo."
+        "\n\n#jesus #dios #biblia"
+    )
+
+    def test_clean_keeps_lines_and_trims_the_rest(self):
+        raw = "  Primera   línea  \n\n\n\n  #uno   #dos  "
+        self.assertEqual(description.clean_description(raw), "Primera línea\n\n#uno #dos")
+        self.assertEqual(description.clean_description(None), "")
+        long = "palabra " * 1000
+        clipped = description.clean_description(long)
+        self.assertLessEqual(len(clipped), description.DESCRIPTION_LIMIT)
+        self.assertTrue(clipped.endswith("palabra"))
+        self.assertEqual(description.DESCRIPTION_LIMIT, 5000)
+
+    def test_parse_strips_what_models_add_around_it(self):
+        for raw in (
+            self.GOOD,
+            f"<think>veamos</think>Descripción: {self.GOOD}",
+            f"**Descripción**:\n{self.GOOD}",
+            f"```\n{self.GOOD}\n```",
+            f"«{self.GOOD}»",
+        ):
+            with self.subTest(raw=raw[:30]):
+                self.assertEqual(description.parse_description(raw), self.GOOD)
+
+    def test_parse_rejects_what_is_too_short(self):
+        with self.assertRaisesRegex(WriterError, "incompleta"):
+            description.parse_description("Un video sobre Jesús.")
+        with self.assertRaisesRegex(WriterError, "incompleta"):
+            description.parse_description(None)
+
+    def test_prompt_puts_keywords_first_and_carries_the_title(self):
+        self.assertIn("Empieza por las palabras clave", description.DESCRIPTION_SYSTEM_PROMPT)
+        self.assertEqual(
+            description.build_description_prompt(" ayuno ", " El ayuno real ", " Guion. "),
+            "Tema: ayuno\nTítulo de la portada: El ayuno real\n\nGuion del video:\nGuion.",
+        )
+        self.assertNotIn("Título", description.build_description_prompt("t", "", "g"))

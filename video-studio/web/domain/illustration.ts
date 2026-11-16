@@ -226,7 +226,7 @@ export function reviewNote(review: ImageReview): { text: string; warn: boolean }
   if (review.status === "flagged") {
     const tries = attempts === 1 ? "1 intento" : `${attempts} intentos`;
     return {
-      text: `${reviewer} ve fallos tras ${tries}: ${sentence(review.problems)}. Pide otra o elige otro fondo.`,
+      text: `${reviewer} ve fallos tras ${tries}: ${sentence(review.problems)}. Corrígela, pide otra o elige otro fondo.`,
       warn: true,
     };
   }
@@ -235,6 +235,23 @@ export function reviewNote(review: ImageReview): { text: string; warn: boolean }
   const images = dropped === 1 ? "1 imagen" : `${dropped} imágenes`;
   const why = review.fixed.length ? `: ${sentence(review.fixed)}` : "";
   return { text: `Revisada por ${reviewer}. Descartó ${images} con fallos${why}.`, warn: false };
+}
+
+// --------------------------------------------------------------------------- //
+// Corregir una imagen
+// --------------------------------------------------------------------------- //
+
+/** Tope de lo que se cuenta que está mal. Igual que `CORRECTION_LIMIT` en el backend. */
+export const CORRECTION_LIMIT = 500;
+
+/**
+ * De qué partir al corregir: si el revisor vio fallos en la imagen que se
+ * quedó, esos mismos, ya redactados; si no, nada.
+ */
+export function correctionDraft(review: ImageReview | undefined | null): string {
+  if (review?.status !== "flagged") return "";
+  const problems = review.problems.map((p) => p.trim().replace(/[.\s]+$/, "")).filter(Boolean);
+  return problems.length ? `${problems.join("; ")}.` : "";
 }
 
 // --------------------------------------------------------------------------- //

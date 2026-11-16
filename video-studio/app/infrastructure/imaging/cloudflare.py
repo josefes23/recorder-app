@@ -17,14 +17,13 @@ neuronas, y para reconocer una cara o una forma no hace falta más.
 from __future__ import annotations
 
 import base64
-import io
 from collections.abc import Sequence
 
 import requests
 
 from app.domain.errors import IllustratorError
 from app.domain.illustration import GeneratedImage
-from app.infrastructure.imaging import compact, sniff_extension
+from app.infrastructure.imaging import compact, shrink, sniff_extension
 
 URL = "https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model}"
 
@@ -66,7 +65,7 @@ def paint(
     if seed is not None:
         form["seed"] = (None, str(seed))
     for i, reference in enumerate(references[:MAX_REFERENCES]):
-        form[f"input_image_{i}"] = (f"referencia_{i}.jpg", shrink(reference.data), "image/jpeg")
+        form[f"input_image_{i}"] = (f"referencia_{i}.jpg", shrink(reference.data, REFERENCE_SIDE), "image/jpeg")
     try:
         response = requests.post(
             URL.format(account=(account_id or "").strip(), model=model),
@@ -81,18 +80,6 @@ def paint(
 
     raise_for_status(response, model)
     return extract_image(response)
-
-
-def shrink(data: bytes, side: int = REFERENCE_SIDE) -> bytes:
-    """La referencia en JPEG, con su lado mayor como mucho en `side`."""
-    from PIL import Image
-
-    with Image.open(io.BytesIO(data)) as picture:
-        picture = picture.convert("RGB")
-        picture.thumbnail((side, side))
-        out = io.BytesIO()
-        picture.save(out, "JPEG", quality=90)
-        return out.getvalue()
 
 
 def first_error(response: requests.Response) -> str:

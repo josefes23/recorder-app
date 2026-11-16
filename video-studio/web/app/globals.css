@@ -170,8 +170,16 @@
 }
 @media (max-width: 1000px) { .workbench { grid-template-columns: 1fr; } }
 
-.rail { position: sticky; top: calc(var(--topbar) + var(--s5)); }
-@media (max-width: 1000px) { .rail { position: static; } }
+/* Pegada al hacer scroll, pero con su propio scroll: con la portada y sus
+   controles es más alta que la pantalla, y una columna pegada más alta que
+   la ventana esconde su final hasta llegar al fondo de la página. */
+.rail {
+  position: sticky; top: calc(var(--topbar) + var(--s5));
+  max-height: calc(100vh - var(--topbar) - 2 * var(--s5));
+  overflow-y: auto; border-radius: var(--r-lg);
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+@media (max-width: 1000px) { .rail { position: static; max-height: none; overflow: visible; } }
 
 .panel {
   background: var(--surface);
@@ -250,11 +258,62 @@ label.btn, a.btn { display: inline-block; text-decoration: none; }
   /* Sin tope, al colapsar a una columna el marco se come toda la pantalla */
   max-width: 300px; width: 100%; margin-inline: auto;
 }
-.frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.frame img { width: 100%; height: 100%; object-fit: contain; display: block; transition: opacity 0.15s; }
 .frame-empty { color: var(--muted); font-size: var(--t-sm); padding: var(--s4); text-align: center; }
+/* Repintando: se sigue viendo la anterior, apagada, en vez de un hueco que parpadea */
+.frame.is-busy img { opacity: 0.55; }
+
+/* Pestañas y selectores de una opción entre pocas */
+.tabs {
+  display: flex; gap: 2px; padding: 2px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm);
+}
+.tab {
+  flex: 1; padding: 5px 9px; font-size: var(--t-xs); font-weight: 500;
+  background: none; border: none; border-radius: calc(var(--r-sm) - 2px);
+  color: var(--muted); cursor: pointer;
+}
+.tab:hover { color: var(--text); }
+.tab.is-on { background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--line); }
+
+/* Portada: los títulos propuestos se enseñan como saldrán, en mayúsculas y
+   con lo resaltado en el acento */
+.cover-titles { display: flex; flex-direction: column; gap: var(--s1); }
+.cover-title {
+  text-align: left; padding: 6px 9px; cursor: pointer;
+  font-size: var(--t-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+}
+.cover-title:hover { border-color: var(--muted); }
+.cover-title.is-on { border-color: var(--accent); }
+.cover-title mark { background: none; color: var(--accent); }
+.cover-suggest { gap: var(--s2); }
+
+/* La tira de imágenes candidatas se desliza en horizontal: no crece en alto */
+.cover-strip {
+  display: flex; gap: var(--s2); overflow-x: auto; padding: 2px;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+.cover-pick {
+  flex: none; padding: 0; line-height: 0; cursor: pointer;
+  background: none; border: 2px solid transparent; border-radius: var(--r-sm);
+}
+.cover-pick.is-on { border-color: var(--accent); }
+.cover-strip > .scene-thumb { flex: none; }
+.cover-ai { font-size: var(--t-xs); font-weight: 600; }
+
+/* El video acabado: sus dos descargas juntas */
+.done {
+  display: flex; flex-direction: column; gap: var(--s2);
+  background: color-mix(in srgb, var(--ok) 8%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent);
+  border-radius: var(--r); padding: var(--s3);
+}
+.done-title { font-size: var(--t-sm); font-weight: 600; color: var(--ok); }
 
 /* Resumen de lo que se va a renderizar: responde «¿qué sale de aquí?» sin
-   tener que recorrer los cuatro pasos hacia arriba. */
+   tener que recorrer los pasos hacia arriba. */
 .readout { display: flex; flex-direction: column; gap: var(--s1); }
 .readout-row { display: flex; justify-content: space-between; gap: var(--s3); font-size: var(--t-sm); }
 .readout-row dt { color: var(--muted); }
@@ -489,3 +548,6 @@ label.btn, a.btn { display: inline-block; text-decoration: none; }
 .chip { display: inline-flex; align-items: center; gap: var(--s1); }
 .scene-cast { gap: var(--s2); }
 .scene-cast-item { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Descripción: lo que se lee antes de «más», entre comillas y sin cursiva */
+.description-visible { color: var(--text); quotes: "«" "»"; }

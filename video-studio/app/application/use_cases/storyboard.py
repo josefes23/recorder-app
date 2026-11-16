@@ -5,16 +5,16 @@ pintar ninguna.
 Va por el flujo de eventos como el guion, y por lo mismo: el modelo tarda de
 segundos a más de un minuto y ninguna petición HTTP debería esperar tanto.
 
-Lleva lo que ya está en el video y la biblioteca de elementos guardados: el
-modelo reutiliza lo que encaje, así un video nuevo sobre el mismo tema trae al
-mismo Jesús, con su imagen de referencia.
+Lleva lo que ya está en el video y nada más. La biblioteca de elementos
+guardados no se consulta: lo guardado entra en un video solo si el usuario lo
+mete a mano, y entonces llega aquí con el resto del reparto.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from app.application.ports import CharacterRepository, EventLog, ScriptComposer
+from app.application.ports import EventLog, ScriptComposer
 from app.application.use_cases.writer_settings import WriterSettings
 from app.domain.errors import DomainError, ValidationError, WriterError
 from app.domain.events import (
@@ -25,8 +25,8 @@ from app.domain.events import (
     Event,
     new_job_key,
 )
-from app.domain.illustration import Beat, Character, fold, plan_beats, validate_guide
-from app.domain.saved_characters import OFFER_LIMIT
+from app.domain.illustration import Character, split_sentences, validate_guide
+from app.domain.script import clean_script
 from app.domain.storyboard import SYSTEM_PROMPT, Storyboard, build_prompt, new_seed, parse_storyboard
 
 CONSUMER_GROUP = "storyboarder"
@@ -38,12 +38,10 @@ class StoryboardUseCases:
         events: EventLog,
         writer: WriterSettings,
         composer: ScriptComposer,
-        library: CharacterRepository,
     ) -> None:
         self._events = events
         self._writer = writer
         self._composer = composer
-        self._library = library
 
     # Desde la API ------------------------------------------------------------ #
 
@@ -54,7 +52,7 @@ class StoryboardUseCases:
         Encola el guion visual y devuelve el evento con la clave del trabajo.
         `characters` es lo que ya está en el video: entra si encaja.
         """
-        self._beats(script)
+        self._sentences(script)
         current = validate_guide("", characters, None).characters
         if not self._writer.available():
             raise ValidationError(
@@ -78,9 +76,7 @@ class StoryboardUseCases:
         self, topic: str, script: str, style: str = "", current: Sequence[Character] = ()
     ) -> Storyboard:
         """Escribe el guion visual ahora, bloqueando. Lo llama el consumidor, nunca la API."""
-        beats = self._beats(script)
-        taken = {fold(c.name) for c in current}
-        offered = [s.as_character() for s in self._library.list() if fold(s.name) not in taken][:OFFER_LIMIT]
+        sentences = self._sentences(script)
         provider = self._writer.active()
         if provider is None:
             raise WriterError("No hay clave de API configurada. Añade una en «Modelo del guion».")
@@ -89,9 +85,9 @@ class StoryboardUseCases:
             self._writer.model_for(provider),
             self._writer.api_key(provider),
             SYSTEM_PROMPT,
-            build_prompt(topic, style, script, beats, current, offered),
+            build_prompt(topic, style, sentences, current),
         )
-        return parse_storyboard(raw, beats, new_seed(), current, offered)
+        return parse_storyboard(raw, sentences, new_seed(), current)
 
     def handle_request(self, event: Event) -> None:
         """Atiende un `storyboard.requested` y publica su desenlace."""
@@ -119,8 +115,8 @@ class StoryboardUseCases:
     # ------------------------------------------------------------------------ #
 
     @staticmethod
-    def _beats(script: str) -> list[Beat]:
-        beats = plan_beats(script)
-        if not beats:
+    def _sentences(script: str) -> list[str]:
+        sentences = split_sentences(clean_script(script))
+        if not sentences:
             raise ValidationError("Escribe primero el guion: las escenas salen de sus frases.")
-        return beats
+        return sentences

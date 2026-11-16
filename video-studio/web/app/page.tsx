@@ -1,6 +1,7 @@
 "use client";
 
 import { CaptionsStep } from "@/features/captions/ui/CaptionsStep";
+import { DescriptionStep } from "@/features/description/ui/DescriptionStep";
 import { ImageSettingsPanel } from "@/features/illustrations/ui/ImageSettingsPanel";
 import { LibraryPanel } from "@/features/library/ui/LibraryPanel";
 import { OutputPanel } from "@/features/render/ui/OutputPanel";
@@ -23,13 +24,14 @@ export default function Page() {
       <Topbar />
 
       <main className="workbench">
-        {/* Los cuatro pasos en un solo panel: son una secuencia, no cuatro
-            herramientas sueltas, y los filetes lo cuentan mejor que las cajas */}
+        {/* Los pasos en un solo panel: son una secuencia, no herramientas
+            sueltas, y los filetes lo cuentan mejor que las cajas */}
         <div className="panel">
           <ScriptStep settings={<WriterSettings />} />
           <VoiceStep />
           <CaptionsStep />
           <ScenesStep settings={<ImageSettingsPanel />} />
+          <DescriptionStep />
         </div>
 
         <aside className="rail">

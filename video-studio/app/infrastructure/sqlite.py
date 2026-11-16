@@ -71,21 +71,43 @@ class SqliteVideoRepository:
         captions    INTEGER,
         status      TEXT    NOT NULL DEFAULT 'queued',
         error       TEXT,
-        created_at  TEXT    NOT NULL
+        created_at  TEXT    NOT NULL,
+        cover       TEXT    NOT NULL DEFAULT '{}',
+        description TEXT    NOT NULL DEFAULT ''
     );
     """
+
+    #: Columnas que llegaron después de la tabla, con cómo crearlas en una base vieja.
+    ADDED_COLUMNS = {
+        "cover": "TEXT NOT NULL DEFAULT '{}'",
+        "description": "TEXT NOT NULL DEFAULT ''",
+    }
 
     def __init__(self, db: Database) -> None:
         self._db = db
         db.migrate(self.SCHEMA)
+        self._add_missing_columns()
+
+    def _add_missing_columns(self) -> None:
+        """
+        `CREATE TABLE IF NOT EXISTS` no toca una tabla que ya existe: las bases
+        de antes de cada columna nueva la reciben aquí, con su valor vacío.
+        """
+        with self._db.connection() as conn:
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(videos)")}
+            missing = [name for name in self.ADDED_COLUMNS if name not in columns]
+            for name in missing:
+                conn.execute(f"ALTER TABLE videos ADD COLUMN {name} {self.ADDED_COLUMNS[name]}")
+            if missing:
+                conn.commit()
 
     def add(self, video: NewVideo) -> int:
         with self._db.connection() as conn:
             cur = conn.execute(
-                "INSERT INTO videos (topic, script, voice, style, scenes, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO videos (topic, script, voice, style, scenes, cover, description, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (video.topic, video.script, video.voice, json.dumps(video.style),
-                 json.dumps(video.scenes), _now()),
+                 json.dumps(video.scenes), json.dumps(video.cover), video.description, _now()),
             )
             conn.commit()
             return int(cur.lastrowid)
@@ -118,7 +140,7 @@ class SqliteVideoRepository:
 
 def _row_to_video(row: sqlite3.Row) -> Video:
     data = dict(row)
-    for field in ("style", "scenes"):
+    for field in ("style", "scenes", "cover"):
         try:
             data[field] = json.loads(data[field]) if data.get(field) else {}
         except (TypeError, json.JSONDecodeError):

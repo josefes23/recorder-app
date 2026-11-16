@@ -34,7 +34,10 @@ def request_storyboard(req: StoryboardRequest, studio: StudioDep) -> dict:
 
 @router.post("/illustrations", status_code=202)
 def request_illustration(req: IllustrationRequest, studio: StudioDep) -> dict:
-    """Encola una imagen. Llega por /api/events como `illustration.completed`."""
+    """
+    Encola una imagen, o la corrección de una de la galería si trae `source` y
+    `correction`. Llega por /api/events como `illustration.completed`.
+    """
     event = studio.illustrations.request(
         req.topic,
         req.description,
@@ -44,5 +47,7 @@ def request_illustration(req: IllustrationRequest, studio: StudioDep) -> dict:
         req.provider,
         req.model,
         req.review,
+        req.source,
+        req.correction,
     )
     return {"job": event.key, "offset": event.offset}

@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from app.application.ports import RenderQueue, VideoRepository
 from app.application.render_jobs import RenderJobs
+from app.domain.cover import read_cover
+from app.domain.description import clean_description
 from app.domain.errors import NotFoundError, ValidationError
 from app.domain.scene import Scene
 from app.domain.script import clean_script, estimate_seconds
@@ -25,14 +29,24 @@ class RenderUseCases:
         pitch: str,
         style: dict,
         scenes: list[Scene],
+        cover: Mapping | None = None,
+        description: str = "",
     ) -> tuple[int, float]:
-        """Abre la ficha, encola el trabajo y devuelve (id, segundos estimados)."""
+        """
+        Abre la ficha, encola el trabajo y devuelve (id, segundos estimados).
+        La portada y la descripción se guardan con la ficha para recuperarlas
+        al publicar.
+        """
         text = clean_script(script)
         if not text:
             raise ValidationError("El guion está vacío.")
 
         scene_dicts = [scene.as_dict() for scene in scenes]
-        video_id = self._videos.add(NewVideo(topic, text, voice, style, scene_dicts))
+        video_id = self._videos.add(
+            NewVideo(
+                topic, text, voice, style, scene_dicts, read_cover(cover), clean_description(description),
+            )
+        )
         self._queue.enqueue(
             video_id,
             RenderSpec(topic=topic, script=text, voice=voice, rate=rate, pitch=pitch,

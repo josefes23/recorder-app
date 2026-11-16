@@ -30,6 +30,31 @@ class PreviewRequest(BaseModel):
     style: dict = Field(default_factory=dict)
 
 
+class CoverIn(BaseModel):
+    #: Lo que va entre asteriscos sale resaltado.
+    title: str = ""
+    design: str = "impacto"
+    #: Nombre en la galería; vacío pinta el degradado del tema.
+    background: str | None = None
+
+
+class CoverRequest(CoverIn):
+    #: Da color al degradado cuando no hay imagen, como en el render.
+    topic: str = ""
+
+
+class TitlesRequest(BaseModel):
+    topic: str = ""
+    script: str = ""
+
+
+class DescriptionRequest(BaseModel):
+    topic: str = ""
+    script: str = ""
+    #: El de la portada, con o sin asteriscos: la descripción casa con él.
+    title: str = ""
+
+
 class RenderRequest(BaseModel):
     topic: str
     script: str
@@ -38,6 +63,10 @@ class RenderRequest(BaseModel):
     pitch: str = DEFAULT_PITCH
     style: dict = Field(default_factory=dict)
     scenes: list[SceneIn] = Field(default_factory=list)
+    #: Se guarda con el video para descargarla después.
+    cover: CoverIn | None = None
+    #: El texto con que se publica; se guarda con el video para copiarlo después.
+    description: str = ""
 
 
 class DownloadRequest(BaseModel):
@@ -102,3 +131,7 @@ class IllustrationRequest(BaseModel):
     model: str = ""
     #: Que el modelo del guion la revise y la repinte si ve fallos.
     review: bool = True
+    #: Para corregir una imagen en vez de pintar otra: cuál (su nombre en la
+    #: galería) y qué está mal. Al corregir, la descripción es opcional.
+    source: str = ""
+    correction: str = ""

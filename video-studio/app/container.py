@@ -16,6 +16,10 @@ from app.application.studio import Studio
 from app.application.use_cases.backgrounds import BackgroundUseCases
 from app.application.use_cases.characters import CONSUMER_GROUP as REFERENCER_GROUP
 from app.application.use_cases.characters import CharacterUseCases
+from app.application.use_cases.cover import CONSUMER_GROUP as TITLER_GROUP
+from app.application.use_cases.cover import CoverUseCases
+from app.application.use_cases.description import CONSUMER_GROUP as DESCRIBER_GROUP
+from app.application.use_cases.description import DescriptionUseCases
 from app.application.use_cases.illustrations import CONSUMER_GROUP as ILLUSTRATOR_GROUP
 from app.application.use_cases.illustrations import IllustrationUseCases, ImageSettings, ReviewedPainter
 from app.application.use_cases.library import LibraryUseCases
@@ -26,12 +30,15 @@ from app.application.use_cases.storyboard import CONSUMER_GROUP as STORYBOARD_GR
 from app.application.use_cases.storyboard import StoryboardUseCases
 from app.application.use_cases.writer_settings import WriterSettings
 from app.domain.events import (
+    DESCRIPTION_REQUESTED,
     ILLUSTRATION_REQUESTED,
     REFERENCE_REQUESTED,
     SCRIPT_REQUESTED,
     STORYBOARD_REQUESTED,
+    TITLES_REQUESTED,
 )
 from app.infrastructure.backgrounds import FileBackgroundStore
+from app.infrastructure.cover import PillowCoverPainter
 from app.infrastructure.env_credentials import HOME_ENV_FILES, EnvCredentials
 from app.infrastructure.files import LocalVideoFiles
 from app.infrastructure.generator import GeneratorTemplate, load_generator
@@ -94,7 +101,9 @@ def build_container(paths: Paths | None = None) -> Container:
     painter = ReviewedPainter(images, HttpIllustrator(), writer, composer)
     illustrations = IllustrationUseCases(events, images, painter, store, character_library, references)
     characters = CharacterUseCases(events, character_library, references, images, painter)
-    storyboards = StoryboardUseCases(events, writer, composer, character_library)
+    storyboards = StoryboardUseCases(events, writer, composer)
+    cover = CoverUseCases(events, writer, composer, PillowCoverPainter(gen), store, videos)
+    description = DescriptionUseCases(events, writer, composer)
 
     studio = Studio(
         writer=writer,
@@ -112,10 +121,14 @@ def build_container(paths: Paths | None = None) -> Container:
         illustrations=illustrations,
         storyboards=storyboards,
         characters=characters,
+        cover=cover,
+        description=description,
         generator=str(paths.generator),
     )
 
     consumer = EventConsumer(events, CONSUMER_GROUP, (SCRIPT_REQUESTED,), scripts.handle_request)
+    titler = EventConsumer(events, TITLER_GROUP, (TITLES_REQUESTED,), cover.handle_request)
+    describer = EventConsumer(events, DESCRIBER_GROUP, (DESCRIPTION_REQUESTED,), description.handle_request)
     storyboarder = EventConsumer(events, STORYBOARD_GROUP, (STORYBOARD_REQUESTED,), storyboards.handle_request)
     referencer = EventConsumer(events, REFERENCER_GROUP, (REFERENCE_REQUESTED,), characters.handle_request)
 
@@ -134,6 +147,8 @@ def build_container(paths: Paths | None = None) -> Container:
         threading.Thread(target=consumer.run_forever, daemon=True, name="script-consumer").start()
         threading.Thread(target=storyboarder.run_forever, daemon=True, name="storyboard-consumer").start()
         threading.Thread(target=referencer.run_forever, daemon=True, name="reference-consumer").start()
+        threading.Thread(target=titler.run_forever, daemon=True, name="titles-consumer").start()
+        threading.Thread(target=describer.run_forever, daemon=True, name="description-consumer").start()
         for n, illustrator in enumerate(illustrators, start=1):
             threading.Thread(target=illustrator.run_forever, daemon=True, name=f"illustrator-{n}").start()
 

@@ -14,6 +14,8 @@ from app.application.render_jobs import RenderJobs
 from app.application.studio import Studio
 from app.application.use_cases.backgrounds import BackgroundUseCases
 from app.application.use_cases.characters import CharacterUseCases
+from app.application.use_cases.cover import CoverUseCases
+from app.application.use_cases.description import DescriptionUseCases
 from app.application.use_cases.illustrations import IllustrationUseCases, ImageSettings, ReviewedPainter
 from app.application.use_cases.library import LibraryUseCases
 from app.application.use_cases.preview import PreviewUseCase
@@ -22,6 +24,7 @@ from app.application.use_cases.scripts import ScriptUseCases
 from app.application.use_cases.storyboard import StoryboardUseCases
 from app.application.use_cases.writer_settings import WriterSettings
 from app.domain.background import Background
+from app.domain.cover import CoverWord
 from app.domain.errors import EngineError, NotFoundError
 from app.domain.events import Event
 from app.domain.illustration import Character, GeneratedImage, ImageProvider, fold
@@ -47,7 +50,8 @@ class InMemoryVideoRepository:
             id=vid, topic=video.topic, script=video.script, voice=video.voice,
             style=video.style, scenes=video.scenes, filename=None, duration=None,
             size_mb=None, captions=None, status="queued", error=None,
-            created_at="2026-01-01T00:00:00",
+            created_at="2026-01-01T00:00:00", cover=video.cover,
+            description=video.description,
         )
         return vid
 
@@ -216,6 +220,9 @@ class FakeBackgroundStore:
     def path(self, name: str) -> Path | None:
         return Path("/bg") / name if self.has(name) else None
 
+    def read(self, name: str) -> bytes | None:
+        return self.data.get(name, b"bytes de " + name.encode()) if self.has(name) else None
+
     def save(self, name: str, stream: BinaryIO) -> str:
         self.saved.append(name)
         self.data[name] = stream.read()
@@ -345,6 +352,15 @@ class FakePreviewer:
         return b"\x89PNG" + text.encode()
 
 
+class FakeCoverPainter:
+    def __init__(self) -> None:
+        self.calls: list[tuple[list[CoverWord], str, Path | None, str]] = []
+
+    def paint(self, words, design: str, background: Path | None, topic: str) -> bytes:
+        self.calls.append((list(words), design, background, topic))
+        return b"\xff\xd8JPEG " + " ".join(w.text for w in words).encode()
+
+
 def make_studio(credentials: DictCredentials | None = None, composer: FakeComposer | None = None):
     """Un estudio completo sobre dobles. Devuelve (studio, dobles)."""
     videos = InMemoryVideoRepository()
@@ -363,6 +379,7 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
     character_library = InMemoryCharacterRepository()
     references = FakeReferenceStore()
     painter = ReviewedPainter(images, illustrator, writer, composer)
+    cover_painter = FakeCoverPainter()
     studio = Studio(
         writer=writer,
         scripts=ScriptUseCases(events, writer, composer, FakeTemplate()),
@@ -374,13 +391,16 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
         events=events,
         images=images,
         illustrations=IllustrationUseCases(events, images, painter, backgrounds, character_library, references),
-        storyboards=StoryboardUseCases(events, writer, composer, character_library),
+        storyboards=StoryboardUseCases(events, writer, composer),
         characters=CharacterUseCases(events, character_library, references, images, painter),
+        cover=CoverUseCases(events, writer, composer, cover_painter, backgrounds, videos),
+        description=DescriptionUseCases(events, writer, composer),
         generator="/fake/auto-video-generator",
     )
     fakes = SimpleNamespace(
         videos=videos, events=events, credentials=credentials, composer=composer,
         queue=queue, files=files, backgrounds=backgrounds, stock=stock, previewer=previewer, jobs=jobs,
         illustrator=illustrator, painter=painter, character_library=character_library, references=references,
+        cover_painter=cover_painter,
     )
     return studio, fakes

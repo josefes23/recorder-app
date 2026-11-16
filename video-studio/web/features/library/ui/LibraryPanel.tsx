@@ -3,6 +3,7 @@
 import { isPlayable, type VideoItem } from "@/domain/library";
 import { useLibrary } from "@/features/library/model/use-library";
 import { useStudioActions } from "@/features/studio/model/use-studio-actions";
+import { CopyButton } from "@/shared/ui/CopyButton";
 
 function Meta({ item }: { item: VideoItem }) {
   return (
@@ -45,9 +46,22 @@ export function LibraryPanel() {
               {item.error && <p className="error">{item.error}</p>}
               <div className="cluster">
                 {isPlayable(item) && (
-                  <a className="btn btn--sm" href={library.videoUrl(item.id)} download>
-                    Descargar
-                  </a>
+                  <>
+                    <a className="btn btn--sm" href={library.videoUrl(item.id)} download>
+                      Descargar
+                    </a>
+                    <a
+                      className="btn btn--sm"
+                      href={library.coverUrl(item.id)}
+                      download
+                      title="La portada con su título, a 1080x1920"
+                    >
+                      Portada
+                    </a>
+                    {item.description?.trim() && (
+                      <CopyButton text={item.description} label="Descripción" />
+                    )}
+                  </>
                 )}
                 <button className="btn btn--sm" onClick={() => reuse(item)}>
                   Reutilizar

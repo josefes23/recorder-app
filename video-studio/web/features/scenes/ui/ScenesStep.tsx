@@ -2,7 +2,14 @@
 
 import { useState, type ReactNode } from "react";
 
-import { MAX_ATTEMPTS, castIn, reviewNote, savedNamed, type ImageReview } from "@/domain/illustration";
+import {
+  MAX_ATTEMPTS,
+  castIn,
+  correctionDraft,
+  reviewNote,
+  savedNamed,
+  type ImageReview,
+} from "@/domain/illustration";
 import { pendingImages } from "@/domain/scene";
 import { BackgroundPicker } from "@/features/backgrounds/ui/BackgroundPicker";
 import { useBackgrounds } from "@/features/backgrounds/model/use-backgrounds";
@@ -11,6 +18,7 @@ import { useImages } from "@/features/illustrations/model/use-images";
 import { CharactersEditor } from "@/features/illustrations/ui/CharactersEditor";
 import { ImageChoiceSelect } from "@/features/illustrations/ui/ImageChoiceSelect";
 import { ReferenceThumb } from "@/features/illustrations/ui/ReferenceThumb";
+import { SceneImageCorrector } from "@/features/illustrations/ui/SceneImageCorrector";
 import { SceneImageEditor } from "@/features/illustrations/ui/SceneImageEditor";
 import { UnconfiguredProviders } from "@/features/illustrations/ui/UnconfiguredProviders";
 import { useScenes, useTimeline } from "@/features/scenes/model/use-scenes";
@@ -44,6 +52,17 @@ export function ScenesStep({ settings }: Props) {
   const [peek, setPeek] = useState<number | null>(null);
   /** Escena con el editor de imagen abierto, «new» para una nueva, o null. */
   const [editing, setEditing] = useState<number | "new" | null>(null);
+  /** Escena con el panel «Corregir» abierto, o null. Uno de los dos paneles a la vez. */
+  const [correcting, setCorrecting] = useState<number | null>(null);
+
+  const openEditor = (index: number | "new" | null) => {
+    setCorrecting(null);
+    setEditing(index);
+  };
+  const openCorrector = (index: number | null) => {
+    setEditing(null);
+    setCorrecting(index);
+  };
 
   const peeked =
     peek === null
@@ -60,8 +79,10 @@ export function ScenesStep({ settings }: Props) {
       ? "Qué se ve en cada escena lo decide el modelo del guion: configúralo en «Modelo del guion»."
       : !hasScript
         ? "Escribe primero el guion: cada escena sale de una o dos de sus frases."
-        : `${writer.label} escribe primero el guion visual —qué se ve en cada escena, quién o qué sale y con qué estilo, reutilizando lo de tu biblioteca que encaje— y después se pinta una imagen cada unos 6 s.${
-            scenes.items.length ? " Sustituye las escenas actuales." : ""
+        : `${writer.label} escribe primero el guion visual —qué se ve en cada escena, quién o qué sale y con qué estilo— y después se pinta una imagen cada unos 6 s.${
+            scenes.items.length
+              ? " Sustituye las escenas actuales; quien siga en el reparto se mantiene si encaja, así que quita antes a quien no quieras."
+              : ""
           }`;
 
   return (
@@ -215,10 +236,21 @@ export function ScenesStep({ settings }: Props) {
                       className="btn btn--sm"
                       title="Generar una imagen nueva para esta escena"
                       disabled={Boolean(scene.job)}
-                      onClick={() => setEditing(editing === i ? null : i)}
+                      onClick={() => openEditor(editing === i ? null : i)}
                     >
                       IA
                     </button>
+                    {meta?.kind === "image" && (
+                      <button
+                        className="btn btn--sm"
+                        title="Decirle a la IA qué está mal en esta imagen para que lo arregle"
+                        disabled={Boolean(scene.job)}
+                        aria-expanded={correcting === i}
+                        onClick={() => openCorrector(correcting === i ? null : i)}
+                      >
+                        Corregir
+                      </button>
+                    )}
                     <div className="scene-start">
                       <input
                         type="number"
@@ -236,7 +268,7 @@ export function ScenesStep({ settings }: Props) {
                       className="btn btn--icon"
                       title={`Quitar la escena ${i + 1}`}
                       onClick={() => {
-                        setEditing(null); // los índices se mueven al quitar una
+                        openEditor(null); // los índices se mueven al quitar una
                         scenes.remove(i);
                       }}
                     >
@@ -251,6 +283,13 @@ export function ScenesStep({ settings }: Props) {
                       onDone={() => setEditing(null)}
                     />
                   )}
+                  {correcting === i && meta?.kind === "image" && !scene.job && (
+                    <SceneImageCorrector
+                      index={i}
+                      initial={correctionDraft(scene.review)}
+                      onDone={() => setCorrecting(null)}
+                    />
+                  )}
                 </div>
               );
             })}
@@ -262,7 +301,7 @@ export function ScenesStep({ settings }: Props) {
         <button className="btn" onClick={() => setTarget(null)}>
           Añadir de Pexels o la galería
         </button>
-        <button className="btn" disabled={editing === "new"} onClick={() => setEditing("new")}>
+        <button className="btn" disabled={editing === "new"} onClick={() => openEditor("new")}>
           Añadir con IA
         </button>
       </div>
@@ -312,11 +351,22 @@ export function ScenesStep({ settings }: Props) {
                 className="btn"
                 onClick={() => {
                   setPeek(null);
-                  setEditing(peek);
+                  openEditor(peek);
                 }}
               >
                 Generar otra con IA
               </button>
+              {peeked.kind === "image" && !scenes.items[peek]?.job && (
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setPeek(null);
+                    openCorrector(peek);
+                  }}
+                >
+                  Corregir esta imagen
+                </button>
+              )}
             </>
           }
           onClose={() => setPeek(null)}

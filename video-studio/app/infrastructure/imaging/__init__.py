@@ -17,6 +17,20 @@ def sniff_extension(data: bytes, mime: str | None = None) -> str:
     return {"image/png": ".png", "image/webp": ".webp"}.get((mime or "").lower(), ".jpg")
 
 
+def shrink(data: bytes, side: int) -> bytes:
+    """Una imagen de referencia en JPEG, con su lado mayor como mucho en `side`."""
+    import io
+
+    from PIL import Image
+
+    with Image.open(io.BytesIO(data)) as picture:
+        picture = picture.convert("RGB")
+        picture.thumbnail((side, side))
+        out = io.BytesIO()
+        picture.save(out, "JPEG", quality=90)
+        return out.getvalue()
+
+
 def compact(text: str, limit: int = 200) -> str:
     """Un cuerpo de error en una línea, para enseñarlo en la interfaz."""
     return " ".join((text or "").split())[:limit]

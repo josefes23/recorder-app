@@ -8,8 +8,9 @@ pintada una vez al guardarlo, que acompaña a cada escena donde sale. Probado
 con FLUX.2 [klein]: con la referencia, la túnica y el manto salieron idénticos
 y la cara muy parecida; sin ella, otra ropa y otra cara.
 
-Los elementos entran a mano —un botón «Guardar» en cada uno— y el guion visual
-de un video nuevo usa los que encajen antes de inventar otros.
+Los elementos entran a mano —un botón «Guardar» en cada uno— y pasan a un
+video también a mano, con «Usar en este video». Nada los trae solo: ni el guion
+visual ni que un nombre coincida.
 """
 
 from __future__ import annotations
@@ -30,10 +31,6 @@ REFERENCE_FRAMING = {
     "sobre un fondo liso gris claro.",
     "lugar": "Plano general de {name}, sin nadie, que muestra el espacio entero con luz natural.",
 }
-
-#: Elementos guardados que se le ofrecen al guion visual: los últimos usados.
-#: Cada uno son unas pocas líneas; cuarenta caben de sobra en el encargo.
-OFFER_LIMIT = 40
 
 _REFERENCE_FILE = re.compile(r"^ref-\d+\.(jpg|png|webp)$")
 

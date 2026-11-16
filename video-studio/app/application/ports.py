@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Protocol
 
 from app.domain.background import Background
+from app.domain.cover import CoverWord
 from app.domain.events import Event
 from app.domain.illustration import Character, GeneratedImage, ImageProvider
 from app.domain.saved_characters import SavedCharacter
@@ -85,6 +86,8 @@ class BackgroundStore(Protocol):
     def list(self) -> list[Background]: ...
     def has(self, name: str) -> bool: ...
     def path(self, name: str) -> Path | None: ...
+    #: Los bytes del fondo, o None si no está: para corregir una imagen generada.
+    def read(self, name: str) -> bytes | None: ...
     def save(self, name: str, stream: Readable) -> str: ...
     def remove(self, name: str) -> None: ...
     def thumbnail_path(self, thumb: str) -> Path | None: ...
@@ -102,6 +105,19 @@ class FramePreviewer(Protocol):
     """Compone un fotograma con fondo y subtítulo. Devuelve un PNG."""
 
     def render(self, text: str, style: CaptionStyle, background: str | None, topic: str) -> bytes: ...
+
+
+class CoverPainter(Protocol):
+    """
+    Pinta la portada a tamaño completo (1080x1920) y devuelve un JPEG.
+
+    `background` es el archivo de la galería, imagen o clip; None pinta el
+    degradado del tema, el mismo que usa el motor cuando no hay fondo.
+    """
+
+    def paint(
+        self, words: Sequence[CoverWord], design: str, background: Path | None, topic: str
+    ) -> bytes: ...
 
 
 class ScriptTemplate(Protocol):

@@ -39,6 +39,10 @@ class FileBackgroundStore:
         path = self._dir / Path(name).name
         return path if path.is_file() and is_supported(path.name) else None
 
+    def read(self, name: str) -> bytes | None:
+        path = self.path(name)
+        return path.read_bytes() if path else None
+
     def save(self, name: str, stream: Readable) -> str:
         target = self._dir / Path(name).name
         target.parent.mkdir(parents=True, exist_ok=True)

@@ -7,8 +7,19 @@ solo la frase de la voz, dibuja la frase —letras incluidas— o se inventa un
 personaje distinto en cada imagen. Por eso, antes de pintar, el modelo del
 guion hace de director de arte: fija un estilo común, un reparto con rasgos
 que no cambian —personas, animales, objetos, lugares— y lo que se ve en cada
-escena (`illustration.VisualGuide`). Si hay elementos guardados de otros
-videos (`domain.saved_characters`), los reutiliza en vez de inventar otros.
+escena (`illustration.VisualGuide`).
+
+También decide dónde cambia la imagen. Repartido solo por longitud
+(`illustration.plan_cuts`), un tramo juntaba el final de una idea con el
+principio de la siguiente —Josefo seguía en pantalla mientras la voz decía
+«Segundo, el bautismo y la crucifixión»— o duraba 2 s uno y 11 s el de al
+lado. El modelo recibe el guion en frases y corta donde cambia lo que debe
+verse, siempre entre frases y como mucho en `MAX_SCENES` escenas.
+
+La biblioteca de elementos guardados (`domain.saved_characters`) no se le
+ofrece: lo guardado solo entra en un video si el usuario lo mete a mano, y
+llega aquí con el resto del reparto. Ofrecida, el modelo traía a los mismos a
+todos los videos porque «encajaban».
 
 Aquí viven el encargo y las reglas de la respuesta; hablar con el modelo es de
 `infrastructure.llm`, como con el guion.
@@ -17,6 +28,7 @@ Aquí viven el encargo y las reglas de la respuesta; hablar con el modelo es de
 from __future__ import annotations
 
 import json
+import math
 import secrets
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -28,21 +40,27 @@ from app.domain.illustration import (
     KINDS,
     LOOK_LIMIT,
     MAX_CHARACTERS,
+    MAX_SCENES,
     NAME_LIMIT,
     TRAITS_LIMIT,
-    Beat,
     Character,
     VisualGuide,
+    beats_from_cuts,
     fold,
+    plan_cuts,
 )
-from app.domain.script import clean_script
+from app.domain.script import WORDS_PER_SECOND
 from app.domain.writer import strip_reasoning
 
 #: Lo que se ve en una escena. El encargo pide de 25 a 60 palabras; esto solo
 #: recorta lo que llegue desbocado.
 SCENE_LIMIT = 700
 
-SYSTEM_PROMPT = """Eres director de arte de videos cortos verticales (Reels, Shorts, TikTok). Recibes el guion de un video ya dividido en escenas y decides qué imagen acompaña a cada una.
+#: Más que esto con la misma imagen se nota parado aunque el motor la mueva.
+#: Fija cuántas escenas se piden como mínimo; el encargo dice «de 3 a 9 segundos».
+LONGEST_SCENE_SECONDS = 9.0
+
+SYSTEM_PROMPT = """Eres director de arte de videos cortos verticales (Reels, Shorts, TikTok). Recibes el guion de un video dividido en frases numeradas, decides en qué frases cambia la imagen y qué imagen acompaña a cada tramo.
 
 Un modelo de texto a imagen pintará cada escena por separado. No ve el guion ni las otras escenas: solo lee lo que tú escribas. Tu trabajo es que todas las imágenes cuenten la misma historia y parezcan del mismo video.
 
@@ -50,9 +68,14 @@ Un modelo de texto a imagen pintará cada escena por separado. No ve el guion ni
 
 2. Elementos que se repiten ("characters"): cada persona, animal, objeto (una máquina, un juguete, un juego, un vehículo) o lugar que aparezca en más de una escena, con un nombre corto que lo identifique, su tipo ("kind": "persona", "animal", "objeto" o "lugar") y sus rasgos fijos ("traits"). En una persona: edad, complexión, tono de piel, cara, pelo, vello facial y ropa con sus colores y materiales. En lo demás: forma, tamaño, materiales, colores y lo que lo distingue. Que dos no puedan confundirse. Si es una figura conocida —histórica, religiosa o de ficción—, descríbela como la muestra su iconografía habitual. Como mucho seis; puede no haber ninguno.
 - Si recibes elementos que ya están en el video, mantén los que encajen con este guion, con sus nombres, tipos y rasgos exactos; los que sean de otro tema, déjalos fuera.
-- Si recibes elementos guardados de otros videos, usa los que encajen con el guion —con su nombre exacto, sin cambiar sus rasgos— antes de inventar otros parecidos. Los que no encajen, ignóralos.
 
-3. Una imagen por escena ("scenes"): lo que se ve, concreto y literal: quién, haciendo qué, dónde, con qué luz y desde qué plano. Entre 25 y 60 palabras.
+3. Dónde cambia la imagen ("scenes"): agrupa las frases en escenas de frases seguidas. Corta donde cambia lo que tiene que verse: otra persona o se habla de otra, otro lugar u otra época, otra idea, un «primero», «segundo» o «tercero». Las frases que siguen contando lo mismo comparten imagen.
+- Cada escena empieza al principio de una frase, nunca a mitad.
+- Cada frase dice cuánto tarda en decirse. Una escena dura de 3 a 9 segundos. Una frase de menos de 3 segundos nunca va sola: se une a la siguiente si esta desarrolla su idea («Primero, las fuentes.» va con la frase que presenta la primera fuente), o si no a la anterior. Una frase de más de 9 segundos va sola.
+- Haz tantas escenas como pida el encargo.
+
+4. Una imagen por escena: lo que se ve, concreto y literal: quién, haciendo qué, dónde, con qué luz y desde qué plano. Entre 25 y 60 palabras.
+- Muestra la idea principal de las frases de esa escena —de quién o de qué hablan—, no un detalle nombrado de pasada ni lo que cuentan las escenas de al lado.
 - Nombra a cada elemento con su nombre exacto y no vuelvas a describirlo: sus rasgos se añaden solos. Lo que salga en una sola escena se describe ahí mismo.
 - Las frases abstractas («no lo dejes para mañana», «tu vida cambia») se cuentan con un momento visible: un gesto, una acción, un lugar.
 - Las escenas siguen un hilo, como los planos de una película: si alguien empieza algo, las siguientes lo continúan o muestran su consecuencia.
@@ -61,8 +84,8 @@ Un modelo de texto a imagen pintará cada escena por separado. No ve el guion ni
 - El video es vertical y los subtítulos ocupan la franja central baja: el motivo principal y las caras van en la mitad superior.
 
 Responde solo con un objeto JSON, sin markdown ni comentarios, todo en español:
-{"look": "...", "characters": [{"name": "...", "kind": "persona", "traits": "..."}], "scenes": [{"n": 1, "description": "..."}]}
-Una entrada en "scenes" por cada escena recibida, con su mismo número."""
+{"look": "...", "characters": [{"name": "...", "kind": "persona", "traits": "..."}], "scenes": [{"from": 1, "description": "..."}, {"from": 3, "description": "..."}]}
+"from" es el número de la frase con la que empieza la escena. La primera empieza en la frase 1, cada una en una frase posterior a la de la anterior, y dura hasta la frase antes de la siguiente."""
 
 
 @dataclass(frozen=True)
@@ -91,22 +114,35 @@ def _listed(characters: Sequence[Character]) -> list[str]:
     return [f"- {c.name} ({c.kind}): {c.traits}" for c in characters]
 
 
+def _seconds(sentence: str) -> float:
+    return len(sentence.split()) / WORDS_PER_SECOND
+
+
+def scene_range(sentences: Sequence[str]) -> tuple[int, int]:
+    """
+    Cuántas escenas pedir: como mucho `MAX_SCENES` (cada imagen cuesta) y una
+    por frase; como poco, las que hacen falta para que ninguna pase, de media,
+    de `LONGEST_SCENE_SECONDS`.
+    """
+    high = min(MAX_SCENES, len(sentences))
+    low = math.ceil(sum(map(_seconds, sentences)) / LONGEST_SCENE_SECONDS)
+    return min(high, max(1, low)), high
+
+
 def build_prompt(
     topic: str,
     style: str,
-    script: str,
-    beats: list[Beat],
+    sentences: Sequence[str],
     current: Sequence[Character] = (),
-    offered: Sequence[Character] = (),
 ) -> str:
     """
-    El encargo del guion visual. `current` es lo que ya está en el video
-    —puesto a mano, traído de la biblioteca o de un guion visual anterior—;
-    `offered`, lo guardado de otros videos.
+    El encargo del guion visual: el guion en frases numeradas, con lo que
+    tarda cada una, para que el modelo decida dónde cambia la imagen.
 
-    Ni lo uno ni lo otro es obligatorio: el reparto sigue en el panel al
-    cambiar de guion, y un video sobre Kafka no debe arrastrar al Jesús del
-    anterior. El modelo se queda con lo que encaje.
+    `current` es lo que ya está en el video —puesto a mano, traído de la
+    biblioteca o de un guion visual anterior—. No es obligatorio: el reparto
+    sigue en el panel al cambiar de guion, y un video sobre Kafka no debe
+    arrastrar al Jesús del anterior. El modelo se queda con lo que encaje.
     """
     lines = [
         f"Tema: {topic.strip() or 'el del guion'}",
@@ -114,16 +150,10 @@ def build_prompt(
     ]
     if current:
         lines += ["", "Elementos que ya están en el video (mantén los que encajen):", *_listed(current)]
-    if offered:
-        lines += ["", "Elementos guardados de otros videos (usa los que encajen):", *_listed(offered)]
-    lines += [
-        "",
-        "Guion completo:",
-        clean_script(script),
-        "",
-        f"Escenas ({len(beats)}):",
-    ]
-    lines += [f"{n}. {beat.text}" for n, beat in enumerate(beats, start=1)]
+    lines += ["", f"Guion en {len(sentences)} frases, con lo que tarda cada una en decirse:"]
+    lines += [f"{n}. ({max(1, round(_seconds(s)))} s) {s}" for n, s in enumerate(sentences, start=1)]
+    low, high = scene_range(sentences)
+    lines += ["", f"Escenas: {high}." if low == high else f"Escenas: entre {low} y {high}."]
     return "\n".join(lines)
 
 
@@ -165,13 +195,14 @@ def _number(value: object, fallback: int) -> int:
         return fallback
 
 
-def _cast(items: object, current: Sequence[Character], offered: Sequence[Character]) -> list[Character]:
+def _cast(items: object, current: Sequence[Character]) -> list[Character]:
     """
-    Los elementos del guion visual. Lo que el modelo toma del video o de la
-    biblioteca entra con sus rasgos y su referencia de siempre, no con lo que
-    el modelo haya reescrito.
+    Los elementos del guion visual. Lo que el modelo toma del video entra con
+    sus rasgos y su referencia de siempre, no con lo que el modelo haya
+    reescrito. Lo que inventa es nuevo aunque se llame como algo guardado: la
+    biblioteca no se enlaza por coincidencia de nombre.
     """
-    known = {fold(c.name): c for c in offered} | {fold(c.name): c for c in current}
+    known = {fold(c.name): c for c in current}
     cast: list[Character] = []
     for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict):
@@ -189,35 +220,67 @@ def _cast(items: object, current: Sequence[Character], offered: Sequence[Charact
     return cast[:MAX_CHARACTERS]
 
 
+def _cuts(items: object, sentences: Sequence[str]) -> list[tuple[int, str]]:
+    """
+    Dónde empieza cada escena (índice de su primera frase, desde 0) y qué se ve.
+
+    Se arregla lo que tiene arreglo sin inventar nada: las escenas van en orden
+    de frase aunque lleguen desordenadas, una frase que abre dos escenas se
+    queda con la primera, lo que apunta fuera del guion se descarta y la
+    primera escena abre el video aunque el modelo la empiece más tarde.
+
+    Si se pasa de `MAX_SCENES`, se queda con las que cubren el principio de
+    cada tramo del reparto por longitud (`plan_cuts`): siguen cortando donde
+    el modelo quiso, solo que menos veces, y cada imagen con su descripción.
+    """
+    found: dict[int, str] = {}
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            continue
+        first = _number(item.get("from"), 0) - 1
+        text = _clip(item.get("description"), SCENE_LIMIT)
+        if 0 <= first < len(sentences) and text:
+            found.setdefault(first, text)
+
+    cuts = sorted(found.items())
+    if not cuts:
+        return []
+    cuts[0] = (0, cuts[0][1])
+    if len(cuts) <= MAX_SCENES:
+        return cuts
+
+    kept: list[tuple[int, str]] = []
+    for first in plan_cuts(sentences):
+        cover = next(cut for cut in reversed(cuts) if cut[0] <= first)
+        if not kept or kept[-1] != cover:
+            kept.append(cover)
+    return kept
+
+
 def parse_storyboard(
     raw: str | None,
-    beats: list[Beat],
+    sentences: Sequence[str],
     seed: int,
     current: Sequence[Character] = (),
-    offered: Sequence[Character] = (),
 ) -> Storyboard:
-    """Lee la respuesta del modelo y la rechaza si le falta alguna escena."""
+    """
+    Lee la respuesta del modelo. Las escenas salen de sus cortes; el segundo
+    de cada una, de las palabras que la preceden, como la duración del guion.
+    """
     data = _json_object(raw)
 
     look = _clip(data.get("look"), LOOK_LIMIT)
     if not look:
         raise WriterError("El guion visual llegó sin estilo. Vuelve a intentarlo.")
 
-    characters = _cast(data.get("characters"), current, offered)
+    characters = _cast(data.get("characters"), current)
 
-    shots: dict[int, str] = {}
-    for position, item in enumerate(data.get("scenes") or [], start=1):
-        if isinstance(item, dict) and (text := _clip(item.get("description"), SCENE_LIMIT)):
-            shots.setdefault(_number(item.get("n"), position), text)
+    cuts = _cuts(data.get("scenes"), sentences)
+    if not cuts:
+        raise WriterError("El guion visual llegó sin escenas que encajen con el guion. Vuelve a intentarlo.")
 
-    missing = [n for n in range(1, len(beats) + 1) if n not in shots]
-    if missing:
-        raise WriterError(
-            f"El guion visual llegó incompleto: faltan {len(missing)} de {len(beats)} escenas. "
-            "Vuelve a intentarlo."
-        )
-
+    beats = beats_from_cuts(sentences, [first for first, _ in cuts])
     return Storyboard(
         VisualGuide(look, tuple(characters), seed),
-        tuple(StoryboardScene(b.start, b.text, shots[n]) for n, b in enumerate(beats, start=1)),
+        tuple(StoryboardScene(b.start, b.text, shot) for b, (_, shot) in zip(beats, cuts)),
     )

@@ -1,3 +1,4 @@
+import io
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -7,6 +8,9 @@ from app.domain import review
 from app.domain.background import Background
 from app.domain.errors import EngineError, IllustratorError, NotFoundError, ValidationError, WriterError
 from app.domain.events import (
+    DESCRIPTION_COMPLETED,
+    DESCRIPTION_FAILED,
+    DESCRIPTION_REQUESTED,
     ILLUSTRATION_COMPLETED,
     ILLUSTRATION_FAILED,
     ILLUSTRATION_REQUESTED,
@@ -19,6 +23,9 @@ from app.domain.events import (
     STORYBOARD_COMPLETED,
     STORYBOARD_FAILED,
     STORYBOARD_REQUESTED,
+    TITLES_COMPLETED,
+    TITLES_FAILED,
+    TITLES_REQUESTED,
 )
 from app.domain.illustration import DEFAULT_STYLE, Character, illustration_name
 from app.domain.scene import Scene
@@ -520,12 +527,104 @@ class ImageReviewTests(unittest.TestCase):
         self.assertEqual(f.composer.calls, [])
 
 
+class CorrectionTests(unittest.TestCase):
+    """Corregir una imagen de la galería: se edita esa, no se pinta otra."""
+
+    CLOUDFLARE = {"CLOUDFLARE_ACCOUNT_ID": "acc", "CLOUDFLARE_API_TOKEN": "tok"}
+
+    def studio(self, *replies, **extra):
+        studio, f = make_studio(
+            credentials=DictCredentials(**self.CLOUDFLARE, **extra), composer=FakeComposer(replies=list(replies)),
+        )
+        # Una imagen generada antes, ya en la galería.
+        f.backgrounds.save("ia-cafe_1.jpg", io.BytesIO(b"\xff\xd8original"))
+        return studio, f
+
+    def test_request_needs_an_image_from_the_gallery_and_what_is_wrong(self):
+        studio, f = self.studio()
+        with self.assertRaisesRegex(ValidationError, "qué está mal"):
+            studio.illustrations.request("Café", "Ana sirve", source="ia-cafe_1.jpg", correction="  ")
+        with self.assertRaisesRegex(ValidationError, "Elige la imagen"):
+            studio.illustrations.request("Café", "Ana sirve", correction="tiene tres brazos")
+        with self.assertRaisesRegex(ValidationError, "clip de video"):
+            studio.illustrations.request("Café", "", source="bosque_1.mp4", correction="sobra el árbol")
+        with self.assertRaises(NotFoundError):
+            studio.illustrations.request("Café", "", source="ia-borrada_9.jpg", correction="tiene tres brazos")
+        with self.assertRaisesRegex(ValidationError, "demasiado larga"):
+            studio.illustrations.request("Café", "", source="ia-cafe_1.jpg", correction="x" * 501)
+        self.assertEqual(f.events.events, [])
+
+    def test_the_description_is_optional_and_both_fields_travel_with_the_job(self):
+        studio, f = self.studio()
+        event = studio.illustrations.request(
+            "Café", "", source=" ia-cafe_1.jpg ", correction="  tiene   tres brazos ", review=False,
+        )
+        self.assertEqual(event.topic, ILLUSTRATION_REQUESTED)
+        self.assertEqual(event.payload["description"], "")
+        self.assertEqual((event.payload["source"], event.payload["correction"]), ("ia-cafe_1.jpg", "tiene tres brazos"))
+
+        # Un encargo normal no lleva esos campos.
+        plain = studio.illustrations.request("Café", "Ana sirve")
+        self.assertNotIn("source", plain.payload)
+
+    def test_the_image_goes_first_and_the_library_references_after_it(self):
+        studio, f = self.studio()
+        saved = f.character_library.upsert(Character("Ana", "pelo rojo"))
+        f.character_library.set_reference(saved.id, f.references.save("ref-1.jpg", b"cara de Ana"))
+        cast = [{"name": "Ana", "traits": "pelo rojo", "saved": saved.id}]
+
+        event = studio.illustrations.request(
+            "Café", "Ana sirve una taza", "acuarela", cast, 7,
+            source="ia-cafe_1.jpg", correction="Ana tiene seis dedos", review=False,
+        )
+        studio.illustrations.handle_request(event)
+
+        (_, _, _, prompt, seed), = f.illustrator.calls
+        self.assertEqual(f.illustrator.references, [[b"\xff\xd8original", b"cara de Ana"]])
+        lines = prompt.splitlines()
+        self.assertEqual(lines[0], "Corrige la primera imagen de referencia. Lo que hay que arreglar: Ana tiene seis dedos.")
+        self.assertIn("La escena muestra: Ana sirve una taza.", lines)
+        self.assertIn("Ana: pelo rojo.", lines)
+        self.assertTrue(lines[-1].startswith("Ana se ve igual que en la segunda imagen de referencia"))
+        self.assertEqual(seed, 7)
+
+        # La corregida llega con nombre propio; la original sigue en la galería.
+        done = studio.outcome(event.key)
+        self.assertEqual(done["status"], "completed")
+        self.assertNotEqual(done["name"], "ia-cafe_1.jpg")
+        self.assertTrue(f.backgrounds.has("ia-cafe_1.jpg"))
+
+    def test_the_reviewer_checks_the_fix_and_repaints_if_it_did_not_take(self):
+        studio, f = self.studio(
+            '{"ok": false, "problems": ["Ana sigue con seis dedos"]}', '{"ok": true}',
+            ANTHROPIC_API_KEY="a", SCRIPT_PROVIDER="anthropic",
+        )
+        event = studio.illustrations.request(
+            "Café", "Ana sirve una taza", seed=7, source="ia-cafe_1.jpg", correction="Ana tiene seis dedos",
+        )
+        studio.illustrations.handle_request(event)
+
+        self.assertIn("Se pidió arreglar: Ana tiene seis dedos", f.composer.calls[0][4])
+        # Cada intento edita la misma original, con otra semilla.
+        self.assertEqual([call[4] for call in f.illustrator.calls], [7, 8])
+        self.assertEqual([refs[0] for refs in f.illustrator.references], [b"\xff\xd8original"] * 2)
+        self.assertEqual(studio.outcome(event.key)["review"]["fixed"], ["Ana sigue con seis dedos"])
+
+    def test_an_image_deleted_before_its_turn_fails_with_the_reason(self):
+        studio, f = self.studio()
+        event = studio.illustrations.request("Café", "", source="ia-cafe_1.jpg", correction="sobra la taza")
+        f.backgrounds.remove("ia-cafe_1.jpg")
+        studio.illustrations.handle_request(event)
+        self.assertEqual(f.events.events[-1].topic, ILLUSTRATION_FAILED)
+        self.assertIn("ya no está en la galería", studio.outcome(event.key)["detail"])
+        self.assertEqual(f.illustrator.calls, [])
+
 
 class StoryboardTests(unittest.TestCase):
     SCRIPT = "Jesús se bautizó en el Jordán. Hazlo tú también."
     ANSWER = (
         '{"look": "Fotografía cinematográfica", "characters": [{"name": "Jesús", "traits": "túnica crema"}], '
-        '"scenes": [{"n": 1, "description": "Jesús entra en el río al amanecer"}]}'
+        '"scenes": [{"from": 1, "description": "Jesús entra en el río al amanecer"}]}'
     )
 
     def studio(self, answer: str = ANSWER):
@@ -553,7 +652,7 @@ class StoryboardTests(unittest.TestCase):
         (_, _, key, system, prompt), = f.composer.calls
         self.assertEqual(key, "nv")
         self.assertIn("director de arte", system)
-        self.assertIn("1. Jesús se bautizó en el Jordán. Hazlo tú también.", prompt)
+        self.assertIn("1. (2 s) Jesús se bautizó en el Jordán.\n2. (1 s) Hazlo tú también.", prompt)
 
         done = studio.outcome(event.key)
         self.assertEqual(done["status"], "completed")
@@ -701,19 +800,19 @@ class CharacterLibraryTests(unittest.TestCase):
         self.assertEqual(f.illustrator.references[-1], [])
         self.assertNotIn("imagen de referencia", f.illustrator.calls[-1][3])
 
-    def test_the_storyboard_reuses_the_library_and_what_is_already_in_the_video(self):
+    def test_the_storyboard_keeps_what_is_in_the_video_and_leaves_the_library_alone(self):
         answer = (
             '{"look": "acuarela", "characters": ['
             '{"name": "ana", "kind": "persona", "traits": "otra"},'
             '{"name": "pincel", "kind": "objeto", "traits": "otro robot"},'
             '{"name": "Rex", "kind": "animal", "traits": "perro"}],'
-            '"scenes": [{"n": 1, "description": "Pincel dibuja a Rex"}]}'
+            '"scenes": [{"from": 1, "description": "Pincel dibuja a Rex"}]}'
         )
         studio, f = make_studio(
             credentials=DictCredentials(**self.CLOUDFLARE, NVIDIA_API_KEY="nv"),
             composer=FakeComposer(answer),
         )
-        pincel = studio.characters.save("Pincel", "robot de dibujo naranja", "objeto")[0]
+        studio.characters.save("Pincel", "robot de dibujo naranja", "objeto")
         studio.characters.save("Lucía", "mujer de 30 años", "persona")
 
         current = [{"name": "Ana", "traits": "pelo rojo", "kind": "persona"}, {"name": "Jesús", "traits": "túnica"}]
@@ -723,12 +822,150 @@ class CharacterLibraryTests(unittest.TestCase):
 
         prompt = f.composer.calls[0][4]
         self.assertIn("Elementos que ya están en el video (mantén los que encajen):\n- Ana (persona): pelo rojo", prompt)
-        self.assertIn("- Pincel (objeto): robot de dibujo naranja", prompt)
-        self.assertIn("- Lucía (persona): mujer de 30 años", prompt)
+        # Lo guardado no se ofrece, ni siquiera Pincel, que el guion nombra: entra solo a mano.
+        self.assertNotIn("robot de dibujo naranja", prompt)
+        self.assertNotIn("Lucía", prompt)
         cast = studio.outcome(event.key)["guide"]["characters"]
+        # El «pincel» del modelo coincide en nombre con el guardado, pero no se enlaza.
         self.assertEqual(cast, [
             {"name": "Ana", "traits": "pelo rojo", "kind": "persona", "saved": None},
-            {"name": "Pincel", "traits": "robot de dibujo naranja", "kind": "objeto", "saved": pincel.id},
+            {"name": "pincel", "traits": "otro robot", "kind": "objeto", "saved": None},
             {"name": "Rex", "traits": "perro", "kind": "animal", "saved": None},
         ])
 
+
+
+class CoverTests(unittest.TestCase):
+    TITLES = '{"titles": ["El *error* que cometes", "*3* trucos"]}'
+
+    def test_paint_reads_the_title_and_finds_the_image(self):
+        studio, f = make_studio()
+        jpeg = studio.cover.paint("El *truco*", "franja", "bosque_1.mp4", "tema")
+        self.assertTrue(jpeg.startswith(b"\xff\xd8"))
+        (words, design, background, topic), = f.cover_painter.calls
+        self.assertEqual([(w.text, w.highlighted) for w in words], [("EL", False), ("TRUCO", True)])
+        self.assertEqual((design, background, topic), ("franja", Path("/bg/bosque_1.mp4"), "tema"))
+
+    def test_a_missing_image_paints_the_gradient_instead_of_failing(self):
+        studio, f = make_studio()
+        studio.cover.paint("Hola", "impacto", "borrada.jpg", "")
+        _, _, background, topic = f.cover_painter.calls[0]
+        self.assertIsNone(background)
+        self.assertEqual(topic, "Hola")  # sin tema, el título da color al degradado
+
+    def test_paint_rejects_an_empty_title_or_unknown_design(self):
+        studio, f = make_studio()
+        with self.assertRaises(ValidationError):
+            studio.cover.paint("  ", "impacto", None, "t")
+        with self.assertRaises(ValidationError):
+            studio.cover.paint("Hola", "otro", None, "t")
+        self.assertEqual(f.cover_painter.calls, [])
+
+    def test_render_saves_the_cover_and_the_library_paints_it_again(self):
+        studio, f = make_studio()
+        video_id, _ = studio.render.start(
+            "Ayuno", LONG_SCRIPT, "v", "+8%", "+0Hz", {}, [Scene("bosque_1.mp4", 0)],
+            cover={"title": "El *ayuno* real", "design": "titular", "background": "bosque_1.mp4"},
+        )
+        self.assertEqual(
+            f.videos.get(video_id).cover,
+            {"title": "El *ayuno* real", "design": "titular", "background": "bosque_1.mp4"},
+        )
+        jpeg, filename = studio.cover.of_video(video_id)
+        self.assertIn(b"EL AYUNO REAL", jpeg)
+        self.assertEqual(filename, "portada-ayuno.jpg")
+        self.assertEqual(f.cover_painter.calls[-1][1:], ("titular", Path("/bg/bosque_1.mp4"), "Ayuno"))
+
+    def test_videos_without_a_cover_get_the_default_one(self):
+        studio, f = make_studio()
+        video_id, _ = studio.render.start(
+            "ayuno intermitente", LONG_SCRIPT, "v", "+8%", "+0Hz", {}, [Scene("bosque_1.mp4", 0)],
+            cover={"title": "   "},
+        )
+        self.assertEqual(f.videos.get(video_id).cover, {})
+        studio.cover.of_video(video_id)
+        words, design, background, _ = f.cover_painter.calls[-1]
+        self.assertEqual([w.text for w in words if w.highlighted], ["INTERMITENTE"])
+        self.assertEqual((design, background), ("impacto", Path("/bg/bosque_1.mp4")))
+        with self.assertRaises(NotFoundError):
+            studio.cover.of_video(99)
+
+    def test_titles_need_something_to_read_and_a_writer(self):
+        studio, f = make_studio()
+        with self.assertRaisesRegex(ValidationError, "tema o el guion"):
+            studio.cover.request_titles(" ", " ** ")
+        with self.assertRaisesRegex(ValidationError, "Modelo del guion"):
+            studio.cover.request_titles("ayuno", "")
+        self.assertEqual(f.events.events, [])
+
+    def test_titles_are_asked_once_and_published(self):
+        studio, f = make_studio(credentials=DictCredentials(NVIDIA_API_KEY="nv"), composer=FakeComposer(self.TITLES))
+        event = studio.cover.request_titles(" ayuno ", "**El** guion.")
+        self.assertEqual(event.topic, TITLES_REQUESTED)
+        self.assertTrue(event.key.startswith("tt-"))
+        self.assertEqual(event.payload, {"topic": "ayuno", "script": "El guion."})
+
+        studio.cover.handle_request(event)
+        studio.cover.handle_request(event)
+        (_, _, key, system, prompt), = f.composer.calls
+        self.assertEqual(key, "nv")
+        self.assertIn("títulos de portada", system)
+        self.assertIn("Guion del video:\nEl guion.", prompt)
+        self.assertEqual(f.events.events[-1].topic, TITLES_COMPLETED)
+        self.assertEqual(
+            studio.outcome(event.key), {"status": "completed", "titles": ["El *error* que cometes", "*3* trucos"]},
+        )
+
+    def test_a_bad_answer_fails_with_the_reason(self):
+        studio, f = make_studio(credentials=DictCredentials(NVIDIA_API_KEY="nv"), composer=FakeComposer("{}"))
+        event = studio.cover.request_titles("ayuno", "")
+        studio.cover.handle_request(event)
+        self.assertEqual(f.events.events[-1].topic, TITLES_FAILED)
+        self.assertIn("no propuso títulos", studio.outcome(event.key)["detail"])
+
+
+class DescriptionTests(unittest.TestCase):
+    TEXT = (
+        "Qué dijo Jesús sobre Dios: tres enseñanzas de los evangelios que cambian cómo lo ves, "
+        "contadas en menos de un minuto.\n\n#jesus #dios"
+    )
+
+    def test_request_needs_a_script_and_a_writer(self):
+        studio, f = make_studio()
+        with self.assertRaisesRegex(ValidationError, "guion"):
+            studio.description.request("t", " ** ")
+        with self.assertRaisesRegex(ValidationError, "Modelo del guion"):
+            studio.description.request("t", "Un guion.")
+        self.assertEqual(f.events.events, [])
+
+    def test_it_is_written_once_with_the_script_and_the_plain_title(self):
+        studio, f = make_studio(credentials=DictCredentials(NVIDIA_API_KEY="nv"), composer=FakeComposer(self.TEXT))
+        event = studio.description.request(" Jesús ", "**El** guion.", "Lo que *nadie* dice")
+        self.assertEqual(event.topic, DESCRIPTION_REQUESTED)
+        self.assertTrue(event.key.startswith("ds-"))
+        self.assertEqual(event.payload, {"topic": "Jesús", "script": "El guion.", "title": "Lo que nadie dice"})
+
+        studio.description.handle_request(event)
+        studio.description.handle_request(event)
+        (_, _, key, system, prompt), = f.composer.calls
+        self.assertEqual(key, "nv")
+        self.assertIn("palabras clave", system)
+        self.assertIn("Título de la portada: Lo que nadie dice", prompt)
+        self.assertEqual(f.events.events[-1].topic, DESCRIPTION_COMPLETED)
+        self.assertEqual(studio.outcome(event.key), {"status": "completed", "description": self.TEXT})
+
+    def test_a_short_answer_fails_with_the_reason(self):
+        studio, f = make_studio(credentials=DictCredentials(NVIDIA_API_KEY="nv"), composer=FakeComposer("Hola."))
+        event = studio.description.request("t", "Un guion.")
+        studio.description.handle_request(event)
+        self.assertEqual(f.events.events[-1].topic, DESCRIPTION_FAILED)
+        self.assertIn("incompleta", studio.outcome(event.key)["detail"])
+
+    def test_render_saves_the_description_cleaned(self):
+        studio, f = make_studio()
+        video_id, _ = studio.render.start(
+            "t", LONG_SCRIPT, "v", "+8%", "+0Hz", {}, [], description="  Hola   mundo \n\n\n\n#tag  ",
+        )
+        self.assertEqual(f.videos.get(video_id).description, "Hola mundo\n\n#tag")
+        other, _ = studio.render.start("t", LONG_SCRIPT, "v", "+8%", "+0Hz", {}, [])
+        self.assertEqual(f.videos.get(other).description, "")

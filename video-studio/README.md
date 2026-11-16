@@ -60,9 +60,10 @@ tocar una línea del generador.
 | Voz | Doce voces en español con velocidad y tono |
 | Subtítulos | Tamaño, borde, altura, texto por bloque y líneas máximas |
 | Escenas | Un guion visual (estilo, personajes y qué se ve en cada tramo) y una imagen generada por tramo, o el fondo que elijas de Pexels o la galería; marcas en qué segundo entra cada uno |
-| Previsualización | Un fotograma con fondo y subtítulos aplicados, en segundos |
-| Render | Cola con barra de progreso real (fotograma N de M) |
-| Biblioteca | Reproductor, descarga, borrado y «Reutilizar» para clonar los ajustes |
+| Descripción | El texto para publicar: palabras clave al principio, resumen y hashtags. «Escribir con IA» o a mano, hasta 5000 caracteres, con aviso de dónde cortan Instagram y TikTok |
+| Previsualización | Dos pestañas: la **portada** (título gancho sobre una imagen, se repinta sola al cambiarla) y un fotograma con fondo y subtítulos |
+| Render | Cola con barra de progreso real (fotograma N de M); al terminar, «Descargar video», «Descargar portada» y «Copiar descripción» |
+| Biblioteca | Reproductor, descarga del video y de su portada, copia de su descripción, borrado y «Reutilizar» para clonar los ajustes (portada y descripción incluidas) |
 
 ## Guiones con IA (opcional)
 
@@ -147,10 +148,27 @@ línea de tiempo. Cada escena tiene también su «Ver».
 
 ## Escenas con imágenes generadas (opcional)
 
-«Generar escenas desde el guion» trocea el guion en tramos de unos seis
-segundos sin partir ninguna frase (cada frase cae en el tramo donde queda su
-mitad, hasta ocho escenas). Cada escena entra en el segundo en que empieza su
-texto, estimado al mismo ritmo que la duración del guion.
+«Generar escenas desde el guion» trocea el guion por sentido: el modelo del
+guion recibe las frases numeradas, con lo que tarda cada una, y decide en qué
+frase cambia la imagen —otra persona, otro lugar, otra idea, un «segundo» o
+«tercero»—, en escenas de 3 a 9 segundos y como mucho ocho. Antes se troceaba
+solo por longitud (tramos de unos seis segundos) y una imagen podía juntar el
+final de una idea con el principio de la siguiente: Josefo seguía en pantalla
+mientras la voz decía «Segundo, el bautismo y la crucifixión». Nunca se parte
+una frase. Si el modelo devuelve más de ocho escenas, se quedan las que caen al
+principio de cada tramo del reparto por longitud, con sus descripciones. Cada
+escena entra en el segundo en que empieza su texto, estimado al mismo ritmo
+que la duración del guion.
+
+Ese segundo es solo una estimación (2,7 palabras/s) y la voz real no va a
+ritmo fijo: las palabras largas, los números y la pausa de cada punto la
+alargan, y el error se acumula. En un guion de palabras largas la voz duró 58 s
+frente a 51,5 estimados, y desde la tercera escena cada imagen entraba de 4 a
+7 s antes que su texto. Por eso, al renderizar, cada escena —del guion visual o
+puesta a mano— se traduce a la palabra del guion donde cae y entra cuando la voz
+la dice, en mitad de la pausa que la precede (`domain.scene.synced_to_voice`,
+con las marcas por palabra de edge-tts). La línea de tiempo del estudio sigue
+enseñando los segundos estimados.
 
 Antes de pintar, el modelo del guion (el de «Modelo del guion») escribe un
 **guion visual**: un estilo común, lo que se repite —personas, animales,
@@ -213,6 +231,27 @@ Los intentos tienen tope de tiempo además de número: no se empieza otro si el
 encargo lleva más de tres minutos, porque la interfaz se da por vencida a los
 cinco contando la cola.
 
+### Corregir una imagen
+
+Cada escena con imagen (no con clip) tiene el botón **Corregir**, y la vista
+grande, «Corregir esta imagen». Se escribe qué está mal —«la mujer de la
+izquierda tiene seis dedos», «quita las letras del cielo»— y la IA no pinta
+otra: la imagen va al generador como primera referencia, con lo que hay que
+arreglar y la orden de dejar lo demás como está. Si el revisor había visto
+fallos, el cuadro se abre ya con ellos escritos.
+
+Es el mismo encargo que una imagen nueva (`POST /api/illustrations` con
+`source` y `correction`), así que pasa por la misma revisión: el revisor
+recibe además qué se pidió arreglar y, si sigue a la vista, se repinta con
+otra semilla partiendo otra vez de la original. La corregida entra en la
+escena con nombre propio; la original sigue en la galería para volver atrás.
+
+Las referencias de la biblioteca que salgan en la escena van detrás de la
+imagen, así que caben tres en vez de cuatro. Con Cloudflare la imagen viaja
+reducida a 768 px de lado mayor, como cualquier referencia (cuesta neuronas
+por tesela); con Nano Banana, a 1536. Las referencias a Nano Banana no están
+probadas contra la API: sin facturación no hay cupo de imagen.
+
 ### Biblioteca de personajes y elementos
 
 Lo que se repite de un video a otro —la misma presentadora, una mascota, la
@@ -232,11 +271,18 @@ parecida; sin él, otra ropa y otra cara.
 
 Cómo se reutiliza:
 
-- El guion visual recibe la biblioteca (los 40 últimos) y lo que ya está en el
-  video, y se queda con lo que encaje en el guion nuevo: con su nombre, sus
-  rasgos y su referencia de siempre, aunque el modelo los reescriba. Lo de otro
-  tema lo deja fuera, así que un video sobre Kafka no arrastra al Jesús del
-  anterior.
+- A mano, siempre: desde la biblioteca (desplegable bajo el reparto), «Usar en
+  este video» lo mete en el reparto. Nada lo trae solo: el guion visual no ve
+  la biblioteca, y lo que el modelo invente con el mismo nombre que algo
+  guardado es un elemento nuevo, sin su referencia.
+- Por qué: con la biblioteca ofrecida al guion visual, el modelo metía a los
+  mismos en todos los videos —para él, una «Mujer moderna» guardada encaja en
+  casi cualquier guion— y quitarlos del reparto no servía, porque volvían desde
+  la biblioteca.
+- El guion visual recibe lo que ya está en el reparto y se queda con lo que
+  encaje: con su nombre, sus rasgos y su referencia de siempre, aunque el
+  modelo los reescriba. Lo de otro tema lo deja fuera, así que un video sobre
+  Kafka no arrastra al Jesús del anterior.
 - En cada escena que nombra a un elemento guardado, su imagen de referencia va
   a FLUX (`input_image_0` a `input_image_3`, hasta cuatro por escena) y el
   encargo dice cuál es de quién con ordinales («Ana se ve igual que en la
@@ -244,8 +290,7 @@ Cómo se reutiliza:
   klein no aclara si la primera es la «imagen 0» o la «imagen 1».
 - Al editar una escena se proponen, con un clic, los elementos del reparto que
   aún no nombra y los guardados que aún no están en el video.
-- Desde la biblioteca (desplegable bajo el reparto) se mete un elemento a mano,
-  se repinta su referencia o se borra.
+- Desde la biblioteca también se repinta su referencia o se borra.
 
 Solo Cloudflare manda referencias; con Nano Banana sin probar (sin facturación
 no hay cupo), las escenas van solo con los rasgos. La imagen de referencia se
@@ -316,6 +361,65 @@ Cada generador es una entrada de `IMAGE_PROVIDERS` en `app/domain/illustration.p
 esos modelos anuncian en su catálogo; la guía de AI Studio documenta también la
 API de Interactions, pero no enseña su respuesta y con una clave del nivel
 gratuito no se puede comprobar.
+
+## Portada
+
+La pestaña **Portada** del panel de salida enseña la miniatura del video: un
+título gancho en mayúsculas sobre una imagen, con una palabra en otro color. Es
+lo que se ve en la cuadrícula del perfil y mientras alguien desliza el dedo,
+así que se juzga en un segundo y en pequeño.
+
+Sale sola en cuanto hay tema: el título es el tema con su palabra más larga
+resaltada y la imagen, la de la primera escena con imagen (las generadas ponen
+las caras arriba). Si no convence, se cambia todo desde la misma pestaña y se
+repinta medio segundo después de dejar de tocar:
+
+- **Título.** A mano —lo que va entre `*asteriscos*` sale resaltado— o entre
+  los cuatro que propone el modelo del guion con «Sugerir títulos con IA»
+  (`POST /api/cover/titles`, encolado como el guion). Avisa a partir de siete
+  palabras: más no se leen en miniatura.
+- **Diseño.** *Impacto* (texto gigante en el tercio inferior, palabra en
+  amarillo), *Franja* (cada línea sobre una franja amarilla inclinada, también
+  abajo) y *Titular* (arriba, palabra en una caja roja), para las imágenes con
+  el motivo abajo. Los dos primeros van abajo a propósito: con el título arriba,
+  en las imágenes generadas tapaba la cara.
+- **Imagen.** Cualquiera de las escenas, o «IA» para pintar una solo para la
+  portada con el estilo, el reparto y la semilla del video. Entra en la galería
+  como cualquier imagen.
+
+Se pinta a 1080x1920 en JPEG (de 100 a 600 KB) con PIL y la letra del motor
+(`app/infrastructure/cover.py`): la imagen con más color y contraste, una sombra
+detrás del texto, viñeta y el título repartido en líneas parejas, sin una
+palabra huérfana al final. Todo el texto cae dentro del centro 3:4
+(y ∈ [240, 1680]), que es lo que enseñan las cuadrículas de Instagram y TikTok.
+Medio segundo por portada; con un clip de fondo, algo más, porque ffmpeg saca
+un fotograma a tamaño completo.
+
+La portada viaja con el render y se guarda en la ficha del video (columna
+`cover` de `videos`; las bases de antes la reciben al arrancar). Al terminar el
+render, «Descargar portada» baja la que se ve en pantalla, aunque se haya
+retocado después; en la biblioteca, «Portada» baja la guardada
+(`GET /api/videos/{id}/cover`), y los videos de antes reciben la de por defecto.
+
+## Descripción
+
+El paso **5 · Descripción** prepara el texto con que se publica el video. Es lo
+que leen los buscadores de YouTube, TikTok e Instagram, y cada plataforma lo
+corta tras las primeras líneas («… más»), así que el orden importa: primero
+las palabras clave, dichas con naturalidad; después, un resumen del video en
+dos o tres frases; al final, una línea de hashtags.
+
+«Escribir con IA» se lo encarga al modelo del guion (`POST /api/description`,
+encolado como el guion) con el guion y el título de la portada delante, para
+que casen. Se puede retocar o escribir a mano. Bajo el cuadro se ve lo que se
+lee antes de «más» (unas 125 letras), que es donde tienen que estar las
+palabras clave. Las reglas del encargo están en `app/domain/description.py`.
+
+El tope es de 5000 caracteres, el de YouTube. Instagram corta a 2200 y TikTok
+a 4000: pasarse se avisa pero no se impide. La descripción viaja con el render
+y se guarda con el video (columna `description` de `videos`). Al terminar,
+«Copiar descripción» la lleva al portapapeles, y en la biblioteca lo hace el
+botón «Descripción» de cada video; «Reutilizar» la recupera.
 
 ## Decisiones de arquitectura
 
@@ -423,15 +527,16 @@ milisegundos, sin navegador ni servidor ni datos falsos, y montar el estudio
 contra un doble de pruebas es cambiar el argumento `gateway`.
 
 **Cada feature guarda su propio estado.** `script`, `voice`, `captions`,
-`scenes`, `backgrounds`, `render`, `library` y `writer` tienen su `model/` con
+`scenes`, `backgrounds`, `cover`, `description`, `render`, `library` y `writer` tienen su `model/` con
 un slice y su `ui/` con los componentes. El proveedor los junta y resuelve solo
 lo que ninguna feature puede resolver sola: previsualizar, renderizar y
 reutilizar un video, que necesitan datos de varias a la vez. Los componentes ya
 no reciben un objeto `studio` por props; piden su propio hook.
 
-**Un panel para los cuatro pasos, no cuatro tarjetas.** Guion, voz, subtítulos y
-escenas son una secuencia —la duración del guion condiciona a las escenas—, así
-que van numerados dentro del mismo panel y separados por filetes. Lo que se
+**Un panel para los pasos, no una tarjeta por paso.** Guion, voz, subtítulos,
+escenas y descripción son una secuencia —la duración del guion condiciona a las
+escenas, y la descripción resume el guion—, así que van numerados dentro del
+mismo panel y separados por filetes. Lo que se
 ajusta una vez y no se vuelve a mirar (el modelo del guion, el ajuste fino de
 los subtítulos) vive en plegables, que es lo que mantiene la superficie
 principal en unos pocos controles.
@@ -463,7 +568,7 @@ video-studio/
 │   ├── infrastructure/    # SQLite, .env, ffmpeg, cola de render, worker, clientes LLM y de imagen
 │   ├── api/               # FastAPI: schemas, rutas y traducción de errores
 │   ├── container.py       # raíz de composición: enchufa adaptadores a casos de uso
-│   └── main.py            # crea la app (uvicorn app.main:app)
+│   └── main.py            # crea la app real (uvicorn app.main:app); las pruebas usan api/factory.py
 ├── tests/                 # unittest: dominio, aplicación (con dobles), SQLite, contrato HTTP
 ├── web/                   # interfaz Next.js (App Router + TypeScript)
 │   ├── app/               # rutas y estilos · raíz de composición
@@ -500,7 +605,10 @@ api ──▶ application ──▶ domain
 `app/container.py` es la raíz de composición: construye los adaptadores reales y
 arranca los hilos de fondo cuando el servidor arranca (`lifespan`), no al
 importar. Por eso `tests/test_api.py` monta la API entera sobre dobles en
-memoria sin tocar SQLite ni el motor.
+memoria sin tocar SQLite ni el motor. La monta con `app/api/factory.py` y no
+importa `app/main.py`: ese módulo construye el contenedor real al importarse,
+así que abría `data/studio.db` en cada corrida de pruebas y, con una migración
+de por medio, cambiaba la base de un servidor que estuviera en marcha.
 
 Cambiar SQLite por un broker real es escribir otro `EventLog`; cambiar la cola
 de renders por Celery es otro `RenderQueue`. Los casos de uso no se enteran.

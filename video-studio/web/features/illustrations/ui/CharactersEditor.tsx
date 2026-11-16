@@ -49,9 +49,9 @@ export function CharactersEditor() {
 
       {characters.length === 0 ? (
         <p className="hint">
-          Los propone el guion visual: personas, animales, objetos o lugares que se repiten, y los
-          de tu biblioteca que encajen. Una escena que nombre a uno lo pinta con sus rasgos, igual en
-          todas.
+          Los propone el guion visual: personas, animales, objetos o lugares que se repiten. Los de
+          tu biblioteca se meten a mano, desde «Biblioteca». Una escena que nombre a uno lo pinta con
+          sus rasgos, igual en todas.
         </p>
       ) : (
         characters.map((character, i) => {

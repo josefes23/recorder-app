@@ -109,7 +109,7 @@ def image_provider_by_id(provider_id: str | None) -> ImageProvider | None:
     return _BY_ID.get((provider_id or "").strip().lower())
 
 
-_MEDIA_TYPES = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+_MEDIA_TYPES = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
 
 
 @dataclass(frozen=True)
@@ -148,44 +148,63 @@ def split_sentences(text: str) -> list[str]:
     return [s.strip() for s in _SENTENCE_END.split(text) if s.strip()]
 
 
-def plan_beats(
-    script: str | None,
+def plan_cuts(
+    sentences: Sequence[str],
     seconds_per_scene: float = SECONDS_PER_SCENE,
     max_scenes: int = MAX_SCENES,
-) -> list[Beat]:
+) -> list[int]:
     """
-    Reparte el guion en escenas de unos `seconds_per_scene` segundos sin partir
+    Dónde empieza cada escena si se reparte solo por longitud: el índice de su
+    primera frase. Escenas de unos `seconds_per_scene` segundos sin partir
     ninguna frase: cada frase cae en la escena donde queda su mitad. Así una
     frase larga no se corta en dos imágenes y las cortas se agrupan.
+
+    No sabe de qué habla cada frase: puede juntar en una imagen el final de
+    una idea y el principio de la siguiente. El guion visual corta por sentido
+    (`domain.storyboard`) y usa esto solo para recortar si el modelo se pasa.
     """
-    sentences = split_sentences(clean_script(script))
     if not sentences:
         return []
-
     lengths = [len(s.split()) for s in sentences]
     total = sum(lengths)
     wanted = round(total / WORDS_PER_SECOND / seconds_per_scene)
     count = max(1, min(max_scenes, wanted, len(sentences)))
     per_scene = total / count
 
-    groups: list[tuple[int, list[str]]] = []  # (palabra en la que empieza, frases)
+    cuts: list[int] = []
+    last_slot = None
     words_before = 0
-    for sentence, length in zip(sentences, lengths):
+    for index, length in enumerate(lengths):
         slot = min(count - 1, int((words_before + length / 2) // per_scene))
-        if groups and groups[-1][0] == slot:
-            groups[-1][1].append(sentence)
-        else:
-            groups.append((slot, [sentence]))
+        if slot != last_slot:
+            cuts.append(index)
+            last_slot = slot
         words_before += length
+    return cuts
 
+
+def beats_from_cuts(sentences: Sequence[str], cuts: Sequence[int]) -> list[Beat]:
+    """
+    Las escenas que empiezan en esas frases (índices crecientes, el primero 0),
+    cada una hasta la frase anterior a la siguiente y con su segundo estimado.
+    """
+    bounds = [*cuts, len(sentences)]
     beats: list[Beat] = []
-    words_before = 0
-    for _, group in groups:
+    for first, end in zip(bounds, bounds[1:]):
+        words_before = sum(len(s.split()) for s in sentences[:first])
         start = 0.0 if not beats else round(words_before / WORDS_PER_SECOND, 1)
-        text = " ".join(group)
-        beats.append(Beat(start, text))
-        words_before += len(text.split())
+        beats.append(Beat(start, " ".join(sentences[first:end])))
     return beats
+
+
+def plan_beats(
+    script: str | None,
+    seconds_per_scene: float = SECONDS_PER_SCENE,
+    max_scenes: int = MAX_SCENES,
+) -> list[Beat]:
+    """El guion repartido en escenas solo por longitud (`plan_cuts`)."""
+    sentences = split_sentences(clean_script(script))
+    return beats_from_cuts(sentences, plan_cuts(sentences, seconds_per_scene, max_scenes))
 
 
 # --------------------------------------------------------------------------- #
@@ -282,19 +301,21 @@ def as_sentence(text: str) -> str:
 _ORDINALS = ("primera", "segunda", "tercera", "cuarta")
 
 
-def reference_line(referenced: Sequence[Character]) -> str:
+def reference_line(referenced: Sequence[Character], first: int = 0) -> str:
     """
-    Qué imagen de referencia es de quién, por orden de llegada.
+    Qué imagen de referencia es de quién, por orden de llegada. `first` es la
+    posición de la primera de estas: al corregir una imagen, la primera
+    referencia es la propia imagen y las de la biblioteca van detrás.
 
     Con ordinales y no con números: la documentación de FLUX.2 [klein] no dice
     si la primera referencia es la «imagen 0» o la «imagen 1», y con dos
     elementos en la escena equivocarse cruzaría las caras.
     """
-    if len(referenced) == 1:
+    if len(referenced) == 1 and first == 0:
         who = f"{referenced[0].name} se ve igual que en la imagen de referencia"
     else:
-        parts = [f"{c.name} se ve igual que en la {_ORDINALS[0]} imagen de referencia" if i == 0
-                 else f"{c.name}, que en la {_ORDINALS[i]}" for i, c in enumerate(referenced)]
+        parts = [f"{c.name} se ve igual que en la {_ORDINALS[first]} imagen de referencia" if i == 0
+                 else f"{c.name}, que en la {_ORDINALS[first + i]}" for i, c in enumerate(referenced)]
         who = "; ".join(parts)
     return f"{who}: mismo aspecto (cara, pelo, ropa, forma y colores), en la postura y el lugar que pide la escena."
 
@@ -319,6 +340,62 @@ def image_prompt(
     lines.append(f"Estilo: {as_sentence(guide.look or DEFAULT_STYLE)}")
     lines.append(FRAMING)
     return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------- #
+# Corregir una imagen ya pintada
+# --------------------------------------------------------------------------- #
+
+#: Tope de lo que el usuario cuenta que está mal. Una o dos frases bastan.
+CORRECTION_LIMIT = 500
+
+#: Lo que no se toca al corregir: si no se dice, el generador aprovecha para
+#: repintar la escena entera y el arreglo se lleva lo que estaba bien.
+KEEP_THE_REST = (
+    "Deja todo lo demás como está: el encuadre, las personas y su ropa, el fondo, "
+    "la luz, los colores y el estilo."
+)
+
+
+def correction_prompt(
+    correction: str,
+    description: str = "",
+    guide: VisualGuide | None = None,
+    referenced: Sequence[Character] = (),
+) -> str:
+    """
+    El encargo para corregir una imagen: la imagen va como primera referencia
+    y el generador la edita en vez de pintar otra desde cero.
+
+    El fallo va tal como lo escribe el usuario («la mujer tiene seis dedos»,
+    «quita las letras del cielo») detrás de qué hacer con él: FLUX.2 y Nano
+    Banana editan siguiendo instrucciones, y «corrige» lo es. Los rasgos de
+    quien sale y las referencias de la biblioteca van como en `image_prompt`,
+    para que el arreglo no le cambie la cara a nadie. Ni estilo ni encuadre:
+    ya están en la imagen, y repetirlos invita a repintarla.
+    """
+    guide = guide or VisualGuide()
+    lines = [
+        f"Corrige la primera imagen de referencia. Lo que hay que arreglar: {as_sentence(correction)}",
+        KEEP_THE_REST,
+    ]
+    if description:
+        lines.append(f"La escena muestra: {as_sentence(description)}")
+    lines += [f"{c.name}: {as_sentence(c.traits)}" for c in cast_in(f"{description} {correction}", guide.characters)]
+    if referenced:
+        lines.append(reference_line(referenced[: MAX_REFERENCES - 1], first=1))
+    return "\n".join(lines)
+
+
+def validate_correction(correction: str | None) -> str:
+    text = " ".join((correction or "").split())
+    if not text:
+        raise ValidationError("Cuenta qué está mal en la imagen para que la IA lo corrija.")
+    if len(text) > CORRECTION_LIMIT:
+        raise ValidationError(
+            f"La corrección es demasiado larga: déjala por debajo de {CORRECTION_LIMIT} caracteres."
+        )
+    return text
 
 
 def validate_guide(look: str | None, characters: list[Mapping] | None, seed: int | None) -> VisualGuide:
@@ -380,9 +457,12 @@ def illustration_name(topic: str, job_key: str, extension: str) -> str:
     return f"ia-{slugify(fold(topic))[:40]}_{digits}{extension}"
 
 
-def validate_description(description: str | None) -> str:
+def validate_description(description: str | None, required: bool = True) -> str:
+    """`required=False` al corregir: una imagen puesta a mano desde la galería no trae descripción."""
     text = " ".join((description or "").split())
     if not text:
+        if not required:
+            return ""
         raise ValidationError("Describe qué debe mostrar la imagen.")
     if len(text) > 1500:
         raise ValidationError("La descripción es demasiado larga: déjala por debajo de 1.500 caracteres.")

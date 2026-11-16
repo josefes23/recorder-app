@@ -11,6 +11,8 @@ export type LibrarySlice = {
   load: () => Promise<void>;
   remove: (id: number) => Promise<void>;
   videoUrl: (id: number) => string;
+  /** La portada guardada con el video, como descarga. */
+  coverUrl: (id: number) => string;
 };
 
 export function useLibrarySlice({ gateway, run }: SliceDeps): LibrarySlice {
@@ -29,7 +31,7 @@ export function useLibrarySlice({ gateway, run }: SliceDeps): LibrarySlice {
   );
 
   return useMemo(
-    () => ({ items, load, remove, videoUrl: gateway.videoUrl }),
-    [items, load, remove, gateway.videoUrl],
+    () => ({ items, load, remove, videoUrl: gateway.videoUrl, coverUrl: gateway.coverUrl }),
+    [items, load, remove, gateway.videoUrl, gateway.coverUrl],
   );
 }

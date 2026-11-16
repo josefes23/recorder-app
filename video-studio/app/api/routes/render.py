@@ -21,6 +21,8 @@ def render(req: RenderRequest, studio: StudioDep) -> dict:
     video_id, seconds = studio.render.start(
         topic=req.topic, script=req.script, voice=req.voice, rate=req.rate, pitch=req.pitch,
         style=req.style, scenes=[Scene(s.background, s.start) for s in req.scenes],
+        cover=req.cover.model_dump() if req.cover else None,
+        description=req.description,
     )
     return {"id": video_id, "seconds": seconds}
 

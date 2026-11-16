@@ -6,6 +6,7 @@ import {
   MAX_CHARACTERS,
   castHas,
   castIn,
+  correctionDraft,
   fromSaved,
   libraryState,
   mentioning,
@@ -126,13 +127,24 @@ test("cada revisión se cuenta en una línea, y los fallos van como aviso", () =
     "Revisada por Claude. Descartó 2 imágenes con fallos: a; b.",
   );
   assert.deepEqual(reviewNote({ ...base, status: "flagged", attempts: 3, problems: ["tres brazos", "letras"] }), {
-    text: "Claude ve fallos tras 3 intentos: tres brazos; letras. Pide otra o elige otro fondo.",
+    text: "Claude ve fallos tras 3 intentos: tres brazos; letras. Corrígela, pide otra o elige otro fondo.",
     warn: true,
   });
   assert.deepEqual(reviewNote({ ...base, status: "unchecked", attempts: 1, detail: "Límite de peticiones alcanzado." }), {
     text: "Sin revisar: Límite de peticiones alcanzado.",
     warn: true,
   });
+});
+
+test("al corregir se parte de los fallos que vio el revisor, si los vio", () => {
+  const base = { reviewer: "Claude", attempts: 3, fixed: [], detail: "" };
+  assert.equal(
+    correctionDraft({ ...base, status: "flagged", problems: ["Ana tiene tres brazos.", "hay letras en el cielo"] }),
+    "Ana tiene tres brazos; hay letras en el cielo.",
+  );
+  assert.equal(correctionDraft({ ...base, status: "approved", problems: [], fixed: ["tres brazos"] }), "");
+  assert.equal(correctionDraft({ ...base, status: "flagged", problems: [] }), "");
+  assert.equal(correctionDraft(undefined), "");
 });
 
 const saved = (id: number, name: string, traits: string, kind: SavedCharacter["kind"] = "persona"): SavedCharacter => ({

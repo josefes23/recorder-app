@@ -11,6 +11,10 @@ generada de un clip de Pexels.
 Antes de guardarla, el modelo del guion la revisa si ve imágenes
 (`domain.review`): con un fallo a la vista se repinta con otra semilla. A la
 galería solo llega la que se queda.
+
+Corregir una imagen es el mismo encargo con dos datos más: cuál y qué está
+mal. El generador recibe la imagen como primera referencia y la edita, y el
+revisor comprueba además que el fallo ya no está.
 """
 
 from __future__ import annotations
@@ -31,7 +35,8 @@ from app.application.ports import (
 )
 from app.application.use_cases.writer_settings import WriterSettings
 from app.domain import review as quality
-from app.domain.errors import DomainError, IllustratorError, ValidationError
+from app.domain.background import is_image
+from app.domain.errors import DomainError, IllustratorError, NotFoundError, ValidationError
 from app.domain.events import (
     ILLUSTRATION_COMPLETED,
     ILLUSTRATION_FAILED,
@@ -48,10 +53,12 @@ from app.domain.illustration import (
     GeneratedImage,
     ImageProvider,
     cast_in,
+    correction_prompt,
     illustration_name,
     image_prompt,
     image_provider_by_id,
     new_illustration_key,
+    validate_correction,
     validate_description,
     validate_guide,
 )
@@ -218,12 +225,15 @@ class ReviewedPainter:
         review: object,
         started: datetime | None = None,
         references: Sequence[GeneratedImage] = (),
+        correction: str = "",
     ) -> tuple[GeneratedImage, ReviewReport | None]:
         """
         Con revisor (`review`, lo que eligió `choose_reviewer` al encargarla),
         repinta mientras vea fallos, hasta `review.MAX_ATTEMPTS` imágenes o
         hasta que el encargo lleve demasiado esperando. Devuelve la imagen que
         se queda y lo que dijo el revisor.
+
+        Con `correction`, el revisor comprueba además que se arregló.
         """
         reviewer = self._reviewer_for(review)
         started = started or self._clock()
@@ -242,7 +252,7 @@ class ReviewedPainter:
                 return image, None
             label, check = reviewer
             try:
-                verdict = check(image, description)
+                verdict = check(image, description, correction)
             except Exception as exc:  # noqa: BLE001 - una revisión fallida nunca tumba la imagen
                 detail = str(exc) if isinstance(exc, DomainError) else f"{type(exc).__name__}: {exc}"
                 return image, quality.unchecked(label, len(shots) + 1, detail)
@@ -284,13 +294,13 @@ class ReviewedPainter:
         if provider is None or not provider.sees_images or not model:
             return None
 
-        def check(image: GeneratedImage, description: str) -> quality.Review:
+        def check(image: GeneratedImage, description: str, correction: str) -> quality.Review:
             raw = self._reviewer.compose(
                 provider,
                 model,
                 self._writer.api_key(provider),
                 quality.SYSTEM_PROMPT,
-                quality.review_prompt(description),
+                quality.review_prompt(description, correction),
                 image,
             )
             return quality.parse_review(raw)
@@ -327,6 +337,8 @@ class IllustrationUseCases:
         provider_id: str = "",
         model: str = "",
         review: bool = True,
+        source: str = "",
+        correction: str = "",
     ) -> Event:
         """
         Encola una imagen y devuelve el evento con la clave del trabajo.
@@ -334,8 +346,16 @@ class IllustrationUseCases:
         El estilo, el reparto y la semilla son la guía visual del video: viajan
         con cada encargo para que la escena case con las demás. Quién revisa se
         decide aquí, como quién pinta: el modelo del guion si ve imágenes.
+
+        Con `source` (una imagen de la galería) y `correction` (qué está mal),
+        no se pinta otra: se corrige esa. La original se queda en la galería y
+        la corregida llega con nombre propio, así que se puede volver atrás.
         """
-        description = validate_description(description)
+        fixing = bool(source.strip() or correction.strip())
+        if fixing:
+            correction = validate_correction(correction)
+            source = self._correctable(source)
+        description = validate_description(description, required=not fixing)
         guide = validate_guide(look, characters, seed)
         provider = self._settings.resolve(provider_id)
         model = model.strip() or self._settings.model_for(provider)
@@ -351,6 +371,7 @@ class IllustrationUseCases:
                 "provider": provider.id,
                 "model": model,
                 "review": self._painter.choose_reviewer() if review else None,
+                **({"source": source, "correction": correction} if fixing else {}),
             },
         )
 
@@ -363,22 +384,38 @@ class IllustrationUseCases:
         Pinta la imagen ahora, bloqueando, y la deja en la galería. Los
         elementos de la biblioteca que salen en la escena llevan su imagen de
         referencia. Devuelve el nombre en la galería y lo que dijo el revisor.
+
+        Si el encargo es una corrección, la imagen a corregir va delante de
+        esas referencias y el encargo pide editarla, no pintar otra.
         """
         provider = image_provider_by_id(payload.get("provider"))
         if provider is None:
             raise IllustratorError(f"Generador desconocido: {payload.get('provider')}")
         description = payload.get("description", "")
+        correction = payload.get("correction") or ""
         guide = validate_guide(payload.get("look"), payload.get("characters"), payload.get("seed"))
-        referenced, references = self._references_for(cast_in(description, guide.characters))
+
+        if correction:
+            original = self._original(payload.get("source") or "")
+            referenced, references = self._references_for(
+                cast_in(f"{description} {correction}", guide.characters), MAX_REFERENCES - 1
+            )
+            prompt = correction_prompt(correction, description, guide, referenced)
+            references = [original, *references]
+        else:
+            referenced, references = self._references_for(cast_in(description, guide.characters))
+            prompt = image_prompt(description, guide, referenced)
+
         image, report = self._painter.paint(
             provider,
             payload.get("model") or "",
-            image_prompt(description, guide, referenced),
+            prompt,
             description,
             guide.seed,
             payload.get("review"),
             requested_at,
             references,
+            correction=correction,
         )
         name = illustration_name(payload.get("topic", ""), key, image.extension)
         return self._store.save(name, io.BytesIO(image.data)), report
@@ -414,8 +451,26 @@ class IllustrationUseCases:
 
     # ------------------------------------------------------------------------ #
 
+    def _correctable(self, name: str) -> str:
+        """La imagen de la galería que se quiere corregir, comprobada antes de encolar."""
+        name = name.strip()
+        if not name:
+            raise ValidationError("Elige la imagen que quieres corregir.")
+        if not is_image(name):
+            raise ValidationError("Solo se pueden corregir imágenes: un clip de video no se repinta.")
+        if not self._store.has(name):
+            raise NotFoundError(f"«{name}» ya no está en la galería.")
+        return name
+
+    def _original(self, name: str) -> GeneratedImage:
+        data = self._store.read(name)
+        if not data:
+            # Borrada de la galería entre el encargo y el turno del ilustrador.
+            raise IllustratorError(f"«{name}» ya no está en la galería: no hay nada que corregir.")
+        return GeneratedImage(data, Path(name).suffix.lower())
+
     def _references_for(
-        self, cast: Sequence[Character]
+        self, cast: Sequence[Character], limit: int = MAX_REFERENCES
     ) -> tuple[list[Character], list[GeneratedImage]]:
         """
         Los elementos de la escena que vienen de la biblioteca y tienen imagen
@@ -425,7 +480,7 @@ class IllustrationUseCases:
         referenced: list[Character] = []
         images: list[GeneratedImage] = []
         for character in cast:
-            if len(images) == MAX_REFERENCES:
+            if len(images) == limit:
                 break
             saved = self._characters.get(character.saved) if character.saved else None
             data = self._references.read(saved.reference) if saved and saved.reference else None

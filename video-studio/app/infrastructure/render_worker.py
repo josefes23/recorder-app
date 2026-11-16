@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.domain.captions import clip_to_duration  # noqa: E402
 from app.domain.motion import scene_seed  # noqa: E402
-from app.domain.scene import Scene, timeline_spans  # noqa: E402
+from app.domain.scene import Scene, synced_to_voice, timeline_spans  # noqa: E402
 from app.domain.script import clean_script  # noqa: E402
 from app.domain.style import CaptionStyle  # noqa: E402
 from app.domain.video import RenderSpec  # noqa: E402
@@ -104,7 +104,10 @@ def main() -> None:
     captions = clip_to_duration(captions, duration)
     emit(phase="captions", progress=0.25, message=f"{len(captions)} bloques")
 
-    background = build_track(gen, paths.backgrounds, job.scenes, job.topic, duration)
+    # Las escenas llegan en segundos estimados; con la voz ya hecha, cada una
+    # entra cuando la voz dice su texto.
+    scenes = [s.as_dict() for s in synced_to_voice(map(Scene.from_dict, job.scenes), script, words or [])]
+    background = build_track(gen, paths.backgrounds, scenes, job.topic, duration)
 
     emit(phase="render", progress=0.30, message="Renderizando…")
 

@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from app.container import Container
 from app.domain.video import RenderResult
 from app.infrastructure.paths import Paths
-from app.main import create_app
+from app.api.factory import create_app
 from tests.fakes import LONG_SCRIPT, DictCredentials, make_studio
 
 
@@ -146,7 +146,7 @@ class ApiTests(unittest.TestCase):
 
         self.fakes.credentials.values["NVIDIA_API_KEY"] = "nv"
         self.fakes.composer.text = (
-            '{"look": "óleo", "characters": [], "scenes": [{"n": 1, "description": "una taza al sol"}]}'
+            '{"look": "óleo", "characters": [], "scenes": [{"from": 1, "description": "una taza al sol"}]}'
         )
         accepted = self.client.post("/api/storyboards", json={"topic": "Café", "script": "Hola mundo. Adiós."})
         self.assertEqual(accepted.status_code, 202)
@@ -193,6 +193,18 @@ class ApiTests(unittest.TestCase):
         self.assertIsNone(self.fakes.events.events[-1].payload["review"])
         self.studio.illustrations.handle_request(self.fakes.events.events[-1])
         self.assertIsNone(self.client.get(f"/api/outcomes/{unreviewed.json()['job']}").json()["review"])
+
+        # Corregir la imagen que acaba de llegar: sin descripción vale, sin decir qué está mal no.
+        fix = {"topic": "Café", "source": done["name"], "correction": "Ana tiene tres brazos", "review": False}
+        self.assertEqual(self.client.post("/api/illustrations", json={**fix, "correction": ""}).status_code, 400)
+        self.assertEqual(self.client.post("/api/illustrations", json={**fix, "source": "nada_1.jpg"}).status_code, 404)
+        corrected = self.client.post("/api/illustrations", json=fix)
+        self.assertEqual(corrected.status_code, 202)
+        self.studio.illustrations.handle_request(self.fakes.events.events[-1])
+        fixed = self.client.get(f"/api/outcomes/{corrected.json()['job']}").json()
+        self.assertEqual(fixed["status"], "completed")
+        self.assertNotEqual(fixed["name"], done["name"])
+        self.assertTrue(self.fakes.illustrator.calls[-1][3].startswith("Corrige la primera imagen de referencia"))
 
     def test_character_library(self):
         # Sin generador no se guarda: la referencia no se podría pintar.
@@ -241,6 +253,45 @@ class ApiTests(unittest.TestCase):
         self.fakes.credentials.values["ANTHROPIC_API_KEY"] = "a"
         self.fakes.credentials.values["SCRIPT_PROVIDER"] = "anthropic"
         self.assertTrue(self.client.get("/api/writer").json()["sees_images"])
+
+
+    def test_cover_paints_suggests_and_downloads(self):
+        painted = self.client.post("/api/cover", json={
+            "title": "El *truco*", "design": "franja", "background": "bosque_1.mp4", "topic": "t",
+        })
+        self.assertEqual(painted.status_code, 200)
+        self.assertEqual(painted.headers["content-type"], "image/jpeg")
+        self.assertEqual(painted.content, b"\xff\xd8JPEG EL TRUCO")
+        bad = self.client.post("/api/cover", json={"title": " ", "design": "impacto"})
+        self.assertEqual((bad.status_code, bad.json()["detail"]), (400, "Escribe el título de la portada."))
+
+        accepted = self.client.post("/api/cover/titles", json={"topic": "ayuno", "script": ""})
+        self.assertEqual(accepted.status_code, 202)
+        job = accepted.json()["job"]
+        self.assertEqual(self.client.get(f"/api/outcomes/{job}").json(), {"status": "pending"})
+
+        self.client.post("/api/render", json={
+            "topic": "Ayuno real", "script": LONG_SCRIPT,
+            "cover": {"title": "El *ayuno*", "design": "titular", "background": None},
+        })
+        item = self.client.get("/api/videos").json()["items"][0]
+        self.assertEqual(item["cover"], {"title": "El *ayuno*", "design": "titular", "background": None})
+        download = self.client.get(f"/api/videos/{item['id']}/cover")
+        self.assertEqual(download.content, b"\xff\xd8JPEG EL AYUNO")
+        self.assertEqual(
+            download.headers["content-disposition"], "attachment; filename*=UTF-8''portada-ayuno-real.jpg",
+        )
+        self.assertEqual(self.client.get("/api/videos/99/cover").status_code, 404)
+
+    def test_description_is_requested_and_saved_with_the_video(self):
+        accepted = self.client.post("/api/description", json={"topic": "t", "script": "Un guion.", "title": "El *t*"})
+        self.assertEqual(accepted.status_code, 202)
+        self.assertEqual(self.fakes.events.events[-1].payload["title"], "El t")
+        empty = self.client.post("/api/description", json={"topic": "t", "script": " "})
+        self.assertEqual(empty.status_code, 400)
+
+        self.client.post("/api/render", json={"topic": "t", "script": LONG_SCRIPT, "description": " Texto \n#tag "})
+        self.assertEqual(self.client.get("/api/videos").json()["items"][0]["description"], "Texto\n#tag")
 
 
 if __name__ == "__main__":

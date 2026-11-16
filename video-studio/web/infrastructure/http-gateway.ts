@@ -1,6 +1,8 @@
 import type {
   CharacterSaved,
   CharacterSaveRequest,
+  CoverRequest,
+  DescriptionRequest,
   IllustrationRequest,
   JobAccepted,
   PreviewRequest,
@@ -140,6 +142,20 @@ export const httpGateway: StudioGateway = {
     return response.blob();
   },
 
+  async coverImage(payload: CoverRequest): Promise<Blob> {
+    const response = await fetch("/api/cover", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(await detail(response));
+    return response.blob();
+  },
+
+  requestTitles: (topic, script) => post<JobAccepted>("/api/cover/titles", { topic, script }),
+
+  requestDescription: (payload: DescriptionRequest) => post<JobAccepted>("/api/description", payload),
+
   async startRender(payload: RenderRequest): Promise<number> {
     const { id } = await post<{ id: number; seconds: number }>("/api/render", payload);
     return id;
@@ -163,4 +179,5 @@ export const httpGateway: StudioGateway = {
     `/api/references/${encodeURIComponent(name)}?v=${encodeURIComponent(version)}`,
 
   videoUrl: (id) => `/api/videos/${id}/file`,
+  coverUrl: (id) => `/api/videos/${id}/cover`,
 };
