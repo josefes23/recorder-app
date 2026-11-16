@@ -1,5 +1,6 @@
 # Instalación:  python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
-# Requiere además ffmpeg en el sistema:  brew install ffmpeg
+#   Windows:    py -3.13 -m venv .venv && .venv\Scripts\python -m pip install -r requirements.txt
+# El render no necesita ffmpeg del sistema (moviepy trae el suyo con imageio-ffmpeg).
 
 moviepy>=2.2,<3
 edge-tts>=7.2

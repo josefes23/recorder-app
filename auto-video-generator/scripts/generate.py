@@ -45,13 +45,21 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 
 DEFAULT_VOICE = "es-MX-DaliaNeural"
 
-# Fuentes candidatas en macOS, de más a menos preferida.
+# Fuentes candidatas del sistema, de más a menos preferida: primero macOS,
+# después las mismas en Windows y al final Linux. Una fuente en assets/fonts/
+# gana a todas (ver resolve_font).
+_WIN_FONTS = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
 FONT_CANDIDATES = [
     "/System/Library/Fonts/Supplemental/Arial Black.ttf",
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
     "/System/Library/Fonts/Supplemental/Impact.ttf",
     "/System/Library/Fonts/Supplemental/Verdana Bold.ttf",
     "/Library/Fonts/Arial Bold.ttf",
+    str(_WIN_FONTS / "ariblk.ttf"),
+    str(_WIN_FONTS / "arialbd.ttf"),
+    str(_WIN_FONTS / "impact.ttf"),
+    str(_WIN_FONTS / "verdanab.ttf"),
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
 ]
 
 # Subtítulos
@@ -668,7 +676,21 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def utf8_console() -> None:
+    """
+    Salida en UTF-8 en todos los sistemas.
+
+    En Windows, cuando la salida va a un pipe (Claude Code, CI), Python usa la
+    página de códigos local (cp1252) y un "✅" en un print corta el programa.
+    Solo se llama desde main(): video-studio importa este archivo como librería.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main() -> None:
+    utf8_console()
     args = parse_args()
     for d in (OUTPUTS_DIR, TMP_DIR, BACKGROUNDS_DIR, FONTS_DIR):
         d.mkdir(parents=True, exist_ok=True)

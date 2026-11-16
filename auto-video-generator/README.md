@@ -163,9 +163,17 @@ superponen su interfaz.
 
 ## Requisitos
 
+Anda en Mac, Linux y Windows.
+
 - Python 3.9+ (probado en 3.13)
-- ffmpeg (`brew install ffmpeg`)
 - Conexión a internet para la síntesis de voz
+- ffmpeg del sistema solo para los pasos de verificación de `/make-video`
+  (`brew install ffmpeg` / `winget install Gyan.FFmpeg`). El render no lo
+  necesita: moviepy usa el que trae `imageio-ffmpeg`.
+
+Los subtítulos usan la primera fuente que encuentran: una `.ttf` u `.otf` en
+`assets/fonts/` y, si no hay, Arial Black, Arial Bold, Impact o Verdana Bold del
+sistema (Mac o Windows) o DejaVu Sans Bold en Linux.
 
 ## Reinstalar
 
@@ -173,3 +181,14 @@ superponen su interfaz.
 python3 -m venv .venv
 ./.venv/bin/pip install -r requirements.txt
 ```
+
+En Windows (PowerShell) el entorno guarda los ejecutables en `.venv\Scripts`:
+
+```powershell
+py -3.13 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python scripts\generate.py --topic "El café y la productividad"
+```
+
+En el resto de este README, donde dice `./.venv/bin/python` usa
+`.venv\Scripts\python`.

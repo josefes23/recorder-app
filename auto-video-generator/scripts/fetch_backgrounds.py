@@ -138,6 +138,12 @@ def resolve_api_key(explicit: str | None) -> str | None:
 
 
 def main() -> None:
+    # En Windows, con la salida en un pipe, Python escribe en cp1252 y el "✅"
+    # del final cortaría el programa.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
     p = argparse.ArgumentParser(description="Descarga fondos verticales de Pexels.")
     p.add_argument("--query", required=True, help="Búsqueda, ej. 'abstract dark' o 'ocean'.")
     p.add_argument("--count", type=int, default=5, help="Cuántos clips descargar (def: 5).")

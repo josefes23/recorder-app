@@ -14,6 +14,12 @@ Haz `cd` a esa carpeta antes de nada; todos los comandos de abajo son relativos 
 **Intérprete:** usa SIEMPRE `./.venv/bin/python` (nunca `python3` del sistema: las
 dependencias están en el entorno virtual del proyecto).
 
+**En Windows** el entorno guarda los ejecutables en `.venv/Scripts`, no en
+`.venv/bin`: en todos los comandos de abajo cambia `./.venv/bin/python` por
+`./.venv/Scripts/python` (y `./.venv/bin/edge-tts` por `./.venv/Scripts/edge-tts`).
+Los pasos que usan `ffmpeg` y `ffprobe` necesitan ffmpeg instalado en el sistema
+(`winget install Gyan.FFmpeg`).
+
 ## Flujo
 
 ### 1. Escribe el guion
