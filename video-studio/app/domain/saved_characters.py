@@ -19,6 +19,7 @@ import re
 from dataclasses import dataclass
 
 from app.domain.illustration import DEFAULT_STYLE, Character, as_sentence
+from app.domain.template import render
 
 #: Cómo se pinta la imagen de referencia de cada tipo: lo que identifica al
 #: elemento, centrado, sobre un fondo que no distraiga ni se cuele en la escena.
@@ -61,14 +62,21 @@ class SavedCharacter:
         }
 
 
-def reference_prompt(character: Character, look: str = "") -> str:
+REFERENCE_TEMPLATE = "{framing}\n{name}: {traits}\nEstilo: {style}"
+
+
+def reference_prompt(character: Character, look: str = "", template: str | None = None) -> str:
     """El encargo de su imagen de referencia, con el estilo del video desde el que se guarda."""
     framing = REFERENCE_FRAMING.get(character.kind, REFERENCE_FRAMING["persona"])
-    return "\n".join([
-        framing.format(name=character.name),
-        f"{character.name}: {as_sentence(character.traits)}",
-        f"Estilo: {as_sentence(look or DEFAULT_STYLE)}",
-    ])
+    return render(
+        template or REFERENCE_TEMPLATE,
+        {
+            "framing": framing.format(name=character.name),
+            "name": character.name,
+            "traits": as_sentence(character.traits),
+            "style": as_sentence(look or DEFAULT_STYLE),
+        },
+    )
 
 
 def reference_description(character: Character) -> str:

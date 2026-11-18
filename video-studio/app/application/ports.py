@@ -275,6 +275,14 @@ class CredentialStore(Protocol):
     def save(self, values: Mapping[str, str | None]) -> None: ...
 
 
+class PromptStore(Protocol):
+    """Los prompts que el usuario ha editado; los demás usan el original."""
+
+    def all(self) -> dict[str, str]: ...
+    def set(self, prompt_id: str, body: str) -> None: ...
+    def remove(self, prompt_id: str) -> None: ...
+
+
 class VideoFiles(Protocol):
     """Los archivos de video ya renderizados."""
 

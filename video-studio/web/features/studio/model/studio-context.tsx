@@ -59,6 +59,7 @@ import { useScenesSlice, type ScenesSlice } from "@/features/scenes/model/scenes
 import { useScriptSlice, type ScriptSlice } from "@/features/script/model/script-slice";
 import { useStatusSlice, type StatusSlice } from "@/features/studio/model/status-slice";
 import { useVoiceSlice, type VoiceSlice } from "@/features/voice/model/voice-slice";
+import { usePromptsSlice, type PromptsSlice } from "@/features/prompts/model/prompts-slice";
 import { useWriterSlice, type WriterSlice } from "@/features/writer/model/writer-slice";
 
 import type { SliceDeps } from "./deps";
@@ -135,6 +136,7 @@ export type Studio = {
   library: LibrarySlice;
   render: RenderSlice;
   writer: WriterSlice;
+  prompts: PromptsSlice;
   images: ImagesSlice;
   animation: AnimationSlice;
   production: ProductionSlice;
@@ -187,6 +189,7 @@ export function StudioProvider({
   const take = useTakeSlice(deps);
   const render = useRenderSlice(deps, library.load);
   const writer = useWriterSlice(deps);
+  const prompts = usePromptsSlice(deps);
   const images = useImagesSlice(deps);
   const animation = useAnimationSlice(deps);
   const music = useMusicSlice(deps);
@@ -690,11 +693,11 @@ export function StudioProvider({
 
   const studio = useMemo<Studio>(
     () => ({
-      config, status, script, voice, captions, scenes, backgrounds, library, render, writer,
+      config, status, script, voice, captions, scenes, backgrounds, library, render, writer, prompts,
       images, animation, production, music, characters, cover, description, take, actions,
     }),
     [
-      config, status, script, voice, captions, scenes, backgrounds, library, render, writer, images,
+      config, status, script, voice, captions, scenes, backgrounds, library, render, writer, prompts, images,
       animation, production, music, characters, cover, description, take, actions,
     ],
   );

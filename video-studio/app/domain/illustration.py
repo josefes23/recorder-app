@@ -18,6 +18,7 @@ from uuid import uuid4
 from app.domain.errors import ValidationError
 from app.domain.script import WORDS_PER_SECOND, clean_script
 from app.domain.stock import slugify
+from app.domain.template import render
 
 # Variable del .env que guarda el generador elegido en la interfaz.
 PROVIDER_SETTING = "IMAGE_PROVIDER"
@@ -320,11 +321,17 @@ def reference_line(referenced: Sequence[Character], first: int = 0) -> str:
     return f"{who}: mismo aspecto (cara, pelo, ropa, forma y colores), en la postura y el lugar que pide la escena."
 
 
+#: La plantilla del encargo de imagen. El orden es el que pide FLUX.2: qué se
+#: ve, quién sale, de qué referencia, el estilo y el encuadre.
+IMAGE_TEMPLATE = f"{MEDIUM}: " + "{description}\n{elements}\n{references}\nEstilo: {style}\n{framing}"
+
+
 def image_prompt(
     description: str,
     guide: VisualGuide | None = None,
     referenced: Sequence[Character] = (),
     framing: str = FRAMING,
+    template: str | None = None,
 ) -> str:
     """
     El encargo completo para el generador, en el orden que pide FLUX.2: primero
@@ -336,13 +343,16 @@ def image_prompt(
     Contra las letras funciona decir qué es la imagen: un fotograma (MEDIUM).
     """
     guide = guide or VisualGuide()
-    lines = [f"{MEDIUM}: {as_sentence(description)}"]
-    lines += [f"{c.name}: {as_sentence(c.traits)}" for c in cast_in(description, guide.characters)]
-    if referenced:
-        lines.append(reference_line(referenced[:MAX_REFERENCES]))
-    lines.append(f"Estilo: {as_sentence(guide.look or DEFAULT_STYLE)}")
-    lines.append(framing)
-    return "\n".join(lines)
+    return render(
+        template or IMAGE_TEMPLATE,
+        {
+            "description": as_sentence(description),
+            "elements": "\n".join(f"{c.name}: {as_sentence(c.traits)}" for c in cast_in(description, guide.characters)),
+            "references": reference_line(referenced[:MAX_REFERENCES]) if referenced else "",
+            "style": as_sentence(guide.look or DEFAULT_STYLE),
+            "framing": framing,
+        },
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -360,11 +370,19 @@ KEEP_THE_REST = (
 )
 
 
+CORRECTION_TEMPLATE = (
+    "Corrige la primera imagen de referencia. Lo que hay que arreglar: {correction}\n"
+    + KEEP_THE_REST
+    + "\n{scene}\n{elements}\n{references}"
+)
+
+
 def correction_prompt(
     correction: str,
     description: str = "",
     guide: VisualGuide | None = None,
     referenced: Sequence[Character] = (),
+    template: str | None = None,
 ) -> str:
     """
     El encargo para corregir una imagen: la imagen va como primera referencia
@@ -378,16 +396,17 @@ def correction_prompt(
     ya están en la imagen, y repetirlos invita a repintarla.
     """
     guide = guide or VisualGuide()
-    lines = [
-        f"Corrige la primera imagen de referencia. Lo que hay que arreglar: {as_sentence(correction)}",
-        KEEP_THE_REST,
-    ]
-    if description:
-        lines.append(f"La escena muestra: {as_sentence(description)}")
-    lines += [f"{c.name}: {as_sentence(c.traits)}" for c in cast_in(f"{description} {correction}", guide.characters)]
-    if referenced:
-        lines.append(reference_line(referenced[: MAX_REFERENCES - 1], first=1))
-    return "\n".join(lines)
+    return render(
+        template or CORRECTION_TEMPLATE,
+        {
+            "correction": as_sentence(correction),
+            "scene": f"La escena muestra: {as_sentence(description)}" if description else "",
+            "elements": "\n".join(
+                f"{c.name}: {as_sentence(c.traits)}" for c in cast_in(f"{description} {correction}", guide.characters)
+            ),
+            "references": reference_line(referenced[: MAX_REFERENCES - 1], first=1) if referenced else "",
+        },
+    )
 
 
 def validate_correction(correction: str | None) -> str:

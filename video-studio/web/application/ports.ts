@@ -16,6 +16,7 @@ import type { VideoItem } from "@/domain/library";
 import type { Take, TakeInput } from "@/domain/narration";
 import type { Scene } from "@/domain/scene";
 import type { DownloadReport, StockClip } from "@/domain/stock";
+import type { PromptInfo, PromptPreview } from "@/domain/prompts";
 import type { Writer, WriterDraft } from "@/domain/writer";
 
 export type ScriptDraft = { script: string; seconds: number };
@@ -165,6 +166,11 @@ export interface StudioGateway {
 
   writer(): Promise<Writer>;
   saveWriter(draft: WriterDraft): Promise<Writer>;
+  prompts(): Promise<PromptInfo[]>;
+  savePrompt(id: string, text: string): Promise<PromptInfo>;
+  resetPrompt(id: string): Promise<PromptInfo>;
+  /** El prompt montado con una edición aún sin guardar. */
+  previewPrompt(id: string, text: string): Promise<PromptPreview>;
 
   /** Encola la redacción; contesta al instante con la clave del trabajo. */
   /** Encola la redacción: un reel o un cortometraje, narrado o en diálogo. */

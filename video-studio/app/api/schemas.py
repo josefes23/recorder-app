@@ -16,6 +16,15 @@ class ScriptRequest(BaseModel):
     dialogue: bool = False
 
 
+class PromptRequest(BaseModel):
+    text: str
+
+
+class PromptPreviewRequest(BaseModel):
+    #: La edición sin guardar; None, el prompt guardado.
+    text: str | None = None
+
+
 class WriterRequest(BaseModel):
     provider: str
     api_key: str = ""

@@ -14,6 +14,7 @@ from pathlib import Path
 
 from app.application.ports import CharacterRepository, EventLog, ReferenceStore
 from app.application.use_cases.illustrations import ImageSettings, ReviewedPainter, parse_time
+from app.application.use_cases.prompts import PromptBook
 from app.domain.errors import DomainError, IllustratorError, NotFoundError, ValidationError
 from app.domain.events import (
     REFERENCE_COMPLETED,
@@ -42,7 +43,9 @@ class CharacterUseCases:
         references: ReferenceStore,
         settings: ImageSettings,
         painter: ReviewedPainter,
+        prompts: PromptBook | None = None,
     ) -> None:
+        self._prompts = prompts or PromptBook()
         self._events = events
         self._repository = repository
         self._references = references
@@ -129,7 +132,7 @@ class CharacterUseCases:
         image, report = self._painter.paint(
             provider,
             payload.get("model") or "",
-            reference_prompt(character, payload.get("look") or ""),
+            reference_prompt(character, payload.get("look") or "", self._prompts.template("reference")),
             reference_description(character),
             None,
             payload.get("review"),

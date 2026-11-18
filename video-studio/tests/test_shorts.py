@@ -416,3 +416,48 @@ class CustomLengthTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 length_by_id(bad)
 
+
+class PromptBookTests(unittest.TestCase):
+    def test_los_originales_no_cambian_al_pasar_por_la_plantilla(self):
+        from app.domain.prompts import PROMPTS, preview
+
+        for spec in PROMPTS:
+            result = preview(spec.id)
+            self.assertTrue(result["examples"], spec.id)
+            self.assertEqual(result["warnings"], [], spec.id)
+
+    def test_editar_guardar_y_restaurar(self):
+        from app.application.use_cases.prompts import PromptBook
+        from app.domain.errors import ValidationError
+        from app.domain.prompts import spec_by_id
+
+        book = PromptBook()
+        self.assertIsNone(book.template("image"))
+        saved = book.save("image", "Dibuja: {description}\n{elements}\nEstilo {style}")
+        self.assertTrue(saved["edited"])
+        self.assertIn("Dibuja: Ana mira el móvil", saved["examples"][0]["text"])
+        self.assertEqual(book.template("image"), "Dibuja: {description}\n{elements}\nEstilo {style}")
+        # Guardar el original tal cual no cuenta como edición.
+        self.assertFalse(book.save("image", spec_by_id("image").default)["edited"])
+        self.assertIsNone(book.template("image"))
+        book.save("image", "solo texto")
+        self.assertIn("Falta {description}", book.preview("image", None)["warnings"][0])
+        self.assertFalse(book.reset("image")["edited"])
+        with self.assertRaises(ValidationError):
+            book.save("image", "   ")
+        with self.assertRaises(ValidationError):
+            book.save("nada", "x")
+
+    def test_el_guion_usa_la_edicion(self):
+        from app.domain.production import REEL
+        from app.domain.writer import system_prompt
+
+        text = system_prompt(REEL, False, template="Escribe {words_min}-{words_max} palabras.\n{dialogue_rule}")
+        self.assertEqual(text, "Escribe 85-120 palabras.")
+
+    def test_el_prompt_editado_es_el_que_llega_al_modelo(self):
+        studio, fakes = make_studio(credentials=DictCredentials(NVIDIA_API_KEY="k"))
+        fakes.composer.text = " ".join(["palabra"] * 120)
+        studio.scripts._prompts.save("script", "Eres un guionista pirata. {words_min} palabras como mínimo.")
+        studio.scripts.write("gatos", "", "reel")
+        self.assertEqual(fakes.composer.calls[-1][3], "Eres un guionista pirata. 85 palabras como mínimo.")

@@ -28,6 +28,7 @@ from app.application.use_cases.illustrations import IllustrationUseCases, ImageS
 from app.application.use_cases.library import LibraryUseCases
 from app.application.use_cases.music import MusicUseCases
 from app.application.use_cases.preview import PreviewUseCase
+from app.application.use_cases.prompts import PromptBook
 from app.application.use_cases.render import RenderUseCases
 from app.application.use_cases.scripts import CONSUMER_GROUP, ScriptUseCases
 from app.application.use_cases.storyboard import CONSUMER_GROUP as STORYBOARD_GROUP
@@ -63,6 +64,7 @@ from app.infrastructure.sqlite import (
     Database,
     SqliteCharacterRepository,
     SqliteEventLog,
+    SqlitePromptStore,
     SqliteVideoRepository,
 )
 
@@ -103,7 +105,8 @@ def build_container(paths: Paths | None = None) -> Container:
     credentials = EnvCredentials(paths.env_file, extra_files=(paths.generator_env, *HOME_ENV_FILES))
     composer = HttpScriptComposer()
     writer = WriterSettings(credentials, composer)
-    scripts = ScriptUseCases(events, writer, composer, GeneratorTemplate(gen))
+    prompts = PromptBook(SqlitePromptStore(database))
+    scripts = ScriptUseCases(events, writer, composer, GeneratorTemplate(gen), prompts)
 
     jobs = RenderJobs(videos)
     queue = SubprocessRenderQueue(paths.jobs, paths.outputs, paths.root, listener=jobs, takes_dir=paths.takes)
@@ -112,14 +115,14 @@ def build_container(paths: Paths | None = None) -> Container:
     images = ImageSettings(credentials)
     character_library = SqliteCharacterRepository(database)
     references = FileReferenceStore(paths.references)
-    painter = ReviewedPainter(images, HttpIllustrator(), writer, composer)
-    illustrations = IllustrationUseCases(events, images, painter, store, character_library, references)
-    animations = AnimationUseCases(events, credentials, HttpAnimator(), store)
-    characters = CharacterUseCases(events, character_library, references, images, painter)
-    storyboards = StoryboardUseCases(events, writer, composer)
+    painter = ReviewedPainter(images, HttpIllustrator(), writer, composer, prompts=prompts)
+    illustrations = IllustrationUseCases(events, images, painter, store, character_library, references, prompts)
+    animations = AnimationUseCases(events, credentials, HttpAnimator(), store, prompts=prompts)
+    characters = CharacterUseCases(events, character_library, references, images, painter, prompts)
+    storyboards = StoryboardUseCases(events, writer, composer, prompts)
     posters = FilePosterStore(paths.posters)
-    cover = CoverUseCases(events, writer, composer, PillowCoverPainter(gen), store, videos, posters)
-    description = DescriptionUseCases(events, writer, composer)
+    cover = CoverUseCases(events, writer, composer, PillowCoverPainter(gen), store, videos, posters, prompts)
+    description = DescriptionUseCases(events, writer, composer, prompts)
 
     studio = Studio(
         writer=writer,
@@ -143,6 +146,7 @@ def build_container(paths: Paths | None = None) -> Container:
         description=description,
         takes=VoiceTakeUseCases(EngineVoiceSynthesizer(gen, paths.takes), FileTakeStore(paths.takes)),
         generator=str(paths.generator),
+        prompts=prompts,
     )
 
     consumer = EventConsumer(events, CONSUMER_GROUP, (SCRIPT_REQUESTED,), scripts.handle_request)

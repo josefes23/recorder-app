@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass
 
 from app.domain.production import REEL, Length, minutes_or_seconds
+from app.domain.template import render
 
 from app.domain.errors import WriterError
 from app.domain.script import clean_script
@@ -33,31 +34,53 @@ DIALOGUE_RULE = """- Escríbelo como una escena con diálogos. Cada intervenció
   solo lo que se dice en voz alta."""
 
 
-def system_prompt(length: Length = REEL, dialogue: bool = False) -> str:
-    """El encargo del redactor según la duración y si el guion es un diálogo."""
+SCRIPT_TEMPLATE = """Escribes guiones para {kind} en español.
+
+Reglas que no puedes saltarte:
+- Entre {words_min} y {words_max} palabras. Es el rango que produce {duration} de voz.
+- Español natural y hablado. El texto se va a ESCUCHAR, no a leer: frases cortas,
+  sin subordinadas largas, sin viñetas, sin markdown, sin emojis.
+- Nada de cifras en dígitos: escribe "treinta por ciento", no "30%". El sintetizador
+  de voz las pronuncia peor y descuadra la sincronía de los subtítulos.
+- Puntuación cuidada. Los cortes de subtítulo se calculan a partir de las comas,
+  los puntos y las interrogaciones, así que un texto mal puntuado se lee fatal.
+- Estructura: {structure}
+{dialogue_rule}
+
+{closing}"""
+
+CLOSING = (
+    "Devuelve únicamente el texto del guion. Sin título, sin comillas, sin explicaciones,\n"
+    "sin acotaciones de escena."
+)
+DIALOGUE_CLOSING = (
+    "Devuelve únicamente el texto del guion, una intervención por línea. Sin título, "
+    "sin comillas, sin explicaciones."
+)
+
+
+def system_prompt(
+    length: Length = REEL,
+    dialogue: bool = False,
+    template: str | None = None,
+    dialogue_rule: str | None = None,
+) -> str:
+    """
+    El encargo del redactor según la duración y si el guion es un diálogo.
+    `template` y `dialogue_rule` son las versiones editadas por el usuario.
+    """
     low, high = length.words
-    rules = [
-        f"- Entre {low} y {high} palabras. Es el rango que produce {minutes_or_seconds(length)} de voz.",
-        """- Español natural y hablado. El texto se va a ESCUCHAR, no a leer: frases cortas,
-  sin subordinadas largas, sin viñetas, sin markdown, sin emojis.""",
-        """- Nada de cifras en dígitos: escribe "treinta por ciento", no "30%". El sintetizador
-  de voz las pronuncia peor y descuadra la sincronía de los subtítulos.""",
-        """- Puntuación cuidada. Los cortes de subtítulo se calculan a partir de las comas,
-  los puntos y las interrogaciones, así que un texto mal puntuado se lee fatal.""",
-        f"- Estructura: {length.structure}",
-    ]
-    if dialogue:
-        rules.append(DIALOGUE_RULE)
-    closing = (
-        "Devuelve únicamente el texto del guion, una intervención por línea. Sin título, "
-        "sin comillas, sin explicaciones."
-        if dialogue
-        else "Devuelve únicamente el texto del guion. Sin título, sin comillas, sin explicaciones,\n"
-        "sin acotaciones de escena."
-    )
-    return (
-        f"Escribes guiones para {length.kind} en español.\n\n"
-        "Reglas que no puedes saltarte:\n" + "\n".join(rules) + f"\n\n{closing}"
+    return render(
+        template or SCRIPT_TEMPLATE,
+        {
+            "kind": length.kind,
+            "words_min": low,
+            "words_max": high,
+            "duration": minutes_or_seconds(length),
+            "structure": length.structure,
+            "dialogue_rule": (dialogue_rule or DIALOGUE_RULE) if dialogue else "",
+            "closing": DIALOGUE_CLOSING if dialogue else CLOSING,
+        },
     )
 
 

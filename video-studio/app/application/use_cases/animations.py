@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from app.application.ports import Animator, BackgroundStore, CredentialStore, EventLog
+from app.application.use_cases.prompts import PromptBook
 from app.domain.animation import (
     GEMINI_OMNI,
     VideoProvider,
@@ -41,7 +42,9 @@ class AnimationUseCases:
         animator: Animator,
         store: BackgroundStore,
         provider: VideoProvider = GEMINI_OMNI,
+        prompts: PromptBook | None = None,
     ) -> None:
+        self._prompts = prompts or PromptBook()
         self._events = events
         self._credentials = credentials
         self._animator = animator
@@ -127,7 +130,9 @@ class AnimationUseCases:
             payload.get("model") or self.model(),
             {self._provider.key_env: self._credentials.get(self._provider.key_env)},
             GeneratedImage(data, Path(source).suffix.lower()),
-            animation_prompt(payload.get("description") or "", guide, payload.get("motion") or ""),
+            animation_prompt(
+                payload.get("description") or "", guide, payload.get("motion") or "", self._prompts.template("animation")
+            ),
             int(payload.get("seconds") or 0),
             format_by_id(payload.get("format")).id,
         )

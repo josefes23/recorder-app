@@ -24,6 +24,7 @@ import type { VideoItem } from "@/domain/library";
 import type { Take } from "@/domain/narration";
 import type { DownloadReport, StockClip } from "@/domain/stock";
 import type { Voice } from "@/domain/voice";
+import type { PromptInfo, PromptPreview } from "@/domain/prompts";
 import type { Writer, WriterDraft } from "@/domain/writer";
 
 /**
@@ -79,6 +80,18 @@ export const httpGateway: StudioGateway = {
   writer: () => request<Writer>("/api/writer"),
 
   saveWriter: (draft: WriterDraft) => post<Writer>("/api/writer", draft),
+
+  async prompts(): Promise<PromptInfo[]> {
+    const { prompts } = await request<{ prompts: PromptInfo[] }>("/api/prompts");
+    return prompts;
+  },
+
+  savePrompt: (id, text) =>
+    request<PromptInfo>(`/api/prompts/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ text }) }),
+
+  resetPrompt: (id) => request<PromptInfo>(`/api/prompts/${encodeURIComponent(id)}`, { method: "DELETE" }),
+
+  previewPrompt: (id, text) => post<PromptPreview>(`/api/prompts/${encodeURIComponent(id)}/preview`, { text }),
 
   requestScript: (topic, notes, length, dialogue) =>
     post<JobAccepted>("/api/script", { topic, notes, length, dialogue }),

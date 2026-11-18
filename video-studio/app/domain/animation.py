@@ -19,6 +19,7 @@ from uuid import uuid4
 
 from app.domain.errors import ValidationError
 from app.domain.illustration import DEFAULT_STYLE, VisualGuide, as_sentence, cast_in
+from app.domain.template import render
 
 #: Límites del modelo: segundos enteros entre 3 y 15.
 MIN_SECONDS = 3
@@ -119,7 +120,14 @@ def validate_motion(motion: str | None) -> str:
     return text
 
 
-def animation_prompt(description: str, guide: VisualGuide | None = None, motion: str = "") -> str:
+ANIMATION_TEMPLATE = (
+    FIRST_FRAME + "\n{scene}\n{elements}\nEstilo: {style}\n{movement}\n" + QUIET
+)
+
+
+def animation_prompt(
+    description: str, guide: VisualGuide | None = None, motion: str = "", template: str | None = None
+) -> str:
     """
     El encargo para el modelo de video. Omni no admite prompts negativos como
     parámetro, pero sí entiende exclusiones dichas en el texto («sin…»).
@@ -128,11 +136,15 @@ def animation_prompt(description: str, guide: VisualGuide | None = None, motion:
     escribe el usuario—; sin él, un movimiento sutil que vale para cualquiera.
     """
     guide = guide or VisualGuide()
-    lines = [FIRST_FRAME]
-    if description.strip():
-        lines.append(f"Qué pasa: {as_sentence(description)}")
-        lines += [f"{c.name}: {as_sentence(c.traits)}" for c in cast_in(description, guide.characters)]
-    lines.append(f"Estilo: {as_sentence(guide.look or DEFAULT_STYLE)}")
-    lines.append(f"Movimiento: {as_sentence(motion)} {ONE_SHOT}" if motion.strip() else f"{MOTION} {ONE_SHOT}")
-    lines.append(QUIET)
-    return "\n".join(lines)
+    described = bool(description.strip())
+    return render(
+        template or ANIMATION_TEMPLATE,
+        {
+            "scene": f"Qué pasa: {as_sentence(description)}" if described else "",
+            "elements": "\n".join(f"{c.name}: {as_sentence(c.traits)}" for c in cast_in(description, guide.characters))
+            if described
+            else "",
+            "style": as_sentence(guide.look or DEFAULT_STYLE),
+            "movement": f"Movimiento: {as_sentence(motion)} {ONE_SHOT}" if motion.strip() else f"{MOTION} {ONE_SHOT}",
+        },
+    )

@@ -34,6 +34,7 @@ from app.application.ports import (
     ScriptComposer,
 )
 from app.application.use_cases.writer_settings import WriterSettings
+from app.application.use_cases.prompts import PromptBook
 from app.domain import review as quality
 from app.domain.background import is_image
 from app.domain.errors import DomainError, IllustratorError, NotFoundError, ValidationError
@@ -198,7 +199,9 @@ class ReviewedPainter:
         writer: WriterSettings,
         reviewer: ScriptComposer,
         clock: Callable[[], datetime] = datetime.now,
+        prompts: PromptBook | None = None,
     ) -> None:
+        self._prompts = prompts or PromptBook()
         self._settings = settings
         self._illustrator = illustrator
         self._writer = writer
@@ -303,7 +306,7 @@ class ReviewedPainter:
                 provider,
                 model,
                 self._writer.api_key(provider),
-                quality.SYSTEM_PROMPT,
+                self._prompts.template("review") or quality.SYSTEM_PROMPT,
                 quality.review_prompt(description, correction),
                 image,
             )
@@ -321,7 +324,9 @@ class IllustrationUseCases:
         store: BackgroundStore,
         characters: CharacterRepository,
         references: ReferenceStore,
+        prompts: PromptBook | None = None,
     ) -> None:
+        self._prompts = prompts or PromptBook()
         self._events = events
         self._settings = settings
         self._painter = painter
@@ -408,11 +413,13 @@ class IllustrationUseCases:
             referenced, references = self._references_for(
                 cast_in(f"{description} {correction}", guide.characters), MAX_REFERENCES - 1
             )
-            prompt = correction_prompt(correction, description, guide, referenced)
+            prompt = correction_prompt(
+                correction, description, guide, referenced, self._prompts.template("correction")
+            )
             references = [original, *references]
         else:
             referenced, references = self._references_for(cast_in(description, guide.characters))
-            prompt = image_prompt(description, guide, referenced, fmt.framing)
+            prompt = image_prompt(description, guide, referenced, fmt.framing, self._prompts.template("image"))
 
         image, report = self._painter.paint(
             provider,

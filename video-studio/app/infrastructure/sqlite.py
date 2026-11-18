@@ -157,6 +157,38 @@ def _row_to_video(row: sqlite3.Row) -> Video:
 # Biblioteca de elementos
 # --------------------------------------------------------------------------- #
 
+class SqlitePromptStore:
+    SCHEMA = """
+    CREATE TABLE IF NOT EXISTS prompt_overrides (
+        id          TEXT PRIMARY KEY,
+        body        TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    );
+    """
+
+    def __init__(self, db: Database) -> None:
+        self._db = db
+        db.migrate(self.SCHEMA)
+
+    def all(self) -> dict[str, str]:
+        with self._db.connection() as conn:
+            return {row["id"]: row["body"] for row in conn.execute("SELECT id, body FROM prompt_overrides")}
+
+    def set(self, prompt_id: str, body: str) -> None:
+        with self._db.connection() as conn:
+            conn.execute(
+                "INSERT INTO prompt_overrides (id, body, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET body = excluded.body, updated_at = excluded.updated_at",
+                (prompt_id, body, _now()),
+            )
+            conn.commit()
+
+    def remove(self, prompt_id: str) -> None:
+        with self._db.connection() as conn:
+            conn.execute("DELETE FROM prompt_overrides WHERE id = ?", (prompt_id,))
+            conn.commit()
+
+
 class SqliteCharacterRepository:
     SCHEMA = """
     CREATE TABLE IF NOT EXISTS characters (

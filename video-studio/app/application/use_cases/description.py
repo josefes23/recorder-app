@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from app.application.ports import EventLog, ScriptComposer
 from app.application.use_cases.writer_settings import WriterSettings
+from app.application.use_cases.prompts import PromptBook
 from app.domain.cover import plain_title
 from app.domain.description import (
     DESCRIPTION_SYSTEM_PROMPT,
@@ -31,7 +32,14 @@ CONSUMER_GROUP = "describer"
 
 
 class DescriptionUseCases:
-    def __init__(self, events: EventLog, writer: WriterSettings, composer: ScriptComposer) -> None:
+    def __init__(
+        self,
+        events: EventLog,
+        writer: WriterSettings,
+        composer: ScriptComposer,
+        prompts: PromptBook | None = None,
+    ) -> None:
+        self._prompts = prompts or PromptBook()
         self._events = events
         self._writer = writer
         self._composer = composer
@@ -66,7 +74,7 @@ class DescriptionUseCases:
             provider,
             self._writer.model_for(provider),
             self._writer.api_key(provider),
-            DESCRIPTION_SYSTEM_PROMPT,
+            self._prompts.template("description") or DESCRIPTION_SYSTEM_PROMPT,
             build_description_prompt(topic, title, script),
         )
         return parse_description(raw)

@@ -16,6 +16,7 @@ from collections.abc import Mapping, Sequence
 
 from app.application.ports import EventLog, ScriptComposer
 from app.application.use_cases.writer_settings import WriterSettings
+from app.application.use_cases.prompts import PromptBook
 from app.domain.errors import DomainError, ValidationError, WriterError
 from app.domain.events import (
     STORYBOARD_COMPLETED,
@@ -39,7 +40,9 @@ class StoryboardUseCases:
         events: EventLog,
         writer: WriterSettings,
         composer: ScriptComposer,
+        prompts: PromptBook | None = None,
     ) -> None:
+        self._prompts = prompts or PromptBook()
         self._events = events
         self._writer = writer
         self._composer = composer
@@ -101,7 +104,7 @@ class StoryboardUseCases:
             provider,
             self._writer.model_for(provider),
             self._writer.api_key(provider),
-            system_prompt(fmt, target),
+            system_prompt(fmt, target, self._prompts.template("storyboard")),
             build_prompt(topic, style, sentences, current, target.max_scenes),
         )
         return parse_storyboard(raw, sentences, new_seed(), current, target.max_scenes)

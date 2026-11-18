@@ -19,6 +19,7 @@ from app.application.ports import (
     VideoRepository,
 )
 from app.application.use_cases.writer_settings import WriterSettings
+from app.application.use_cases.prompts import PromptBook
 from app.domain.cover import (
     TITLES_SYSTEM_PROMPT,
     Cover,
@@ -54,7 +55,9 @@ class CoverUseCases:
         store: BackgroundStore,
         videos: VideoRepository,
         posters: PosterStore,
+        prompts: PromptBook | None = None,
     ) -> None:
+        self._prompts = prompts or PromptBook()
         self._events = events
         self._writer = writer
         self._composer = composer
@@ -121,7 +124,7 @@ class CoverUseCases:
             provider,
             self._writer.model_for(provider),
             self._writer.api_key(provider),
-            TITLES_SYSTEM_PROMPT,
+            self._prompts.template("titles") or TITLES_SYSTEM_PROMPT,
             build_titles_prompt(topic, script),
         )
         return parse_titles(raw)

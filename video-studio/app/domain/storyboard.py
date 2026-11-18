@@ -52,6 +52,7 @@ from app.domain.illustration import (
     plan_cuts,
 )
 from app.domain.production import REEL, VERTICAL, Format, Length
+from app.domain.template import render
 from app.domain.script import WORDS_PER_SECOND
 from app.domain.writer import strip_reasoning
 
@@ -63,7 +64,7 @@ SCENE_LIMIT = 700
 #: Fija cuántas escenas se piden como mínimo; el encargo dice «de 3 a 9 segundos».
 LONGEST_SCENE_SECONDS = 9.0
 
-_SYSTEM_TEMPLATE = """Eres director de arte de {kind}. Recibes el guion de un video dividido en frases numeradas, decides en qué frases cambia la imagen y qué imagen acompaña a cada tramo.
+STORYBOARD_TEMPLATE = """Eres director de arte de {kind}. Recibes el guion de un video dividido en frases numeradas, decides en qué frases cambia la imagen y qué imagen acompaña a cada tramo.
 
 Un modelo de texto a imagen pintará cada escena por separado. No ve el guion ni las otras escenas: solo lee lo que tú escribas. Tu trabajo es que todas las imágenes cuenten la misma historia y parezcan del mismo video.
 
@@ -92,11 +93,11 @@ Un modelo de texto a imagen pintará cada escena por separado. No ve el guion ni
 - No repitas lo que ya dice la descripción: solo el movimiento.
 
 Responde solo con un objeto JSON, sin markdown ni comentarios, todo en español:
-{{"look": "...", "characters": [{{"name": "...", "kind": "persona", "traits": "..."}}], "scenes": [{{"from": 1, "description": "...", "motion": "..."}}, {{"from": 3, "description": "...", "motion": "..."}}]}}
+{"look": "...", "characters": [{"name": "...", "kind": "persona", "traits": "..."}], "scenes": [{"from": 1, "description": "...", "motion": "..."}, {"from": 3, "description": "...", "motion": "..."}]}
 "from" es el número de la frase con la que empieza la escena. La primera empieza en la frase 1, cada una en una frase posterior a la de la anterior, y dura hasta la frase antes de la siguiente."""
 
 
-def system_prompt(fmt: Format = VERTICAL, length: Length = REEL) -> str:
+def system_prompt(fmt: Format = VERTICAL, length: Length = REEL, template: str | None = None) -> str:
     """El encargo del director de arte, con el tipo de video y dónde caben las caras."""
     if length.reel_like and fmt.vertical:
         kind = "videos cortos verticales (Reels, Shorts, TikTok)"
@@ -104,7 +105,7 @@ def system_prompt(fmt: Format = VERTICAL, length: Length = REEL) -> str:
         kind = "videos cortos horizontales"
     else:
         kind = f"cortometrajes en formato {'vertical' if fmt.vertical else 'horizontal'}"
-    return _SYSTEM_TEMPLATE.format(kind=kind, frame_rule=fmt.storyboard_rule)
+    return render(template or STORYBOARD_TEMPLATE, {"kind": kind, "frame_rule": fmt.storyboard_rule})
 
 
 SYSTEM_PROMPT = system_prompt()

@@ -1,11 +1,15 @@
 "use client";
 
+import { useState } from "react";
+
+import { PromptsPanel } from "@/features/prompts/ui/PromptsPanel";
 import { useWriter } from "@/features/writer/model/use-writer";
 
 import { StepNav } from "./StepNav";
 
 export function Topbar() {
   const { settings, label } = useWriter();
+  const [prompts, showPrompts] = useState(false);
 
   return (
     <header className="topbar">
@@ -14,6 +18,10 @@ export function Topbar() {
       <span className={`chip topbar-model${label ? " is-on" : ""}`}>
         {settings ? (label ?? "Sin modelo · guion manual") : "…"}
       </span>
+      <button className="btn btn--sm" onClick={() => showPrompts(true)}>
+        Prompts
+      </button>
+      {prompts && <PromptsPanel onClose={() => showPrompts(false)} />}
     </header>
   );
 }

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from app.application.ports import EventLog, ScriptComposer, ScriptTemplate
 from app.application.use_cases.writer_settings import WriterSettings
+from app.application.use_cases.prompts import PromptBook
 from app.domain.errors import DomainError, ValidationError, WriterError
 from app.domain.events import (
     SCRIPT_COMPLETED,
@@ -43,7 +44,9 @@ class ScriptUseCases:
         writer: WriterSettings,
         composer: ScriptComposer,
         template: ScriptTemplate,
+        prompts: PromptBook | None = None,
     ) -> None:
+        self._prompts = prompts or PromptBook()
         self._events = events
         self._writer = writer
         self._composer = composer
@@ -101,7 +104,9 @@ class ScriptUseCases:
             provider,
             self._writer.model_for(provider),
             self._writer.api_key(provider),
-            system_prompt(target, dialogue),
+            system_prompt(
+                target, dialogue, self._prompts.template("script"), self._prompts.template("script_dialogue")
+            ),
             build_prompt(topic, notes),
         )
         # Muy por debajo de lo pedido no es un guion corto: es uno cortado.
