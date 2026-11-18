@@ -8,7 +8,12 @@ from app.infrastructure.llm.vision import as_base64
 
 
 def compose(
-    api_key: str | None, model: str, system: str, prompt: str, image: GeneratedImage | None = None
+    api_key: str | None,
+    model: str,
+    system: str,
+    prompt: str,
+    image: GeneratedImage | None = None,
+    max_tokens: int = 4096,
 ) -> str:
     import anthropic
 
@@ -16,7 +21,7 @@ def compose(
     messages = [{"role": "user", "content": user_content(prompt, image)}]
 
     def create(**extra):
-        return client.messages.create(model=model, max_tokens=4096, system=system, messages=messages, **extra)
+        return client.messages.create(model=model, max_tokens=max_tokens, system=system, messages=messages, **extra)
 
     try:
         try:

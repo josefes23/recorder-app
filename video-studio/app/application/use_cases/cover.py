@@ -10,7 +10,14 @@ puede tardar más de lo que aguanta una petición.
 
 from __future__ import annotations
 
-from app.application.ports import BackgroundStore, CoverPainter, EventLog, ScriptComposer, VideoRepository
+from app.application.ports import (
+    BackgroundStore,
+    CoverPainter,
+    EventLog,
+    PosterStore,
+    ScriptComposer,
+    VideoRepository,
+)
 from app.application.use_cases.writer_settings import WriterSettings
 from app.domain.cover import (
     TITLES_SYSTEM_PROMPT,
@@ -46,6 +53,7 @@ class CoverUseCases:
         painter: CoverPainter,
         store: BackgroundStore,
         videos: VideoRepository,
+        posters: PosterStore,
     ) -> None:
         self._events = events
         self._writer = writer
@@ -53,6 +61,7 @@ class CoverUseCases:
         self._painter = painter
         self._store = store
         self._videos = videos
+        self._posters = posters
 
     # Desde la API ------------------------------------------------------------ #
 
@@ -67,6 +76,25 @@ class CoverUseCases:
             raise NotFoundError("No existe ese video.")
         cover = stored_cover(record.cover, record.topic, record.scenes or [])
         return self._paint(cover, record.topic, format_of(record.style)), cover_filename(record.topic)
+
+    def poster_of_video(self, video_id: int) -> bytes:
+        """
+        La portada del video en pequeño, para la cuadrícula de la biblioteca.
+        La primera vez se pinta y se guarda; después sale del disco, porque la
+        portada de un video no cambia una vez renderizado. Así abrir la
+        biblioteca no pinta decenas de portadas a tamaño completo.
+        """
+        record = self._videos.get(video_id)
+        if record is None:
+            raise NotFoundError("No existe ese video.")
+        cached = self._posters.read(video_id)
+        if cached is not None:
+            return cached
+        fmt = format_of(record.style)
+        cover = stored_cover(record.cover, record.topic, record.scenes or [])
+        jpeg = self._paint(cover, record.topic, fmt, width=fmt.poster_width)
+        self._posters.save(video_id, jpeg)
+        return jpeg
 
     def request_titles(self, topic: str, script: str) -> Event:
         """Encola la propuesta de títulos y devuelve el evento con la clave del trabajo."""
@@ -117,8 +145,10 @@ class CoverUseCases:
 
     # ------------------------------------------------------------------------ #
 
-    def _paint(self, cover: Cover, topic: str, fmt: Format = VERTICAL) -> bytes:
+    def _paint(self, cover: Cover, topic: str, fmt: Format = VERTICAL, width: int | None = None) -> bytes:
         # Un fondo que ya no está en la galería no tumba la portada: sale el
         # degradado del tema, como en un render sin fondo.
         path = self._store.path(cover.background) if cover.background else None
-        return self._painter.paint(cover_words(cover.title), cover.design, path, topic or cover.title, fmt.cover_size)
+        return self._painter.paint(
+            cover_words(cover.title), cover.design, path, topic or cover.title, fmt.cover_size, width,
+        )

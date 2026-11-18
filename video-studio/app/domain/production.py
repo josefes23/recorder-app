@@ -1,5 +1,5 @@
 """
-Ajustes de producción de un video: formato y duración.
+Ajustes de producción de un video: formato, duración, sonido y transiciones.
 
 Hasta ahora solo había un caso, el reel vertical de 30 a 45 segundos. Un
 cortometraje puede ser horizontal y durar minutos, y eso cambia el tamaño del
@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import PurePath
 
 from app.domain.errors import ValidationError
+from app.domain.transition import Transition, validate_transition
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,9 @@ class Format:
     storyboard_rule: str
     #: La portada: 1080x1920 para reels, la miniatura de YouTube en horizontal.
     cover_size: tuple[int, int] = (1080, 1920)
+    #: Ancho de la portada en la cuadrícula de la biblioteca: el doble de lo que
+    #: ocupa en pantalla, para que se vea nítida en una pantalla retina.
+    poster_width: int = 360
 
     @property
     def vertical(self) -> bool:
@@ -71,6 +75,7 @@ HORIZONTAL = Format(
         "el motivo principal y las caras van en los dos tercios superiores."
     ),
     cover_size=(1280, 720),
+    poster_width=480,
 )
 
 FORMATS = {f.id: f for f in (VERTICAL, HORIZONTAL)}
@@ -180,6 +185,12 @@ class Production:
     music: str = ""
     music_volume: float = 0.25
     ambient: bool = False
+    #: Cómo entran las escenas que no eligen la suya (`domain.transition`).
+    transition: Transition = field(default_factory=Transition)
+    #: La toma de voz con que se renderizó (`domain.voice_take`). No la elige
+    #: el usuario: la pone el render, para que «Reutilizar» recupere los
+    #: tiempos reales de cada palabra.
+    take: str = ""
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -201,4 +212,5 @@ def validate_production(data: Mapping | None) -> Production:
         music=music,
         music_volume=validate_volume(data.get("music_volume", DEFAULT_VOLUME)),
         ambient=bool(data.get("ambient")),
+        transition=validate_transition(data.get("transition")),
     )

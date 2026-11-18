@@ -22,8 +22,8 @@ const INPUT = { topic: " Café ", guide: GUIDE, provider: "cloudflare", model: "
 const STORYBOARD = {
   guide: { look: "acuarela cálida", characters: [ANA], seed: 7 },
   scenes: [
-    { start: 0, text: "Primera frase.", description: "Ana abre la cafetería" },
-    { start: 6.2, text: "Segunda frase.", description: "Ana sirve un café" },
+    { start: 0, text: "Primera frase.", description: "Ana abre la cafetería", motion: "" },
+    { start: 6.2, text: "Segunda frase.", description: "Ana sirve un café", motion: "la cámara se acerca" },
   ],
 };
 
@@ -95,7 +95,7 @@ test("un guion visual roto se rechaza, y lo que sobra o falta se normaliza", () 
     ],
     seed: null,
   });
-  assert.deepEqual(board.scenes, [{ start: 0, text: "", description: "algo" }]);
+  assert.deepEqual(board.scenes, [{ start: 0, text: "", description: "algo", motion: "" }]);
 });
 
 test("pide una imagen por escena, todas con la misma guía, y avisa de cada encargo", async () => {

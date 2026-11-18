@@ -21,6 +21,7 @@ import type { Style } from "@/domain/captions";
 import type { Config } from "@/domain/config";
 import { readSaved, type ImageSettings, type ImageSettingsDraft } from "@/domain/illustration";
 import type { VideoItem } from "@/domain/library";
+import type { Take } from "@/domain/narration";
 import type { DownloadReport, StockClip } from "@/domain/stock";
 import type { Voice } from "@/domain/voice";
 import type { Writer, WriterDraft } from "@/domain/writer";
@@ -226,4 +227,8 @@ export const httpGateway: StudioGateway = {
 
   videoUrl: (id) => `/api/videos/${id}/file`,
   coverUrl: (id) => `/api/videos/${id}/cover`,
+  posterUrl: (id, version) => `/api/videos/${id}/poster?v=${encodeURIComponent(version)}`,
+  requestTake: (input) => post<Take>("/api/takes", input),
+  take: (key) => request<Take>(`/api/takes/${encodeURIComponent(key)}`),
+  takeAudioUrl: (key) => `/api/takes/${encodeURIComponent(key)}/audio`,
 };

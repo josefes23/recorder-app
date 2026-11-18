@@ -660,7 +660,7 @@ class StoryboardTests(unittest.TestCase):
         self.assertEqual(done["guide"]["characters"], [{"name": "Jesús", "traits": "túnica crema", "kind": "persona", "saved": None}])
         self.assertIsInstance(done["guide"]["seed"], int)
         self.assertEqual(done["scenes"], [{
-            "start": 0.0, "text": self.SCRIPT, "description": "Jesús entra en el río al amanecer",
+            "start": 0.0, "text": self.SCRIPT, "description": "Jesús entra en el río al amanecer", "motion": "",
         }])
         self.assertEqual(f.events.events[-1].topic, STORYBOARD_COMPLETED)
 

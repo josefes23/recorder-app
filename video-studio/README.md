@@ -64,9 +64,9 @@ tocar una línea del generador.
 | Subtítulos | Tamaño, borde, altura, texto por bloque y líneas máximas |
 | Escenas | Un guion visual (estilo, personajes y qué se ve en cada tramo) y una imagen generada por tramo, o el fondo que elijas de Pexels o la galería; marcas en qué segundo entra cada uno |
 | Descripción | El texto para publicar: palabras clave al principio, resumen y hashtags. «Escribir con IA» o a mano, hasta 5000 caracteres, con aviso de dónde cortan Instagram y TikTok |
-| Previsualización | Dos pestañas: la **portada** (título gancho sobre una imagen, se repinta sola al cambiarla) y un fotograma con fondo y subtítulos |
+| Previsualización | Tres pestañas: la **portada** (título gancho sobre una imagen, se repinta sola al cambiarla), un fotograma con fondo y subtítulos, y la **animática** (las escenas con su ritmo y sus transiciones, antes de renderizar) |
 | Render | Cola con barra de progreso real (fotograma N de M); al terminar, «Descargar video», «Descargar portada» y «Copiar descripción» |
-| Biblioteca | Reproductor, descarga del video y de su portada, copia de su descripción, borrado y «Reutilizar» para clonar los ajustes (portada y descripción incluidas) |
+| Biblioteca | Cuadrícula de portadas con búsqueda (tema, guion o descripción), filtros por estado y formato y de doce en doce; reproductor con sonido que pasa de un video a otro, descarga del video y de su portada, copia de su descripción, borrado con confirmación en la tarjeta y «Reutilizar» para clonar los ajustes (portada y descripción incluidas) |
 
 ## Guiones con IA (opcional)
 
@@ -123,10 +123,14 @@ que cubre—. Cada proveedor es una entrada de `PROVIDERS` en `app/domain/writer
 `app/infrastructure/llm/composer.py` (cómo se le habla). Añadir otro es añadir
 esas dos entradas, sin condicionales repartidos.
 
-El presupuesto de tokens va holgado (4096) porque los modelos que razonan lo
-gastan pensando antes de escribir: medido con Gemini 3.6 Flash, 980 tokens de
+El presupuesto de tokens va holgado porque los modelos que razonan lo gastan
+pensando antes de escribir: medido con Gemini 3.6 Flash, 980 tokens de
 razonamiento y solo 40 para el guion, que salía cortado a mitad de frase. Con
-holgura son 100 palabras en unos diez segundos. Aun así se comprueban dos cosas
+holgura son 100 palabras en unos diez segundos. Lo fija cada proveedor
+(`Provider.max_tokens`): 8192 en Google, DeepSeek y Anthropic, para que quepa
+el guion visual de un cortometraje (hasta 30 escenas con descripción y
+movimiento), y 4096 en NVIDIA, que no publica su límite por modelo. Es un
+techo, no un gasto: un guion corto cuesta lo mismo con uno que con otro. Aun así se comprueban dos cosas
 antes de dar por bueno el resultado —que el modelo no haya cortado por longitud
 y que el guion pase de cincuenta palabras—, porque un guion partido por la mitad
 se colaba como válido.
@@ -305,9 +309,10 @@ Pendiente de probar con imágenes reales: dos referencias en la misma escena.
 Con una sola está probado; el día que se construyó se acabó el cupo de
 Cloudflare antes de probar dos.
 
-En cada escena eliges: la miniatura abre la galería y Pexels, como siempre, y
-«IA» pide otra imagen con la descripción que escribas. «Añadir con IA» crea una
-escena nueva desde una descripción. Lo generado se guarda en la galería como un
+En el inspector de cada escena eliges: «⋯ → Cambiar por Pexels o la galería»
+abre la galería y Pexels, y «Generar con IA» pide otra imagen con la
+descripción que escribas. «Añadir con IA» crea una escena nueva desde una
+descripción. Lo generado se guarda en la galería como un
 fondo más, con nombre `ia-<tema>_<n>.jpg`, así que se puede reutilizar o borrar
 como cualquier otro.
 
@@ -336,6 +341,78 @@ justo en el corte. Y sale más barato que antes: la pista de fondo pasó de 171 
 53 ms por fotograma, porque estas escenas ya salen a la medida del cuadro y se
 ahorran el `CompositeVideoClip` que solo igualaba tamaños. Los clips de video
 van como siempre: ya se mueven solos.
+
+### Transiciones
+
+En el paso de escenas, «Transición del video» elige cómo entran todas:
+corte, fundido encadenado, fundido a negro, deslizar (la nueva empuja a la
+anterior desde la derecha) o zoom de entrada, de 0,2 a 1,5 s. Cada escena puede
+cambiarla en el inspector («Transición de entrada»), o pulsando su marca en la
+línea de tiempo: ◆ si tiene una propia, ◇ si usa la del video. «Como el video»
+vuelve a la común. Para varias a la vez, se marcan en la lista y «Aplicar
+transición». Una escena con imagen fija usa la misma para sus cambios de
+encuadre, así que con un fundido la foto pasa de un plano a otro disolviéndose
+en vez de saltar. En la primera escena, que no entra desde ninguna, el selector
+se llama «Cambios de encuadre» y solo sale si es una imagen. Por defecto es el
+corte, y un video todo con cortes sale igual que antes.
+
+Junto a cada selector, una vista previa mezcla las dos imágenes en el navegador
+con la misma cuenta que el render (`look` en `web/domain/transition.ts`, copia
+de la de Python), así que lo que se ve es lo que va a salir.
+
+La transición se centra en el corte: empieza media transición antes y acaba
+media después, así que la imagen nueva sigue entrando cuando la voz dice su
+frase. Nunca dura más que ninguna de las dos escenas que une, para que dos
+seguidas no se pisen. La común viaja con la producción y se guarda en el estilo
+del video, y la de cada escena con la escena: «Reutilizar» recupera las dos.
+
+`app/domain/transition.py` decide cuándo empieza y acaba cada cambio y cómo se
+ve cada plano en cada instante; `app/infrastructure/transitions.py` mezcla los
+fotogramas y encadena la pista. Fuera de los cambios cada fotograma es el del
+plano que toca, tal cual: solo se pinta doble durante la transición.
+
+### Qué dice la voz en cada escena
+
+Para elegir la imagen que encaja hay que saber qué se cuenta mientras se ve. El
+render no corta las escenas por segundos: cada una entra justo cuando la voz
+dice una palabra concreta, la que cae en su segundo estimado a 2,7 palabras por
+segundo (`synced_to_voice`). Así que qué palabras cubre cada imagen se sabe
+antes de renderizar, y es exacto; lo que cambia al renderizar son los segundos.
+
+- **La lista** dice en cada escena lo que se oye mientras se ve, y **el
+  inspector** lo enseña entero con «Empieza con «palabra» ‹ ›» para adelantar o
+  retrasar la entrada de palabra en palabra, sin pisar a las vecinas.
+- **«Guion por escenas»**, la otra pestaña de la lista, parte el guion en
+  trozos con la imagen de cada uno al lado. Con una escena elegida, tocar una
+  palabra la hace entrar justo ahí.
+- **Mover e intercambiar imágenes.** Si una imagen encaja mejor con otra frase,
+  se lleva allí: arrastrando una fila de la lista y soltándola arriba o abajo
+  de otra (se inserta y las de en medio se corren) o en su centro (se
+  intercambian), arrastrando un tramo de la barra sobre otro (se
+  intercambian), o sin arrastrar, con «‹ Antes», «Después ›» e «Intercambiar
+  con…» del inspector, o Alt+↑ / Alt+↓ sobre la fila. Se mueve la imagen con
+  todo lo suyo (lo que muestra, su movimiento, su clip, lo que se espera); el
+  segundo y la transición se quedan en su sitio, así que la imagen pasa a
+  acompañar lo que se dice ahí (`swapImages` y `moveImage`). Cada cambio deja un
+  «Deshacer», que aplica el cambio contrario en vez de volver a una copia del
+  estado anterior: una imagen que llegue entretanto no se pierde.
+- **La animática con voz.** «Escuchar con la voz» genera solo la voz (edge-tts:
+  gratis, unos segundos) y la animática suena con ella: la imagen, la frase y
+  el segundo son los del render, porque el render usa esa misma toma. Si
+  después cambia el guion o la voz, avisa de que la toma ya no vale.
+- **Los tiempos reales de un video hecho.** Cada render guarda en su
+  producción la clave de su toma; «Reutilizar» la recupera y el estudio enseña
+  en qué segundo entró cada imagen de verdad, para ajustar y volver a
+  renderizar.
+
+Una toma (`app/domain/voice_take.py`) la identifica lo que se sintetiza: el
+texto limpio, la voz, la velocidad, el tono y las voces del diálogo. La misma
+entrada da la misma clave, así que el servidor (`POST /api/takes`) y el worker
+de render la calculan igual y el render no vuelve a sintetizar lo que ya se
+escuchó («Voz ya generada»). Se guardan en `data/takes/`: las marcas de cada
+palabra siempre (pesan poco) y el audio de las últimas 40 (un mega por minuto).
+La cuenta que reparte las palabras y pasa a segundos reales está copiada en
+`web/domain/narration.ts`, con las mismas pruebas que la de Python.
 
 Hay dos generadores, configurables en «Generador de imágenes» al final del paso
 de escenas (o en `video-studio/.env`):
@@ -373,13 +450,20 @@ clip entra en la galería al lado de su imagen (`<imagen>-mov-<id>.mp4`) y el
 render lo usa como cualquier clip de Pexels: sin su audio y escalado a
 1080x1920.
 
-- **«Animar»** en cada escena pide un clip del largo de su tramo, redondeado
-  hacia arriba (de 3 a 15 s: lo que admite el modelo; un tramo más largo repite
-  el clip). **«Reanimar»** pide otro desde la imagen original, e **«Imagen
-  fija»** vuelve a ella; los clips anteriores se quedan en la galería.
+- **«Animar»** en el inspector de cada escena pide un clip del largo de su
+  tramo, redondeado hacia arriba (de 3 a 15 s: lo que admite el modelo; un
+  tramo más largo repite el clip). **«Reanimar»** pide otro desde la imagen
+  original, y **«Volver a la imagen fija»** vuelve a ella; los clips anteriores
+  se quedan en la galería. Marcando varias en la lista, **«Animar»** las pide
+  todas y enseña el precio total antes de confirmar.
 - **El interruptor «Animar cada imagen nueva»** (apagado de serie) anima sola
   cada imagen que llega a una escena. **«Animar las N escenas con imagen»**
   anima de una vez las que todavía no tienen clip.
+- **«Movimiento al animar»**, en el inspector: qué se mueve y qué hace la cámara
+  («el vapor sube; la cámara se acerca despacio»). Lo propone el guion visual
+  —una frase por escena, que quepa en un solo plano sobre esa imagen— y se
+  cambia a mano antes de animar o reanimar. Vacío, el clip lleva un movimiento
+  sutil con la cámara lenta. Solo aparece con la animación configurada.
 - Cada botón enseña el precio orientativo: unos 0,07 US$ por segundo a 720p
   (precio de Google del 16-11-2026). Un reel de 45 s animado entero ronda los
   3 US$.
@@ -477,8 +561,20 @@ un fotograma a tamaño completo.
 La portada viaja con el render y se guarda en la ficha del video (columna
 `cover` de `videos`; las bases de antes la reciben al arrancar). Al terminar el
 render, «Descargar portada» baja la que se ve en pantalla, aunque se haya
-retocado después; en la biblioteca, «Portada» baja la guardada
-(`GET /api/videos/{id}/cover`), y los videos de antes reciben la de por defecto.
+retocado después; en la biblioteca, «⋯ → Descargar la portada» baja la
+guardada (`GET /api/videos/{id}/cover`), y los videos de antes reciben la de
+por defecto.
+
+La cuadrícula de la biblioteca enseña esa misma portada en pequeño
+(`GET /api/videos/{id}/poster`): 360 px de ancho en vertical, 480 en
+horizontal. Pintarla cuesta casi un segundo, así que se pinta la primera vez y
+se guarda en `data/posters/<id>.jpg` (`FilePosterStore`); después sale del
+disco en milisegundos, y la interfaz le pone la fecha del video en la URL para
+que el navegador la guarde sin volver a pedirla. La portada de un video no
+cambia después de renderizarlo, así que no hace falta invalidarla; al borrar el
+video se borra también. La letra está medida para el tamaño completo: se pinta
+grande y se reduce al final (`width` en `CoverPainter.paint`). Una tarjeta cuya
+portada no llega enseña el tema en su lugar.
 
 ## Descripción
 
@@ -497,8 +593,8 @@ palabras clave. Las reglas del encargo están en `app/domain/description.py`.
 El tope es de 5000 caracteres, el de YouTube. Instagram corta a 2200 y TikTok
 a 4000: pasarse se avisa pero no se impide. La descripción viaja con el render
 y se guarda con el video (columna `description` de `videos`). Al terminar,
-«Copiar descripción» la lleva al portapapeles, y en la biblioteca lo hace el
-botón «Descripción» de cada video; «Reutilizar» la recupera.
+«Copiar descripción» la lleva al portapapeles, y en la biblioteca lo hace
+«⋯ → Copiar la descripción» de cada video; «Reutilizar» la recupera.
 
 ## Decisiones de arquitectura
 
@@ -620,11 +716,39 @@ ajusta una vez y no se vuelve a mirar (el modelo del guion, el ajuste fino de
 los subtítulos) vive en plegables, que es lo que mantiene la superficie
 principal en unos pocos controles.
 
-**Las escenas se dibujan en una línea de tiempo.** La barra reparte la duración
-del vídeo entre las escenas, marca dónde acaba la voz y pinta en rojo las que
-entran después. Cada fila dice su tramo —del segundo tal al tal— y cuántos
-segundos estará en pantalla. Una lista de segundos de entrada no enseña ni los
-huecos, ni las escenas muertas, ni cuánto dura realmente cada una; la barra sí.
+**Las escenas se editan en una línea de tiempo.** La barra reparte la duración
+del vídeo entre las escenas, con la imagen de cada una, marca dónde acaba la
+voz y apaga las que entran después. Un tramo elige su escena; cada borde se
+arrastra (o se mueve con las flechas, de décima en décima o, con mayúsculas, de
+segundo en segundo) para cambiar cuándo entra la siguiente, y nunca deja una
+escena con menos de medio segundo ni las desordena (`draggedStart`). Una lista
+de segundos de entrada no enseña ni los huecos, ni las escenas muertas, ni
+cuánto dura realmente cada una; la barra sí.
+
+**Lista compacta e inspector.** Con 30 escenas, una fila con todos sus botones
+era una pared de controles. Ahora cada escena es una línea —miniatura, tramo y
+lo que pide atención: pintando, animando, falló, revisar— y todo lo que se
+hace con ella está en el inspector de al lado, que va pegado al bajar por la
+lista. Lo que se usa poco (cambiar el fondo, verla grande, quitarla) va en
+«⋯». Las casillas marcan varias para la misma transición, animarlas o
+quitarlas; lo que cuesta dinero o borra pide una segunda pulsación en el sitio
+(`ConfirmButton`), sin la ventana del navegador que bloquea la página.
+
+**La animática, antes de renderizar.** La pestaña «Animática» del panel de
+salida pasa las imágenes con el tiempo estimado de la voz y las transiciones
+elegidas, con la frase que estaría sonando abajo. No hay voz hasta el render,
+así que el ritmo es el estimado; al renderizar, cada cambio cae justo cuando la
+voz dice su frase (`synced_to_voice`).
+
+**Orientación.** La barra de arriba es un índice de los pasos con su estado
+(✓ listo, ! por revisar, ◌ en curso, • falta, ○ opcional; lo decide
+`web/domain/steps.ts`), y «Plegar listos» deja a la vista solo lo que falta;
+el título de cada paso también lo pliega. Cada error sale junto al paso cuya
+acción lo dio (`errorPlace`), no al fondo del panel de salida. Una bandeja en
+la esquina enseña lo que trabaja en segundo plano —el render, las imágenes, las
+animaciones— y avisa al terminar; con la pestaña en segundo plano, el título de
+la página lleva el progreso del render. Las explicaciones largas que no hace
+falta leer cada vez van detrás de un «?».
 
 **Y avisa de si el clip se va a repetir.** Cuando el fondo dura menos que su
 tramo, `build_background` lo encadena consigo mismo hasta cubrirlo. La interfaz

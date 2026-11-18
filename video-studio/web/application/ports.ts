@@ -13,6 +13,7 @@ import type {
   SavedCharacter,
 } from "@/domain/illustration";
 import type { VideoItem } from "@/domain/library";
+import type { Take, TakeInput } from "@/domain/narration";
 import type { Scene } from "@/domain/scene";
 import type { DownloadReport, StockClip } from "@/domain/stock";
 import type { Writer, WriterDraft } from "@/domain/writer";
@@ -126,6 +127,8 @@ export type AnimationRequest = {
   seed: number | null;
   /** El clip sale con la orientación del video. */
   format: FormatId;
+  /** Qué se mueve y qué hace la cámara; vacío, un movimiento sutil. */
+  motion: string;
 };
 
 export type RenderRequest = {
@@ -233,4 +236,14 @@ export interface StudioGateway {
   videoUrl(id: number): string;
   /** La portada guardada con ese video, como descarga. */
   coverUrl(id: number): string;
+  /**
+   * La portada en pequeño, para la cuadrícula de la biblioteca. `version` (la
+   * fecha del video) hace la URL única: el navegador la guarda sin volver a pedirla.
+   */
+  posterUrl(id: number, version: string): string;
+  /** Genera la voz del guion (o devuelve la ya hecha) con el segundo de cada palabra. Tarda unos segundos. */
+  requestTake(input: TakeInput): Promise<Take>;
+  /** Una toma ya hecha: los tiempos reales con que se renderizó un video. */
+  take(key: string): Promise<Take>;
+  takeAudioUrl(key: string): string;
 }

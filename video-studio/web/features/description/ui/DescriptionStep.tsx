@@ -9,6 +9,7 @@ import {
 import { useDescription } from "@/features/description/model/use-description";
 import { useScript } from "@/features/script/model/use-script";
 import { useStudioActions } from "@/features/studio/model/use-studio-actions";
+import { ActionError } from "@/features/studio/ui/ActionError";
 import { useWriter } from "@/features/writer/model/use-writer";
 import { CopyButton } from "@/shared/ui/CopyButton";
 import { Step } from "@/shared/ui/Step";
@@ -90,6 +91,7 @@ export function DescriptionStep() {
           <span className="hint">La escribe el modelo del guion con el guion y el título de la portada.</span>
         )}
       </div>
+      <ActionError place="description" />
     </Step>
   );
 }

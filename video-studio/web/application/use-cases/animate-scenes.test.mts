@@ -38,7 +38,18 @@ test("pide el clip del largo del tramo, con la guía del video", async () => {
     characters: [ANA],
     seed: 7,
     format: "9:16",
+    motion: "",
   });
+});
+
+test("el movimiento de la escena viaja recortado", async () => {
+  const { gateway, requests } = fakeGateway();
+  await requestSceneAnimation(
+    gateway,
+    { source: "a.jpg", description: "", motion: "  la cámara se acerca  ", span: 4 },
+    INPUT,
+  );
+  assert.equal(requests[0].motion, "la cámara se acerca");
 });
 
 test("sin imagen no pide nada", async () => {

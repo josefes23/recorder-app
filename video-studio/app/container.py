@@ -20,6 +20,7 @@ from app.application.use_cases.characters import CONSUMER_GROUP as REFERENCER_GR
 from app.application.use_cases.characters import CharacterUseCases
 from app.application.use_cases.cover import CONSUMER_GROUP as TITLER_GROUP
 from app.application.use_cases.cover import CoverUseCases
+from app.application.use_cases.voice_takes import VoiceTakeUseCases
 from app.application.use_cases.description import CONSUMER_GROUP as DESCRIBER_GROUP
 from app.application.use_cases.description import DescriptionUseCases
 from app.application.use_cases.illustrations import CONSUMER_GROUP as ILLUSTRATOR_GROUP
@@ -51,6 +52,9 @@ from app.infrastructure.imaging.illustrator import HttpIllustrator
 from app.infrastructure.llm.composer import HttpScriptComposer
 from app.infrastructure.music import FileMusicStore
 from app.infrastructure.paths import Paths
+from app.infrastructure.posters import FilePosterStore
+from app.infrastructure.takes import FileTakeStore
+from app.infrastructure.voice import EngineVoiceSynthesizer
 from app.infrastructure.pexels import PexelsLibrary
 from app.infrastructure.preview import GeneratorPreviewer
 from app.infrastructure.references import FileReferenceStore
@@ -102,7 +106,7 @@ def build_container(paths: Paths | None = None) -> Container:
     scripts = ScriptUseCases(events, writer, composer, GeneratorTemplate(gen))
 
     jobs = RenderJobs(videos)
-    queue = SubprocessRenderQueue(paths.jobs, paths.outputs, paths.root, listener=jobs)
+    queue = SubprocessRenderQueue(paths.jobs, paths.outputs, paths.root, listener=jobs, takes_dir=paths.takes)
 
     store = FileBackgroundStore(paths.backgrounds, paths.thumbs)
     images = ImageSettings(credentials)
@@ -113,7 +117,8 @@ def build_container(paths: Paths | None = None) -> Container:
     animations = AnimationUseCases(events, credentials, HttpAnimator(), store)
     characters = CharacterUseCases(events, character_library, references, images, painter)
     storyboards = StoryboardUseCases(events, writer, composer)
-    cover = CoverUseCases(events, writer, composer, PillowCoverPainter(gen), store, videos)
+    posters = FilePosterStore(paths.posters)
+    cover = CoverUseCases(events, writer, composer, PillowCoverPainter(gen), store, videos, posters)
     description = DescriptionUseCases(events, writer, composer)
 
     studio = Studio(
@@ -126,7 +131,7 @@ def build_container(paths: Paths | None = None) -> Container:
         music=MusicUseCases(FileMusicStore(paths.music)),
         preview=PreviewUseCase(GeneratorPreviewer(gen, paths.backgrounds, paths.previews)),
         render=RenderUseCases(videos, queue, jobs),
-        library=LibraryUseCases(videos, LocalVideoFiles()),
+        library=LibraryUseCases(videos, LocalVideoFiles(), posters),
         jobs=jobs,
         events=events,
         images=images,
@@ -136,6 +141,7 @@ def build_container(paths: Paths | None = None) -> Container:
         characters=characters,
         cover=cover,
         description=description,
+        takes=VoiceTakeUseCases(EngineVoiceSynthesizer(gen, paths.takes), FileTakeStore(paths.takes)),
         generator=str(paths.generator),
     )
 

@@ -13,6 +13,8 @@ export type LibrarySlice = {
   videoUrl: (id: number) => string;
   /** La portada guardada con el video, como descarga. */
   coverUrl: (id: number) => string;
+  /** La misma portada en pequeño, para la cuadrícula. */
+  posterUrl: (item: VideoItem) => string;
 };
 
 export function useLibrarySlice({ gateway, run }: SliceDeps): LibrarySlice {
@@ -30,8 +32,11 @@ export function useLibrarySlice({ gateway, run }: SliceDeps): LibrarySlice {
     [gateway, run],
   );
 
+  const { posterUrl } = gateway;
+  const poster = useCallback((item: VideoItem) => posterUrl(item.id, item.created_at), [posterUrl]);
+
   return useMemo(
-    () => ({ items, load, remove, videoUrl: gateway.videoUrl, coverUrl: gateway.coverUrl }),
-    [items, load, remove, gateway.videoUrl, gateway.coverUrl],
+    () => ({ items, load, remove, videoUrl: gateway.videoUrl, coverUrl: gateway.coverUrl, posterUrl: poster }),
+    [items, load, remove, gateway.videoUrl, gateway.coverUrl, poster],
   );
 }

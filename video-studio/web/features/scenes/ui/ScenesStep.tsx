@@ -1,38 +1,33 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import {
-  MAX_ATTEMPTS,
-  castIn,
-  correctionDraft,
-  reviewNote,
-  savedNamed,
-  type ImageReview,
-} from "@/domain/illustration";
-import { clipSeconds, formatUsd } from "@/domain/animation";
-import { animatable, pendingClips, pendingImages } from "@/domain/scene";
-import { useAnimation } from "@/features/animation/model/use-animation";
+import { MAX_ATTEMPTS } from "@/domain/illustration";
+import { pendingClips, pendingImages } from "@/domain/scene";
 import { AnimationControls } from "@/features/animation/ui/AnimationControls";
 import { BackgroundPicker } from "@/features/backgrounds/ui/BackgroundPicker";
 import { useBackgrounds } from "@/features/backgrounds/model/use-backgrounds";
-import { useCharacters } from "@/features/illustrations/model/use-characters";
 import { useImages } from "@/features/illustrations/model/use-images";
 import { CharactersEditor } from "@/features/illustrations/ui/CharactersEditor";
 import { ImageChoiceSelect } from "@/features/illustrations/ui/ImageChoiceSelect";
-import { ReferenceThumb } from "@/features/illustrations/ui/ReferenceThumb";
-import { SceneImageCorrector } from "@/features/illustrations/ui/SceneImageCorrector";
 import { SceneImageEditor } from "@/features/illustrations/ui/SceneImageEditor";
 import { UnconfiguredProviders } from "@/features/illustrations/ui/UnconfiguredProviders";
-import { useScenes, useTimeline } from "@/features/scenes/model/use-scenes";
+import { useProduction } from "@/features/production/model/use-production";
+import { useNarration, useSceneMedia, useScenes, useTimeline } from "@/features/scenes/model/use-scenes";
 import { useScript } from "@/features/script/model/use-script";
 import { useStatus, useStudioActions } from "@/features/studio/model/use-studio-actions";
+import { ActionError } from "@/features/studio/ui/ActionError";
 import { useWriter } from "@/features/writer/model/use-writer";
 import { Field } from "@/shared/ui/Field";
 import { Lightbox } from "@/shared/ui/Lightbox";
 import { Step } from "@/shared/ui/Step";
 
+import { BulkBar } from "./BulkBar";
+import { INSPECTOR_TRANSITION_ID, SceneInspector } from "./SceneInspector";
+import { SceneList } from "./SceneList";
+import { SceneScript } from "./SceneScript";
 import { SceneTimeline } from "./SceneTimeline";
+import { VideoTransition } from "./TransitionPicker";
 
 type Props = {
   /** Panel del generador de imágenes. Lo inyecta la página, como el del guion. */
@@ -42,42 +37,109 @@ type Props = {
 export function ScenesStep({ settings }: Props) {
   const scenes = useScenes();
   const backgrounds = useBackgrounds();
+  const media = useSceneMedia();
   const images = useImages();
-  const animation = useAnimation();
   const writer = useWriter();
   const actions = useStudioActions();
   const { busy } = useStatus();
   const { seconds, text } = useScript();
   const timeline = useTimeline();
+  const production = useProduction();
+  const narration = useNarration();
+  /** Cómo se ven las escenas a la izquierda: en lista, o el guion partido por escenas. */
+  const [view, setView] = useState<"list" | "script">("list");
 
   /* undefined = cerrado · null = añadir escena · número = cambiar esa escena */
   const [target, setTarget] = useState<number | null | undefined>(undefined);
   /** Escena abierta a tamaño grande, o null. */
   const [peek, setPeek] = useState<number | null>(null);
-  /** Escena con el editor de imagen abierto, «new» para una nueva, o null. */
-  const [editing, setEditing] = useState<number | "new" | null>(null);
-  /** Escena con el panel «Corregir» abierto, o null. Uno de los dos paneles a la vez. */
-  const [correcting, setCorrecting] = useState<number | null>(null);
+  /** El editor de imagen para una escena nueva, abierto o no. */
+  const [adding, setAdding] = useState(false);
+  /** La escena que enseña el inspector. */
+  const [selected, setSelected] = useState(0);
+  /** Las marcadas en la lista para actuar sobre varias. */
+  const [checked, setChecked] = useState<ReadonlySet<number>>(() => new Set());
+  const inspector = useRef<HTMLElement>(null);
 
-  const openEditor = (index: number | "new" | null) => {
-    setCorrecting(null);
-    setEditing(index);
-  };
-  const openCorrector = (index: number | null) => {
-    setEditing(null);
-    setCorrecting(index);
+  const count = scenes.items.length;
+  const current = Math.min(selected, Math.max(count - 1, 0));
+  /* Las marcas van por posición: si cambia el número de escenas (se añade o se
+     quita una, o se rehacen todas) ya no señalan lo mismo y se sueltan. */
+  const [seenCount, setSeenCount] = useState(count);
+  if (seenCount !== count) {
+    setSeenCount(count);
+    setChecked(new Set());
+  }
+  const marked = [...checked].filter((i) => i < count).sort((a, b) => a - b);
+  const thumbs = scenes.items.map((scene) => media(scene.background).thumb);
+
+  const select = (index: number) => {
+    setSelected(index);
+    // En una pantalla estrecha el inspector queda debajo de la lista: se lleva la vista hasta él.
+    requestAnimationFrame(() => inspector.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
   };
 
-  const peeked =
-    peek === null
-      ? undefined
-      : backgrounds.items.find((b) => b.name === scenes.items[peek]?.background);
+  /* Mover e intercambiar imágenes. La imagen cambia de sitio; el segundo y la
+     transición se quedan, así que pasa a acompañar lo que se dice ahí. Cada
+     cambio deja un «Deshacer», que aplica el cambio contrario (no una foto del
+     estado anterior: así no se pierde una imagen que llegue entretanto). */
+  const [swapping, setSwapping] = useState<number | null>(null);
+  const [notice, setNotice] = useState<{ text: string; undo: () => void } | null>(null);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 8000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
+    if (swapping === null) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSwapping(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [swapping]);
+
+  const exchange = (a: number, b: number) => {
+    scenes.swap(a, b);
+    setChecked(new Set());
+    setSwapping(null);
+    select(b);
+    setNotice({
+      text: `Intercambiaste las imágenes de las escenas ${a + 1} y ${b + 1}.`,
+      undo: () => {
+        scenes.swap(a, b);
+        select(a);
+      },
+    });
+  };
+  const relocate = (from: number, to: number) => {
+    scenes.move(from, to);
+    setChecked(new Set());
+    select(to);
+    setNotice({
+      text: `Llevaste la imagen de la escena ${from + 1} a la ${to + 1}.`,
+      undo: () => {
+        scenes.move(to, from);
+        select(from);
+      },
+    });
+  };
+  /* Elegir una escena: lo normal es verla en el inspector; si se está eligiendo
+     con cuál intercambiar, es la otra escena del intercambio. */
+  const choose = (index: number) => {
+    if (swapping === null) select(index);
+    else if (index === swapping) setSwapping(null);
+    else exchange(swapping, index);
+  };
+
+  const peeked = peek === null ? undefined : media(scenes.items[peek]?.background).meta;
 
   const voice = Math.max(seconds, 1);
   const waiting = pendingImages(scenes.items);
   const animating = pendingClips(scenes.items);
   const hasScript = text.trim().length > 0;
-  const usdPerSecond = animation.settings?.usdPerSecond ?? 0;
 
   const aiHint = !images.choice
     ? "Configura un generador en «Generador de imágenes», al final de este paso: Cloudflare es gratis."
@@ -148,6 +210,7 @@ export function ScenesStep({ settings }: Props) {
                 ? "Rehacer las escenas desde el guion"
                 : "Generar escenas desde el guion"}
         </button>
+        <ActionError place="scenes" />
         <p className="hint">{aiHint}</p>
         <AnimationControls />
       </div>
@@ -159,7 +222,25 @@ export function ScenesStep({ settings }: Props) {
         </p>
       ) : (
         <>
-          <SceneTimeline timeline={timeline} voiceSeconds={voice} />
+          <VideoTransition />
+          <SceneTimeline
+            scenes={scenes.items}
+            timeline={timeline}
+            voiceSeconds={voice}
+            thumbs={thumbs}
+            selected={current}
+            onSelect={choose}
+            onMove={scenes.setStart}
+            onSwap={exchange}
+            picking={swapping !== null}
+            fallback={production.transition}
+            said={narration.scenes.map((part) => part.text)}
+            onTransition={(i) => {
+              select(i);
+              // El selector de transición del inspector, ya con esa escena.
+              requestAnimationFrame(() => document.getElementById(INSPECTOR_TRANSITION_ID)?.focus());
+            }}
+          />
 
           {waiting > 0 && (
             <p className="hint">
@@ -183,162 +264,101 @@ export function ScenesStep({ settings }: Props) {
           )}
           {timeline.disordered && (
             <p className="hint warn">
-              Los segundos no van de menor a mayor. Ordénalos para que cada escena dure algo.
+              Los segundos no van de menor a mayor: ordénalos en el inspector para que cada escena
+              dure algo y se puedan arrastrar los bordes.
             </p>
           )}
 
-          <div className="stack">
-            {scenes.items.map((scene, i) => {
-              const meta = backgrounds.items.find((b) => b.name === scene.background);
-              const segment = timeline.segments[i];
-              const source = animatable(scene);
-              const seconds = clipSeconds(segment.span);
-              return (
-                <div className="scene-item" key={`${scene.job ?? scene.background}-${i}`}>
-                  <div className="scene-row">
-                    {scene.job || scene.clipJob ? (
-                      <div
-                        className="scene-thumb scene-thumb--busy"
-                        title={scene.job ? "Generando la imagen…" : "Animando la imagen…"}
-                      />
-                    ) : meta?.thumb ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        className="scene-thumb"
-                        src={backgrounds.thumbUrl(meta.thumb)}
-                        alt=""
-                        title="Cambiar por un clip de Pexels o de la galería"
-                        onClick={() => setTarget(i)}
-                      />
-                    ) : (
-                      <button
-                        className="scene-thumb scene-thumb--empty"
-                        title="Elegir un clip de Pexels o de la galería"
-                        aria-label={`Elegir un fondo para la escena ${i + 1}`}
-                        onClick={() => setTarget(i)}
-                      >
-                        +
-                      </button>
-                    )}
-                    <div className="scene-name">
-                      <span>
-                        {scene.background ??
-                          (scene.job ? "Generando imagen…" : scene.prompt ? "Sin imagen" : "(fondo generado)")}
-                      </span>
-                      {scene.prompt && <span className="hint scene-prompt">«{scene.prompt}»</span>}
-                      {scene.prompt && <SceneCast description={scene.prompt} />}
-                      <span className="hint">
-                        del <b className="num">{segment.start.toFixed(0)}</b> al{" "}
-                        <b className="num">{segment.end.toFixed(0)}</b> s ·{" "}
-                        <b className="num">{segment.span.toFixed(1)}</b> s en pantalla
-                      </span>
-                      {scene.error && <span className="hint warn">{scene.error}</span>}
-                      {scene.review && <ReviewNote review={scene.review} />}
-                      {scene.clipJob && (
-                        <span className="hint">
-                          Animando un clip de <b className="num">{seconds}</b> s: tarda unos minutos.
-                        </span>
-                      )}
-                      {scene.still && !scene.clipJob && (
-                        <span className="hint">Animada desde {scene.still}</span>
-                      )}
-                      {scene.clipError && <span className="hint warn">{scene.clipError}</span>}
-                      {segment.repeats > 1 && (
-                        <span className="hint warn">
-                          El clip dura <b className="num">{meta?.duration}</b> s: se repetirá{" "}
-                          <b className="num">{segment.repeats}</b> veces para cubrir el tramo.
-                        </span>
-                      )}
-                    </div>
-                    {meta && (
-                      <button
-                        className="btn btn--sm"
-                        title="Ver el fondo a tamaño grande"
-                        onClick={() => setPeek(i)}
-                      >
-                        Ver
-                      </button>
-                    )}
-                    <button
-                      className="btn btn--sm"
-                      title="Generar una imagen nueva para esta escena"
-                      disabled={Boolean(scene.job || scene.clipJob)}
-                      onClick={() => openEditor(editing === i ? null : i)}
-                    >
-                      IA
-                    </button>
-                    {meta?.kind === "image" && (
-                      <button
-                        className="btn btn--sm"
-                        title="Decirle a la IA qué está mal en esta imagen para que lo arregle"
-                        disabled={Boolean(scene.job || scene.clipJob)}
-                        aria-expanded={correcting === i}
-                        onClick={() => openCorrector(correcting === i ? null : i)}
-                      >
-                        Corregir
-                      </button>
-                    )}
-                    {animation.ready && (source || scene.clipJob) && (
-                      <button
-                        className="btn btn--sm"
-                        title={`Convertir la imagen en un clip de ${seconds} s (≈ ${formatUsd(seconds * usdPerSecond)})`}
-                        disabled={!source}
-                        onClick={() => actions.animateScene(i)}
-                      >
-                        {scene.still ? "Reanimar" : "Animar"}
-                      </button>
-                    )}
-                    {scene.still && !scene.clipJob && (
-                      <button
-                        className="btn btn--sm"
-                        title={`Volver a la imagen fija (${scene.still}). El clip se queda en la galería.`}
-                        onClick={() => scenes.restoreStill(i)}
-                      >
-                        Imagen fija
-                      </button>
-                    )}
-                    <div className="scene-start">
-                      <input
-                        type="number"
-                        className="num"
-                        min={0}
-                        step={0.1}
-                        value={i === 0 ? 0 : scene.start}
-                        disabled={i === 0}
-                        title={i === 0 ? "La primera escena empieza en 0" : "Segundo de entrada"}
-                        aria-label={`Segundo de entrada de la escena ${i + 1}`}
-                        onChange={(e) => scenes.setStart(i, parseFloat(e.target.value) || 0)}
-                      />
-                    </div>
-                    <button
-                      className="btn btn--icon"
-                      title={`Quitar la escena ${i + 1}`}
-                      onClick={() => {
-                        openEditor(null); // los índices se mueven al quitar una
-                        scenes.remove(i);
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
+          {marked.length > 0 && <BulkBar marked={marked} onClear={() => setChecked(new Set())} />}
 
-                  {editing === i && (
-                    <SceneImageEditor
-                      index={i}
-                      initial={scene.prompt ?? ""}
-                      onDone={() => setEditing(null)}
-                    />
-                  )}
-                  {correcting === i && meta?.kind === "image" && !scene.job && (
-                    <SceneImageCorrector
-                      index={i}
-                      initial={correctionDraft(scene.review)}
-                      onDone={() => setCorrecting(null)}
-                    />
-                  )}
-                </div>
-              );
-            })}
+          {swapping !== null && (
+            <div className="pick-banner" role="status">
+              <span>
+                Elige en la lista o en la barra la escena con la que intercambiar la imagen de la escena{" "}
+                <b className="num">{swapping + 1}</b>.
+              </span>
+              <button type="button" className="btn btn--sm" onClick={() => setSwapping(null)}>
+                Cancelar
+              </button>
+            </div>
+          )}
+          {notice && (
+            <div className="undo-bar" role="status">
+              <span>{notice.text}</span>
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={() => {
+                  notice.undo();
+                  setNotice(null);
+                }}
+              >
+                Deshacer
+              </button>
+            </div>
+          )}
+
+          <div className="scenes-workspace">
+            <div className="stack scenes-left">
+              <div className="tabs" role="tablist" aria-label="Cómo ver las escenas">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === "list"}
+                  className={`tab${view === "list" ? " is-on" : ""}`}
+                  onClick={() => setView("list")}
+                >
+                  Lista
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={view === "script"}
+                  className={`tab${view === "script" ? " is-on" : ""}`}
+                  onClick={() => setView("script")}
+                  title="El guion partido por escenas: qué se dice mientras se ve cada imagen"
+                >
+                  Guion por escenas
+                </button>
+              </div>
+              {view === "script" ? (
+                <SceneScript thumbs={thumbs} selected={current} onSelect={choose} />
+              ) : (
+                <SceneList
+                  narration={narration.scenes}
+                  scenes={scenes.items}
+                  timeline={timeline}
+                  thumbs={thumbs}
+                  selected={current}
+                  onSelect={choose}
+                  onMove={relocate}
+                  onSwap={exchange}
+                  picking={swapping !== null}
+                  checked={checked}
+                  onCheck={(i, on) =>
+                    setChecked((prev) => {
+                      const next = new Set(prev);
+                      if (on) next.add(i);
+                      else next.delete(i);
+                      return next;
+                    })
+                  }
+                  onCheckAll={(on) => setChecked(on ? new Set(scenes.items.map((_, i) => i)) : new Set())}
+                />
+              )}
+            </div>
+            <SceneInspector
+              ref={inspector}
+              index={current}
+              segment={timeline.segments[current]}
+              previous={current > 0 ? scenes.items[current - 1] : null}
+              onSelect={select}
+              onPick={() => setTarget(current)}
+              onPeek={() => setPeek(current)}
+              onMoveImage={relocate}
+              swapping={swapping === current}
+              onStartSwap={() => setSwapping(swapping === current ? null : current)}
+            />
           </div>
         </>
       )}
@@ -347,12 +367,19 @@ export function ScenesStep({ settings }: Props) {
         <button className="btn" onClick={() => setTarget(null)}>
           Añadir de Pexels o la galería
         </button>
-        <button className="btn" disabled={editing === "new"} onClick={() => openEditor("new")}>
+        <button className="btn" disabled={adding} onClick={() => setAdding(true)}>
           Añadir con IA
         </button>
       </div>
-      {editing === "new" && (
-        <SceneImageEditor index={null} initial="" onDone={() => setEditing(null)} />
+      {adding && (
+        <SceneImageEditor
+          index={null}
+          initial=""
+          onDone={() => {
+            setAdding(false);
+            select(count); // la nueva va al final
+          }}
+        />
       )}
 
       {settings}
@@ -362,6 +389,7 @@ export function ScenesStep({ settings }: Props) {
         <BackgroundPicker
           onSelect={(name) => {
             scenes.place(name, target);
+            if (target === null) select(count); // la nueva va al final
             setTarget(undefined);
           }}
           onClose={() => setTarget(undefined)}
@@ -374,7 +402,7 @@ export function ScenesStep({ settings }: Props) {
           media={{
             kind: peeked.kind,
             src: backgrounds.fileUrl(peeked.name),
-            poster: backgrounds.thumbUrl(peeked.thumb),
+            poster: backgrounds.thumbUrl(peeked.thumb) || undefined,
           }}
           info={
             <>
@@ -397,22 +425,11 @@ export function ScenesStep({ settings }: Props) {
                 className="btn"
                 onClick={() => {
                   setPeek(null);
-                  openEditor(peek);
+                  select(peek);
                 }}
               >
-                Generar otra con IA
+                Editar en el inspector
               </button>
-              {peeked.kind === "image" && !scenes.items[peek]?.job && (
-                <button
-                  className="btn"
-                  onClick={() => {
-                    setPeek(null);
-                    openCorrector(peek);
-                  }}
-                >
-                  Corregir esta imagen
-                </button>
-              )}
             </>
           }
           onClose={() => setPeek(null)}
@@ -421,27 +438,3 @@ export function ScenesStep({ settings }: Props) {
     </Step>
   );
 }
-
-function ReviewNote({ review }: { review: ImageReview }) {
-  const note = reviewNote(review);
-  return <span className={note.warn ? "hint warn" : "hint"}>{note.text}</span>;
-}
-
-/** Quién o qué del reparto sale en la escena, con su referencia si está guardado. */
-function SceneCast({ description }: { description: string }) {
-  const images = useImages();
-  const library = useCharacters();
-  const named = castIn(description, images.guide.characters);
-  if (named.length === 0) return null;
-  return (
-    <span className="cluster scene-cast">
-      {named.map((character) => (
-        <span className="hint scene-cast-item" key={character.name}>
-          <ReferenceThumb saved={character.saved ? savedNamed(library.items, character.name) : undefined} mini />
-          {character.name}
-        </span>
-      ))}
-    </span>
-  );
-}
-

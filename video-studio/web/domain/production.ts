@@ -1,5 +1,6 @@
 /**
- * Ajustes de producción de un video: formato, duración, diálogo y sonido.
+ * Ajustes de producción de un video: formato, duración, diálogo, sonido y
+ * la transición por defecto entre escenas.
  *
  * Hasta ahora todo era un reel vertical de 30–45 s con una sola voz. Las
  * mismas reglas viven en `app/domain/production.py`; los ajustes viajan al
@@ -8,6 +9,7 @@
  */
 import type { Style } from "./captions.ts";
 import type { DialogueVoices } from "./dialogue.ts";
+import { DEFAULT_TRANSITION, readTransition, type Transition } from "./transition.ts";
 
 export type FormatId = "9:16" | "16:9";
 export type LengthId = "reel" | "corto";
@@ -40,6 +42,8 @@ export type Production = {
   musicVolume: number;
   /** El sonido propio de los clips (los animados lo traen), debajo de la voz. */
   ambient: boolean;
+  /** Cómo entran las escenas que no eligen la suya. */
+  transition: Transition;
 };
 
 export const DEFAULT_PRODUCTION: Production = {
@@ -50,6 +54,7 @@ export const DEFAULT_PRODUCTION: Production = {
   music: "",
   musicVolume: DEFAULT_MUSIC_VOLUME,
   ambient: false,
+  transition: DEFAULT_TRANSITION,
 };
 
 /** Subtítulos que encajan en horizontal: más abajo, de menos líneas y más anchos. */
@@ -64,6 +69,7 @@ export function forServer(production: Production) {
     music: production.music,
     music_volume: production.musicVolume,
     ambient: production.ambient,
+    transition: production.transition,
   };
 }
 
@@ -98,6 +104,17 @@ export function splitStoredStyle(style: unknown): { style: Partial<Style>; produ
       music: typeof raw.music === "string" ? raw.music : "",
       musicVolume: typeof raw.music_volume === "number" ? raw.music_volume : DEFAULT_MUSIC_VOLUME,
       ambient: raw.ambient === true,
+      transition: readTransition(raw.transition) ?? DEFAULT_TRANSITION,
     },
   };
+}
+
+/**
+ * La toma de voz con que se renderizó un video guardado (la pone el render en
+ * su producción). Null en los de antes o si no vale.
+ */
+export function storedTake(style: unknown): string | null {
+  const stored = ((style ?? {}) as Record<string, unknown>)[PRODUCTION_KEY];
+  const take = stored && typeof stored === "object" ? (stored as Record<string, unknown>).take : undefined;
+  return typeof take === "string" && /^[0-9a-f]{16}$/.test(take) ? take : null;
 }

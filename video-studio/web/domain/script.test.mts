@@ -25,3 +25,11 @@ test("la muestra del fotograma son las primeras palabras", () => {
   assert.equal(sampleCaption("uno dos tres cuatro cinco seis siete"), "uno dos tres cuatro cinco");
   assert.equal(sampleCaption("   "), "Texto de ejemplo");
 });
+
+test("la animática enseña la frase que suena en cada segundo, en bloques", async () => {
+  const { wordsAt } = await import("./script.ts");
+  const script = "**Uno** dos tres cuatro cinco seis siete ocho nueve diez";
+  assert.equal(wordsAt(script, 0), "Uno dos tres cuatro cinco seis");
+  assert.equal(wordsAt(script, 2.5), "siete ocho nueve diez"); // 2,5 s · 2,7 palabras/s = palabra 6
+  assert.equal(wordsAt(script, 60), "");
+});

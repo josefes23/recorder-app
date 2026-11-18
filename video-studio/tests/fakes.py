@@ -19,6 +19,7 @@ from app.application.use_cases.cover import CoverUseCases
 from app.application.use_cases.description import DescriptionUseCases
 from app.application.use_cases.illustrations import IllustrationUseCases, ImageSettings, ReviewedPainter
 from app.application.use_cases.library import LibraryUseCases
+from app.application.use_cases.voice_takes import VoiceTakeUseCases
 from app.application.use_cases.music import MusicUseCases
 from app.application.use_cases.preview import PreviewUseCase
 from app.application.use_cases.render import RenderUseCases
@@ -403,11 +404,61 @@ class FakeCoverPainter:
         self.calls: list[tuple[list[CoverWord], str, Path | None, str]] = []
         #: El tamaño de cada portada, en el mismo orden.
         self.sizes: list[tuple[int, int]] = []
+        #: El ancho al que se reduce cada una; None, a tamaño completo.
+        self.widths: list[int | None] = []
 
-    def paint(self, words, design: str, background: Path | None, topic: str, size=(1080, 1920)) -> bytes:
+    def paint(self, words, design: str, background: Path | None, topic: str, size=(1080, 1920), width=None) -> bytes:
         self.calls.append((list(words), design, background, topic))
         self.sizes.append(size)
+        self.widths.append(width)
         return b"\xff\xd8JPEG " + " ".join(w.text for w in words).encode()
+
+
+class FakeVoiceSynthesizer:
+    """Una voz de mentira: cada palabra dura 0,4 s, una detrás de otra."""
+
+    def __init__(self) -> None:
+        self.requests: list = []
+
+    def synthesize(self, request):
+        self.requests.append(request)
+        words = [{"text": w, "start": i * 0.4, "end": i * 0.4 + 0.35} for i, w in enumerate(request.text.split())]
+        return b"ID3" + request.text.encode(), words, len(words) * 0.4
+
+
+class InMemoryTakeStore:
+    def __init__(self) -> None:
+        self.takes: dict = {}
+        self.audios: dict[str, bytes] = {}
+
+    def get(self, key):
+        return self.takes.get(key)
+
+    def audio(self, key):
+        return Path("/takes") / f"{key}.mp3" if key in self.audios else None
+
+    def save(self, key, audio, words, duration):
+        from app.domain.voice_take import VoiceTake
+
+        self.audios[key] = audio
+        self.takes[key] = VoiceTake(key, duration, list(words), audio=True)
+        return self.takes[key]
+
+
+class FakePosterStore:
+    def __init__(self) -> None:
+        self.files: dict[int, bytes] = {}
+        self.removed: list[int] = []
+
+    def read(self, video_id: int) -> bytes | None:
+        return self.files.get(video_id)
+
+    def save(self, video_id: int, data: bytes) -> None:
+        self.files[video_id] = data
+
+    def remove(self, video_id: int) -> None:
+        self.removed.append(video_id)
+        self.files.pop(video_id, None)
 
 
 def make_studio(credentials: DictCredentials | None = None, composer: FakeComposer | None = None):
@@ -431,6 +482,9 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
     animator = FakeAnimator()
     music = FakeMusicStore()
     cover_painter = FakeCoverPainter()
+    posters = FakePosterStore()
+    synthesizer = FakeVoiceSynthesizer()
+    takes = InMemoryTakeStore()
     studio = Studio(
         writer=writer,
         scripts=ScriptUseCases(events, writer, composer, FakeTemplate()),
@@ -438,7 +492,7 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
         music=MusicUseCases(music),
         preview=PreviewUseCase(previewer),
         render=RenderUseCases(videos, queue, jobs),
-        library=LibraryUseCases(videos, files),
+        library=LibraryUseCases(videos, files, posters),
         jobs=jobs,
         events=events,
         images=images,
@@ -446,14 +500,16 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
         animations=AnimationUseCases(events, credentials, animator, backgrounds),
         storyboards=StoryboardUseCases(events, writer, composer),
         characters=CharacterUseCases(events, character_library, references, images, painter),
-        cover=CoverUseCases(events, writer, composer, cover_painter, backgrounds, videos),
+        cover=CoverUseCases(events, writer, composer, cover_painter, backgrounds, videos, posters),
         description=DescriptionUseCases(events, writer, composer),
+        takes=VoiceTakeUseCases(synthesizer, takes),
         generator="/fake/auto-video-generator",
     )
     fakes = SimpleNamespace(
         videos=videos, events=events, credentials=credentials, composer=composer,
         queue=queue, files=files, backgrounds=backgrounds, stock=stock, previewer=previewer, jobs=jobs,
         illustrator=illustrator, painter=painter, character_library=character_library, references=references,
-        cover_painter=cover_painter, animator=animator, music=music,
+        cover_painter=cover_painter, animator=animator, music=music, posters=posters,
+        synthesizer=synthesizer, takes=takes,
     )
     return studio, fakes

@@ -22,9 +22,28 @@ class WriterRequest(BaseModel):
     model: str = ""
 
 
+class TransitionIn(BaseModel):
+    #: corte, fundido, negro, deslizar o zoom (`domain.transition`).
+    kind: str = "corte"
+    seconds: float = 0.5
+
+
 class SceneIn(BaseModel):
     background: str | None = None
     start: float = 0.0
+    #: Cómo entra esta escena; sin ella, la del video (`production.transition`).
+    transition: TransitionIn | None = None
+
+
+class TakeIn(BaseModel):
+    """Lo que hace falta para generar la voz: lo mismo que lleva el render."""
+
+    script: str
+    voice: str = DEFAULT_VOICE
+    rate: str = DEFAULT_RATE
+    pitch: str = DEFAULT_PITCH
+    #: Voz de cada personaje si el guion es un diálogo.
+    voices: dict = Field(default_factory=dict)
 
 
 class PreviewRequest(BaseModel):
@@ -169,3 +188,5 @@ class AnimationRequest(BaseModel):
     seed: int | None = None
     #: «9:16» o «16:9»: el clip sale con la orientación del video.
     format: str = "9:16"
+    #: Qué se mueve y qué hace la cámara; vacío, un movimiento sutil.
+    motion: str = ""

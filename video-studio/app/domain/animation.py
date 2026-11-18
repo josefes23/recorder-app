@@ -99,18 +99,33 @@ FIRST_FRAME = (
     "Anima esta imagen como un plano corto de película. La imagen es el primer fotograma: "
     "conserva el encuadre, las personas, los objetos, la luz y el estilo."
 )
-MOTION = (
-    "Movimiento natural y sutil de las personas y del ambiente; la cámara se mueve despacio. "
-    "Un solo plano, sin cortes."
-)
+#: El movimiento cuando la escena no dice el suyo.
+MOTION = "Movimiento natural y sutil de las personas y del ambiente; la cámara se mueve despacio."
+#: Vaya con el movimiento de la escena o con el de siempre: el clip cubre un
+#: tramo entero, y un corte dentro de él se vería como un salto.
+ONE_SHOT = "Un solo plano, sin cortes."
 #: El audio del clip no se usa (la voz va aparte): mejor que no hable nadie.
 QUIET = "Sin diálogos ni voces, sin música: solo sonido ambiente. No agregues textos, letras ni subtítulos."
 
+#: Lo que se mueve en una escena cabe en una frase; esto solo frena lo desbocado.
+MOTION_LIMIT = 300
 
-def animation_prompt(description: str, guide: VisualGuide | None = None) -> str:
+
+def validate_motion(motion: str | None) -> str:
+    """El movimiento de una escena, en una línea. Vacío vale: entonces va `MOTION`."""
+    text = " ".join((motion or "").split())
+    if len(text) > MOTION_LIMIT:
+        raise ValidationError(f"El movimiento es demasiado largo: déjalo por debajo de {MOTION_LIMIT} caracteres.")
+    return text
+
+
+def animation_prompt(description: str, guide: VisualGuide | None = None, motion: str = "") -> str:
     """
     El encargo para el modelo de video. Omni no admite prompts negativos como
     parámetro, pero sí entiende exclusiones dichas en el texto («sin…»).
+
+    `motion` es lo que se mueve en esa escena —lo propone el guion visual o lo
+    escribe el usuario—; sin él, un movimiento sutil que vale para cualquiera.
     """
     guide = guide or VisualGuide()
     lines = [FIRST_FRAME]
@@ -118,6 +133,6 @@ def animation_prompt(description: str, guide: VisualGuide | None = None) -> str:
         lines.append(f"Qué pasa: {as_sentence(description)}")
         lines += [f"{c.name}: {as_sentence(c.traits)}" for c in cast_in(description, guide.characters)]
     lines.append(f"Estilo: {as_sentence(guide.look or DEFAULT_STYLE)}")
-    lines.append(MOTION)
+    lines.append(f"Movimiento: {as_sentence(motion)} {ONE_SHOT}" if motion.strip() else f"{MOTION} {ONE_SHOT}")
     lines.append(QUIET)
     return "\n".join(lines)

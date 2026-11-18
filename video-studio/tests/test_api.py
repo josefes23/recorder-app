@@ -157,7 +157,10 @@ class ApiTests(unittest.TestCase):
         done = self.client.get(f"/api/outcomes/{job}").json()
         self.assertEqual(done["status"], "completed")
         self.assertEqual(done["guide"]["look"], "óleo")
-        self.assertEqual(done["scenes"], [{"start": 0.0, "text": "Hola mundo. Adiós.", "description": "una taza al sol"}])
+        self.assertEqual(
+            done["scenes"],
+            [{"start": 0.0, "text": "Hola mundo. Adiós.", "description": "una taza al sol", "motion": ""}],
+        )
 
     def test_illustrate_scenes(self):
         # Sin generador configurado, el encargo se rechaza con el motivo.

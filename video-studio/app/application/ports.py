@@ -24,6 +24,7 @@ from app.domain.saved_characters import SavedCharacter
 from app.domain.stock import StockClip
 from app.domain.style import CaptionStyle
 from app.domain.video import NewVideo, RenderResult, RenderSpec, Video
+from app.domain.voice_take import TakeRequest, VoiceTake
 from app.domain.writer import Provider
 
 
@@ -129,6 +130,9 @@ class CoverPainter(Protocol):
 
     `background` es el archivo de la galería, imagen o clip; None pinta el
     degradado del tema, el mismo que usa el motor cuando no hay fondo.
+
+    Con `width`, el JPEG sale reducido a ese ancho: la letra está medida para el
+    tamaño completo, así que se pinta grande y se reduce al final.
     """
 
     def paint(
@@ -138,7 +142,40 @@ class CoverPainter(Protocol):
         background: Path | None,
         topic: str,
         size: tuple[int, int] = (1080, 1920),
+        width: int | None = None,
     ) -> bytes: ...
+
+
+class VoiceSynthesizer(Protocol):
+    """
+    Genera la voz del guion (edge-tts, con el motor) y devuelve el audio MP3,
+    las marcas de cada palabra ({text, start, end}) y la duración en segundos.
+    Con voces por personaje, cada intervención con la suya, unidas en una pista.
+    """
+
+    def synthesize(self, request: TakeRequest) -> tuple[bytes, list[dict], float]: ...
+
+
+class TakeStore(Protocol):
+    """
+    Las tomas de voz, por clave. Las marcas se guardan siempre (pesan poco y
+    dicen los tiempos reales de cada video); el audio, solo el de las últimas.
+    """
+
+    def get(self, key: str) -> VoiceTake | None: ...
+    def audio(self, key: str) -> Path | None: ...
+    def save(self, key: str, audio: bytes, words: list[dict], duration: float) -> VoiceTake: ...
+
+
+class PosterStore(Protocol):
+    """
+    La portada de cada video en pequeño, para la cuadrícula de la biblioteca.
+    Se pinta una vez y se guarda: la portada de un video no cambia después.
+    """
+
+    def read(self, video_id: int) -> bytes | None: ...
+    def save(self, video_id: int, data: bytes) -> None: ...
+    def remove(self, video_id: int) -> None: ...
 
 
 class ScriptTemplate(Protocol):

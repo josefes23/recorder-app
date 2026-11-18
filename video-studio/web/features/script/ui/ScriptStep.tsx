@@ -6,6 +6,7 @@ import { FORMATS, LENGTHS, type FormatId, type LengthId } from "@/domain/product
 import { useProduction } from "@/features/production/model/use-production";
 import { useScript } from "@/features/script/model/use-script";
 import { useStatus, useStudioActions } from "@/features/studio/model/use-studio-actions";
+import { ActionError } from "@/features/studio/ui/ActionError";
 import { useWriter } from "@/features/writer/model/use-writer";
 import { Field } from "@/shared/ui/Field";
 import { Step } from "@/shared/ui/Step";
@@ -136,6 +137,7 @@ export function ScriptStep({ settings }: { settings?: ReactNode }) {
           </span>
         )}
       </div>
+      <ActionError place="script" />
 
       <div className="field">
         <label htmlFor="script">

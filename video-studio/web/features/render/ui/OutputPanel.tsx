@@ -12,12 +12,21 @@ import { useLibrary } from "@/features/library/model/use-library";
 import { useProduction } from "@/features/production/model/use-production";
 import { useRender } from "@/features/render/model/use-render";
 import { useScenes } from "@/features/scenes/model/use-scenes";
+import { Animatic } from "@/features/scenes/ui/Animatic";
 import { useScript } from "@/features/script/model/use-script";
 import { useStatus, useStudioActions } from "@/features/studio/model/use-studio-actions";
+import { ActionError } from "@/features/studio/ui/ActionError";
 import { useVoice, useVoiceCatalog } from "@/features/voice/model/use-voice";
 import { CopyButton } from "@/shared/ui/CopyButton";
+import { Help } from "@/shared/ui/Help";
 
-type View = "cover" | "frame";
+type View = "cover" | "frame" | "animatic";
+
+const VIEWS: { id: View; label: string }[] = [
+  { id: "cover", label: "Portada" },
+  { id: "frame", label: "Fotograma" },
+  { id: "animatic", label: "Animática" },
+];
 
 export function OutputPanel() {
   const render = useRender();
@@ -31,7 +40,7 @@ export function OutputPanel() {
   const { format } = useProduction();
   /* El cuadro toma la forma del video: vertical o apaisado. */
   const shape = format === "16:9" ? " frame--wide" : "";
-  const { busy, error } = useStatus();
+  const { busy } = useStatus();
   const actions = useStudioActions();
 
   // La portada primero: es lo que decide si alguien abre el video.
@@ -42,29 +51,26 @@ export function OutputPanel() {
   const done = render.job?.status === "done" ? render.job : null;
 
   return (
-    <div className="panel panel--pad stack">
+    <div className="panel panel--pad stack" id="salida">
       <h2 className="panel-title">Salida</h2>
 
       <div className="tabs" role="tablist" aria-label="Qué previsualizar">
-        <button
-          role="tab"
-          aria-selected={view === "cover"}
-          className={`tab${view === "cover" ? " is-on" : ""}`}
-          onClick={() => setView("cover")}
-        >
-          Portada
-        </button>
-        <button
-          role="tab"
-          aria-selected={view === "frame"}
-          className={`tab${view === "frame" ? " is-on" : ""}`}
-          onClick={() => setView("frame")}
-        >
-          Fotograma
-        </button>
+        {VIEWS.map((tab) => (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={view === tab.id}
+            className={`tab${view === tab.id ? " is-on" : ""}`}
+            onClick={() => setView(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {view === "cover" ? (
+      {view === "animatic" ? (
+        <Animatic />
+      ) : view === "cover" ? (
         <div className={`frame${shape}${cover.painting ? " is-busy" : ""}`} aria-busy={cover.painting}>
           {cover.imageUrl ? (
             /* eslint-disable-next-line @next/next/no-img-element */
@@ -90,7 +96,7 @@ export function OutputPanel() {
         </div>
       )}
 
-      {view === "cover" ? (
+      {view === "animatic" ? null : view === "cover" ? (
         <>
           {cover.failure && <p className="error">{cover.failure}</p>}
           <CoverControls />
@@ -160,14 +166,17 @@ export function OutputPanel() {
               <CopyButton text={description.text} label="Copiar descripción" />
             )}
           </div>
-          <p className="hint">
-            La portada sale a 1080x1920 con el título dentro del recorte 3:4 de la cuadrícula: lista
-            para subirla como portada del Reel, el TikTok o el Short.
-          </p>
+          <div className="spread">
+            <span className="hint">Portada a 1080x1920</span>
+            <Help label="Sobre la portada">
+              La portada sale a 1080x1920 con el título dentro del recorte 3:4 de la cuadrícula: lista
+              para subirla como portada del Reel, el TikTok o el Short.
+            </Help>
+          </div>
         </div>
       )}
 
-      {error && <p className="error">{error}</p>}
+      <ActionError place="output" />
     </div>
   );
 }

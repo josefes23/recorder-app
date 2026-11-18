@@ -77,7 +77,10 @@ class PillowCoverPainter:
         background: Path | None,
         topic: str,
         size: tuple[int, int] = (1080, 1920),
+        width: int | None = None,
     ) -> bytes:
+        from PIL import Image
+
         layout = LAYOUTS.get(design, LAYOUTS["impacto"])
 
         frame = _punch(self._background(background, topic, size)).convert("RGBA")
@@ -89,8 +92,13 @@ class PillowCoverPainter:
         frame.alpha_composite(text.shadow(layer))
         frame.alpha_composite(layer)
 
+        picture = frame.convert("RGB")
+        # En pequeño: la letra está medida para el tamaño completo, así que se
+        # pinta grande y se reduce al final, con el mismo encuadre.
+        if width and width < size[0]:
+            picture = picture.resize((width, round(size[1] * width / size[0])), Image.Resampling.LANCZOS)
         buffer = io.BytesIO()
-        frame.convert("RGB").save(buffer, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+        picture.save(buffer, format="JPEG", quality=JPEG_QUALITY, optimize=True)
         return buffer.getvalue()
 
     # ------------------------------------------------------------------ fondo

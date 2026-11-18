@@ -7,7 +7,8 @@ solo la frase de la voz, dibuja la frase —letras incluidas— o se inventa un
 personaje distinto en cada imagen. Por eso, antes de pintar, el modelo del
 guion hace de director de arte: fija un estilo común, un reparto con rasgos
 que no cambian —personas, animales, objetos, lugares— y lo que se ve en cada
-escena (`illustration.VisualGuide`).
+escena (`illustration.VisualGuide`). Propone también qué se mueve en cada una,
+por si se anima (`animation.animation_prompt`).
 
 También decide dónde cambia la imagen. Repartido solo por longitud
 (`illustration.plan_cuts`), un tramo juntaba el final de una idea con el
@@ -33,6 +34,7 @@ import secrets
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from app.domain.animation import MOTION_LIMIT
 from app.domain.errors import WriterError
 from app.domain.illustration import (
     DEFAULT_KIND,
@@ -84,8 +86,13 @@ Un modelo de texto a imagen pintará cada escena por separado. No ve el guion ni
 - El generador tiene un filtro que bloquea la imagen entera si ve cuerpos mojados o con poca ropa, heridas o violencia. Cuéntalo con planos que no los muestren: ropa seca, un plano más abierto, el gesto o la cara en vez del cuerpo.
 - {frame_rule}
 
+5. Un movimiento por escena ("motion"): si la escena se anima, un modelo de video parte de su imagen como primer fotograma y la mueve durante la escena, en un solo plano. Di en una frase de 5 a 15 palabras qué se mueve y qué hace la cámara: «Ana sirve el café y el vapor sube; la cámara se acerca despacio».
+- Solo lo que cabe en esa imagen y en esos segundos: un gesto o una acción sencilla de quien ya está en el plano. Nadie entra ni sale, el lugar no cambia y no hay cortes.
+- Un solo movimiento de cámara: fija, se acerca, se aleja, gira hacia un lado o sigue a alguien.
+- No repitas lo que ya dice la descripción: solo el movimiento.
+
 Responde solo con un objeto JSON, sin markdown ni comentarios, todo en español:
-{{"look": "...", "characters": [{{"name": "...", "kind": "persona", "traits": "..."}}], "scenes": [{{"from": 1, "description": "..."}}, {{"from": 3, "description": "..."}}]}}
+{{"look": "...", "characters": [{{"name": "...", "kind": "persona", "traits": "..."}}], "scenes": [{{"from": 1, "description": "...", "motion": "..."}}, {{"from": 3, "description": "...", "motion": "..."}}]}}
 "from" es el número de la frase con la que empieza la escena. La primera empieza en la frase 1, cada una en una frase posterior a la de la anterior, y dura hasta la frase antes de la siguiente."""
 
 
@@ -111,9 +118,12 @@ class StoryboardScene:
     text: str
     #: Lo que se ve. Es lo que el usuario edita y lo que se pinta.
     description: str
+    #: Qué se mueve si la escena se anima (`animation.animation_prompt`). Puede
+    #: faltar: un modelo que no lo escriba no tumba el guion visual.
+    motion: str = ""
 
     def as_dict(self) -> dict:
-        return {"start": self.start, "text": self.text, "description": self.description}
+        return {"start": self.start, "text": self.text, "description": self.description, "motion": self.motion}
 
 
 @dataclass(frozen=True)
@@ -236,9 +246,10 @@ def _cast(items: object, current: Sequence[Character]) -> list[Character]:
     return cast[:MAX_CHARACTERS]
 
 
-def _cuts(items: object, sentences: Sequence[str], max_scenes: int = MAX_SCENES) -> list[tuple[int, str]]:
+def _cuts(items: object, sentences: Sequence[str], max_scenes: int = MAX_SCENES) -> list[tuple[int, str, str]]:
     """
-    Dónde empieza cada escena (índice de su primera frase, desde 0) y qué se ve.
+    Dónde empieza cada escena (índice de su primera frase, desde 0), qué se ve
+    y qué se mueve.
 
     Se arregla lo que tiene arreglo sin inventar nada: las escenas van en orden
     de frase aunque lleguen desordenadas, una frase que abre dos escenas se
@@ -249,23 +260,23 @@ def _cuts(items: object, sentences: Sequence[str], max_scenes: int = MAX_SCENES)
     cada tramo del reparto por longitud (`plan_cuts`): siguen cortando donde
     el modelo quiso, solo que menos veces, y cada imagen con su descripción.
     """
-    found: dict[int, str] = {}
+    found: dict[int, tuple[str, str]] = {}
     for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict):
             continue
         first = _number(item.get("from"), 0) - 1
         text = _clip(item.get("description"), SCENE_LIMIT)
         if 0 <= first < len(sentences) and text:
-            found.setdefault(first, text)
+            found.setdefault(first, (text, _clip(item.get("motion"), MOTION_LIMIT)))
 
-    cuts = sorted(found.items())
+    cuts = [(first, text, motion) for first, (text, motion) in sorted(found.items())]
     if not cuts:
         return []
-    cuts[0] = (0, cuts[0][1])
+    cuts[0] = (0, *cuts[0][1:])
     if len(cuts) <= max_scenes:
         return cuts
 
-    kept: list[tuple[int, str]] = []
+    kept: list[tuple[int, str, str]] = []
     for first in plan_cuts(sentences, max_scenes=max_scenes):
         cover = next(cut for cut in reversed(cuts) if cut[0] <= first)
         if not kept or kept[-1] != cover:
@@ -296,8 +307,8 @@ def parse_storyboard(
     if not cuts:
         raise WriterError("El guion visual llegó sin escenas que encajen con el guion. Vuelve a intentarlo.")
 
-    beats = beats_from_cuts(sentences, [first for first, _ in cuts])
+    beats = beats_from_cuts(sentences, [first for first, _, _ in cuts])
     return Storyboard(
         VisualGuide(look, tuple(characters), seed),
-        tuple(StoryboardScene(b.start, b.text, shot) for b, (_, shot) in zip(beats, cuts)),
+        tuple(StoryboardScene(b.start, b.text, shot, motion) for b, (_, shot, motion) in zip(beats, cuts)),
     )

@@ -40,8 +40,9 @@ import { firstBackground, readCover, resolveCover, type Cover } from "@/domain/c
 import type { VideoItem } from "@/domain/library";
 import { DEFAULT_STYLE, type Style } from "@/domain/captions";
 import { assignVoices, speakersIn, type DialogueVoices } from "@/domain/dialogue";
-import { HORIZONTAL_CAPTIONS, lengthRange, splitStoredStyle, type FormatId } from "@/domain/production";
+import { HORIZONTAL_CAPTIONS, lengthRange, splitStoredStyle, storedTake, type FormatId } from "@/domain/production";
 import { animatable, buildTimeline, fromStoryboard, withoutBackground, type Scene } from "@/domain/scene";
+import { formatPitch, formatRate } from "@/domain/voice";
 import { useAnimationSlice, type AnimationSlice } from "@/features/animation/model/animation-slice";
 import { useBackgroundsSlice, type BackgroundsSlice } from "@/features/backgrounds/model/backgrounds-slice";
 import { useCaptionsSlice, type CaptionsSlice } from "@/features/captions/model/captions-slice";
@@ -51,6 +52,7 @@ import { useCharactersSlice, type CharactersSlice } from "@/features/illustratio
 import { useImagesSlice, type ImagesSlice } from "@/features/illustrations/model/images-slice";
 import { useMusicSlice, type MusicSlice } from "@/features/production/model/music-slice";
 import { useProductionSlice, type ProductionSlice } from "@/features/production/model/production-slice";
+import { useTakeSlice, type TakeSlice } from "@/features/narration/model/take-slice";
 import { useLibrarySlice, type LibrarySlice } from "@/features/library/model/library-slice";
 import { useRenderSlice, type RenderSlice } from "@/features/render/model/render-slice";
 import { useScenesSlice, type ScenesSlice } from "@/features/scenes/model/scenes-slice";
@@ -93,6 +95,8 @@ export type StudioActions = {
   animateScene: (index: number) => Promise<void>;
   /** Anima todas las escenas con imagen que todavía no tienen clip. */
   animateAll: () => Promise<void>;
+  /** Anima esas escenas (las marcadas en la lista), tengan clip o no. */
+  animateScenes: (indices: number[]) => Promise<void>;
   /** Guarda en la biblioteca ese elemento del reparto y le encarga su imagen de referencia. */
   saveCharacter: (index: number) => Promise<void>;
   /** Pinta otra imagen de referencia, con el estilo del video abierto. */
@@ -138,6 +142,8 @@ export type Studio = {
   characters: CharactersSlice;
   cover: CoverState;
   description: DescriptionSlice;
+  /** La toma de voz: para escuchar la animática y ver los tiempos reales. */
+  take: TakeSlice;
   actions: StudioActions;
 };
 
@@ -178,6 +184,7 @@ export function StudioProvider({
   const scenes = useScenesSlice();
   const backgrounds = useBackgroundsSlice(deps, production.format);
   const library = useLibrarySlice(deps);
+  const take = useTakeSlice(deps);
   const render = useRenderSlice(deps, library.load);
   const writer = useWriterSlice(deps);
   const images = useImagesSlice(deps);
@@ -307,7 +314,7 @@ export function StudioProvider({
           if (auto && index >= 0 && isImageFile(name)) {
             const span = buildTimeline(current, voice).segments[index]?.span ?? 0;
             await animate(
-              { source: name, description: current[index].prompt ?? "", span },
+              { source: name, description: current[index].prompt ?? "", motion: current[index].motion, span },
               (clipJob) => startClipOn(name, clipJob),
               (message) => failClipOn(name, message),
             );
@@ -357,6 +364,28 @@ export function StudioProvider({
         .finally(() => setPainting(id, false));
     },
     [jobs, loadCharacters, setPainting, setFailure],
+  );
+
+  /* Anima varias escenas una tras otra. Cada clip se casa con su escena por la
+     imagen de origen, no por la posición: el usuario puede mover o quitar
+     escenas mientras tanto. */
+  const animateIndices = useCallback(
+    async (indices: number[]) => {
+      const { segments } = buildTimeline(scenes.items, script.seconds);
+      for (const index of indices) {
+        const scene = scenes.items[index];
+        const source = scene ? animatable(scene) : null;
+        if (!scene || !source) continue;
+        // La que se ve ahora: el clip, si ya estaba animada; si no, la imagen.
+        const current = scene.background ?? source;
+        await animate(
+          { source, description: scene.prompt ?? "", motion: scene.motion, span: segments[index]?.span ?? 0 },
+          (job) => startClipOn(current, job),
+          (message) => failClipOn(current, message),
+        );
+      }
+    },
+    [scenes.items, script.seconds, animate, startClipOn, failClipOn],
   );
 
   const actions = useMemo<StudioActions>(
@@ -416,6 +445,17 @@ export function StudioProvider({
         const stored = splitStoredStyle(item.style);
         captions.apply(stored.style);
         production.restore(stored.production);
+        // Los tiempos reales con que se renderizó: en qué segundo dijo cada palabra.
+        const takeKey = storedTake(item.style);
+        if (takeKey) {
+          void take.restore(takeKey, {
+            script: item.script,
+            voice: item.voice,
+            rate: formatRate(voice.rate),
+            pitch: formatPitch(voice.pitch),
+            voices: stored.production.dialogue ? stored.production.voices : {},
+          });
+        } else take.clear();
         coverSlice.restore(readCover(item.cover));
         coverSlice.setSuggestions([]);
         description.setText(item.description ?? "");
@@ -435,7 +475,7 @@ export function StudioProvider({
       illustrateAll: async () => {
         const { choice } = images;
         if (!choice) {
-          setError("Configura un generador de imágenes en «Generador de imágenes».");
+          setError("Configura un generador de imágenes en «Generador de imágenes».", "storyboard");
           return;
         }
         /* Primero el guion visual: qué se ve en cada escena, quién sale y con
@@ -475,7 +515,7 @@ export function StudioProvider({
       illustrateScene: async (index, description) => {
         const { choice } = images;
         if (!choice) {
-          setError("Configura un generador de imágenes en «Generador de imágenes».");
+          setError("Configura un generador de imágenes en «Generador de imágenes».", `illustrate-${index ?? "new"}`);
           return false;
         }
         const job = await run(`illustrate-${index ?? "new"}`, () =>
@@ -497,7 +537,7 @@ export function StudioProvider({
         const { choice } = images;
         const scene = scenes.items[index];
         if (!choice) {
-          setError("Configura un generador de imágenes en «Generador de imágenes».");
+          setError("Configura un generador de imágenes en «Generador de imágenes».", `correct-${index}`);
           return false;
         }
         const source = scene?.background;
@@ -524,26 +564,20 @@ export function StudioProvider({
         const span = buildTimeline(scenes.items, script.seconds).segments[index]?.span ?? 0;
         const current = scene.background ?? source;
         await animate(
-          { source, description: scene.prompt ?? "", span },
+          { source, description: scene.prompt ?? "", motion: scene.motion, span },
           (job) => startClipAt(index, job),
           (message) => failClipOn(current, message),
         );
       },
 
       animateAll: async () => {
-        const { segments } = buildTimeline(scenes.items, script.seconds);
         // Solo las que aún no tienen clip: para rehacer una está su botón.
-        const pending = scenes.items.flatMap((scene, index) => {
-          const source = animatable(scene);
-          return source && !scene.still ? [{ scene, index, source }] : [];
-        });
-        for (const { scene, index, source } of pending) {
-          await animate(
-            { source, description: scene.prompt ?? "", span: segments[index]?.span ?? 0 },
-            (job) => startClipOn(source, job),
-            (message) => failClipOn(source, message),
-          );
-        }
+        const pending = scenes.items.flatMap((scene, index) => (animatable(scene) && !scene.still ? [index] : []));
+        await animateIndices(pending);
+      },
+
+      animateScenes: async (indices) => {
+        await animateIndices(indices.filter((index) => scenes.items[index] && animatable(scenes.items[index])));
       },
 
       saveCharacter: async (index) => {
@@ -585,7 +619,7 @@ export function StudioProvider({
             await suggestTitles(gateway, jobs, { topic: script.topic, script: script.text }),
           );
         } catch (err) {
-          setError(err instanceof Error ? err.message : String(err));
+          setError(err instanceof Error ? err.message : String(err), "titles");
         } finally {
           coverSlice.setSuggesting(false);
         }
@@ -594,7 +628,7 @@ export function StudioProvider({
       illustrateCover: async (description) => {
         const { choice } = images;
         if (!choice) {
-          setError("Configura un generador de imágenes en «Generador de imágenes».");
+          setError("Configura un generador de imágenes en «Generador de imágenes».", "cover");
           return false;
         }
         setError(null);
@@ -613,7 +647,7 @@ export function StudioProvider({
           coverSlice.setBackground(name);
           return true;
         } catch (err) {
-          setError(err instanceof Error ? err.message : String(err));
+          setError(err instanceof Error ? err.message : String(err), "cover");
           return false;
         } finally {
           coverSlice.setIllustrating(false);
@@ -640,7 +674,7 @@ export function StudioProvider({
             }),
           );
         } catch (err) {
-          setError(err instanceof Error ? err.message : String(err));
+          setError(err instanceof Error ? err.message : String(err), "description");
         } finally {
           description.setWriting(false);
         }
@@ -650,18 +684,18 @@ export function StudioProvider({
       gateway, jobs, run, setError, script, voice, captions, scenes, backgrounds, render,
       loadLibrary, images, adoptGuide, startImage, trackImage, characters, setCharacters,
       loadCharacters, trackReference, coverSlice, resolvedCover, loadBackgrounds, description,
-      animate, startClipAt, startClipOn, failClipOn, production, config,
+      animate, startClipAt, failClipOn, production, config, animateIndices, take,
     ],
   );
 
   const studio = useMemo<Studio>(
     () => ({
       config, status, script, voice, captions, scenes, backgrounds, library, render, writer,
-      images, animation, production, music, characters, cover, description, actions,
+      images, animation, production, music, characters, cover, description, take, actions,
     }),
     [
       config, status, script, voice, captions, scenes, backgrounds, library, render, writer, images,
-      animation, production, music, characters, cover, description, actions,
+      animation, production, music, characters, cover, description, take, actions,
     ],
   );
 

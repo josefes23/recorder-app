@@ -7,6 +7,11 @@ export type LightboxMedia = {
   src: string;
   /** Fotograma que se enseña mientras carga el vídeo. */
   poster?: string;
+  /**
+   * Un video terminado: con controles y sonido, y sin repetirse. Sin esto, un
+   * fondo o un clip: mudo y en bucle, para mirarlo como se verá detrás.
+   */
+  player?: boolean;
 };
 
 type Props = {
@@ -50,7 +55,11 @@ export function Lightbox({ id, media, info, actions, onPrev, onNext, onClose }: 
           )}
           <figure className="lightbox-media">
             {media.kind === "video" ? (
-              <video key={id} src={media.src} poster={media.poster} autoPlay muted loop playsInline />
+              media.player ? (
+                <video key={id} src={media.src} poster={media.poster} autoPlay controls playsInline />
+              ) : (
+                <video key={id} src={media.src} poster={media.poster} autoPlay muted loop playsInline />
+              )
             ) : (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img key={id} src={media.src} alt="" />

@@ -77,12 +77,19 @@ class Provider:
     #: Acepta imágenes con cualquiera de sus modelos: puede revisar las escenas
     #: pintadas (`domain.review`). En NVIDIA depende del modelo y DeepSeek no ve.
     sees_images: bool = False
+    #: Tope de la respuesta, en tokens. Es un techo, no un gasto: un guion de
+    #: cien palabras cuesta lo mismo con 4096 que con 8192. Hace falta holgura
+    #: para el guion visual de un cortometraje (hasta 30 escenas con su
+    #: descripción y su movimiento), sobre todo con los modelos que razonan
+    #: antes de escribir y gastan ahí parte del presupuesto. NVIDIA no publica
+    #: su límite por modelo: se queda en el valor que ya se sabe que acepta.
+    max_tokens: int = 8192
 
 
 PROVIDERS: tuple[Provider, ...] = (
     Provider(
         "nvidia", "NVIDIA NIM", "gratis · build.nvidia.com",
-        "NVIDIA_API_KEY", "NVIDIA_MODEL", "meta/llama-3.3-70b-instruct",
+        "NVIDIA_API_KEY", "NVIDIA_MODEL", "meta/llama-3.3-70b-instruct", max_tokens=4096,
     ),
     Provider(
         "google", "Google Gemini", "nivel gratuito con límites",

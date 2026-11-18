@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import type { ImageReview } from "@/domain/illustration";
+import type { Transition } from "@/domain/transition";
 import {
   appended,
   withBackground,
@@ -14,9 +15,15 @@ import {
   withFailure,
   withImage,
   withJob,
+  withMotion,
   without,
   withStart,
   withStillImage,
+  withTransition,
+  withTransitionOn,
+  withoutMany,
+  moveImage,
+  swapImages,
   type Scene,
 } from "@/domain/scene";
 
@@ -26,7 +33,18 @@ export type ScenesSlice = {
   /** Encadena una escena nueva al final, o cambia el fondo de la que se indique. */
   place: (background: string, index: number | null) => void;
   setStart: (index: number, start: number) => void;
+  /** Qué se mueve al animar esa escena; vacío, un movimiento sutil. */
+  setMotion: (index: number, motion: string) => void;
+  /** Cómo entra esa escena; null, la del video. */
+  setTransition: (index: number, transition: Transition | null) => void;
+  /** La misma en varias: las marcadas en la lista. */
+  setTransitionOn: (indices: number[], transition: Transition | null) => void;
   remove: (index: number) => void;
+  removeMany: (indices: number[]) => void;
+  /** Intercambia las imágenes de dos escenas; los tiempos y las transiciones se quedan. */
+  swap: (a: number, b: number) => void;
+  /** Lleva la imagen de una escena a otra, corriendo las de en medio. */
+  move: (from: number, to: number) => void;
   /** La escena espera una imagen pedida; `null` la añade al final. */
   startImage: (index: number | null, job: string, prompt: string) => void;
   /** Llegó la imagen de ese trabajo: la estrena la escena que la esperaba. */
@@ -65,7 +83,27 @@ export function useScenesSlice(): ScenesSlice {
     [],
   );
 
+  const setMotion = useCallback(
+    (index: number, motion: string) => setItems((prev) => withMotion(prev, index, motion)),
+    [],
+  );
+
+  const setTransition = useCallback(
+    (index: number, transition: Transition | null) =>
+      setItems((prev) => withTransition(prev, index, transition)),
+    [],
+  );
+
+  const setTransitionOn = useCallback(
+    (indices: number[], transition: Transition | null) =>
+      setItems((prev) => withTransitionOn(prev, indices, transition)),
+    [],
+  );
+
   const remove = useCallback((index: number) => setItems((prev) => without(prev, index)), []);
+  const removeMany = useCallback((indices: number[]) => setItems((prev) => withoutMany(prev, indices)), []);
+  const swap = useCallback((a: number, b: number) => setItems((prev) => swapImages(prev, a, b)), []);
+  const move = useCallback((from: number, to: number) => setItems((prev) => moveImage(prev, from, to)), []);
 
   const startImage = useCallback(
     (index: number | null, job: string, prompt: string) =>
@@ -115,7 +153,13 @@ export function useScenesSlice(): ScenesSlice {
       replaceAll: setItems,
       place,
       setStart,
+      setMotion,
+      setTransition,
+      setTransitionOn,
       remove,
+      removeMany,
+      swap,
+      move,
       startImage,
       finishImage,
       failImage,
@@ -127,7 +171,7 @@ export function useScenesSlice(): ScenesSlice {
       restoreStill,
     }),
     [
-      items, place, setStart, remove, startImage, finishImage, failImage,
+      items, place, setStart, setMotion, setTransition, setTransitionOn, remove, removeMany, swap, move, startImage, finishImage, failImage,
       startClipAt, startClipOn, finishClip, failClip, failClipOn, restoreStill,
     ],
   );

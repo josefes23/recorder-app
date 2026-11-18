@@ -26,6 +26,8 @@ export type SceneAnimation = {
   source: string;
   /** Qué pasa en la escena; puede ir vacío. */
   description: string;
+  /** Qué se mueve y qué hace la cámara; vacío, el servidor pide uno sutil. */
+  motion?: string;
   /** Cuánto dura su tramo, en segundos: el clip se pide de ese largo. */
   span: number;
 };
@@ -33,7 +35,7 @@ export type SceneAnimation = {
 /** Encola la animación de una imagen y devuelve el trabajo. */
 export async function requestSceneAnimation(
   gateway: StudioGateway,
-  { source, description, span }: SceneAnimation,
+  { source, description, motion = "", span }: SceneAnimation,
   { topic, guide, format = "9:16" }: AnimateInput,
 ): Promise<string> {
   if (!source) throw new Error("Esta escena no tiene imagen que animar.");
@@ -46,6 +48,7 @@ export async function requestSceneAnimation(
     characters: guide.characters.filter((c) => c.name.trim() && c.traits.trim()),
     seed: guide.seed,
     format,
+    motion: motion.trim(),
   });
   return job;
 }

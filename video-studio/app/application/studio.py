@@ -19,6 +19,7 @@ from app.application.use_cases.preview import PreviewUseCase
 from app.application.use_cases.render import RenderUseCases
 from app.application.use_cases.scripts import ScriptUseCases
 from app.application.use_cases.storyboard import StoryboardUseCases
+from app.application.use_cases.voice_takes import VoiceTakeUseCases
 from app.application.use_cases.writer_settings import WriterSettings
 
 
@@ -40,6 +41,7 @@ class Studio:
     characters: CharacterUseCases
     cover: CoverUseCases
     description: DescriptionUseCases
+    takes: VoiceTakeUseCases
     #: Dónde está el motor, para poder situarlo si algo falla.
     generator: str
 

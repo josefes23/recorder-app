@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 
 from app.application.ports import RenderQueue, VideoRepository
 from app.application.render_jobs import RenderJobs
@@ -11,9 +12,10 @@ from app.domain.description import clean_description
 from app.domain.dialogue import clean_lines
 from app.domain.errors import NotFoundError, ValidationError
 from app.domain.production import PRODUCTION_KEY, validate_production
-from app.domain.scene import Scene
+from app.domain.scene import Scene, checked_scenes
 from app.domain.script import clean_script, estimate_seconds
 from app.domain.video import NewVideo, RenderSpec
+from app.domain.voice_take import take_key, take_request
 
 
 class RenderUseCases:
@@ -47,7 +49,10 @@ class RenderUseCases:
         if not text:
             raise ValidationError("El guion está vacío.")
 
-        scene_dicts = [scene.as_dict() for scene in scenes]
+        # La toma de voz de este guion con esta voz: si ya se escuchó en el
+        # estudio, el render la reutiliza; si no, la genera con esta clave.
+        prod = replace(prod, take=take_key(take_request(text, voice, rate, pitch, prod.voices)))
+        scene_dicts = [scene.as_dict() for scene in checked_scenes(scenes)]
         stored_style = {**(style or {}), PRODUCTION_KEY: prod.as_dict()}
         video_id = self._videos.add(
             NewVideo(
@@ -59,7 +64,7 @@ class RenderUseCases:
             RenderSpec(
                 topic=topic, script=text, voice=voice, rate=rate, pitch=pitch, style=style, scenes=scene_dicts,
                 format=prod.format, voices=prod.voices, music=prod.music, music_volume=prod.music_volume,
-                ambient=prod.ambient,
+                ambient=prod.ambient, transition=prod.transition.as_dict(), take=prod.take,
             ),
         )
         return video_id, round(estimate_seconds(text), 1)

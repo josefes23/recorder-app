@@ -24,6 +24,20 @@ def request_titles(req: TitlesRequest, studio: StudioDep) -> dict:
     return {"job": event.key, "offset": event.offset}
 
 
+@router.get("/videos/{video_id}/poster")
+def video_poster(video_id: int, studio: StudioDep):
+    """
+    La portada en pequeño, para la cuadrícula de la biblioteca. La interfaz le
+    pone la fecha del video en la URL (`?v=`): un video nuevo nunca reutiliza
+    la de otro, así que el navegador puede guardarla sin volver a pedirla.
+    """
+    return Response(
+        studio.cover.poster_of_video(video_id),
+        media_type=JPEG,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
 @router.get("/videos/{video_id}/cover")
 def video_cover(video_id: int, studio: StudioDep):
     """La portada guardada con el video, como archivo para descargar."""

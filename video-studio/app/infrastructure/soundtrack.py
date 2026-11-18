@@ -1,7 +1,8 @@
 """
 La banda sonora del render: voces del diálogo, música y sonido ambiente.
 
-Solo lo usa el worker de render. Las reglas (quién dice qué, cuánto baja la
+La usa el worker de render, y la voz también el servidor para escuchar antes
+de renderizar (`infrastructure.voice`). Las reglas (quién dice qué, cuánto baja la
 música) están en `domain.dialogue` y `domain.music`; aquí se hacen sonar con
 moviepy y el motor.
 """

@@ -5,7 +5,9 @@ import { useRef } from "react";
 import { MUSIC_ACCEPT } from "@/domain/music";
 import { useMusic, useProduction } from "@/features/production/model/use-production";
 import { useStatus } from "@/features/studio/model/use-studio-actions";
+import { ActionError } from "@/features/studio/ui/ActionError";
 import { Field } from "@/shared/ui/Field";
+import { Help } from "@/shared/ui/Help";
 import { Slider } from "@/shared/ui/Slider";
 import { Step } from "@/shared/ui/Step";
 
@@ -58,10 +60,13 @@ export function SoundStep() {
             step={5}
             onChange={(v) => production.setMusicVolume(v / 100)}
           />
-          <p className="hint">
-            Se repite hasta cubrir el video, entra y sale con un fundido y baja sola mientras alguien
-            habla.
-          </p>
+          <div className="spread">
+            <span className="hint">Baja sola mientras alguien habla</span>
+            <Help label="Cómo suena la música">
+              Se repite hasta cubrir el video, entra y sale con un fundido y baja sola mientras
+              alguien habla.
+            </Help>
+          </div>
         </>
       )}
 
@@ -82,10 +87,14 @@ export function SoundStep() {
           onChange={(e) => upload(e.target.files?.[0])}
         />
       </div>
-      <p className="hint">
-        Usa música libre de derechos (la biblioteca de audio de YouTube, Pixabay Music): MP3, M4A,
-        WAV u OGG.
-      </p>
+      <ActionError place="sound" />
+      <div className="spread">
+        <span className="hint">MP3, M4A, WAV u OGG</span>
+        <Help label="Qué música usar">
+          Usa música libre de derechos (la biblioteca de audio de YouTube, Pixabay Music): MP3, M4A,
+          WAV u OGG.
+        </Help>
+      </div>
 
       <label className="cluster check" htmlFor="ambient">
         <input

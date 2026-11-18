@@ -128,8 +128,10 @@ class HttpScriptComposer:
         image: GeneratedImage | None = None,
     ) -> str:
         if provider.id == "anthropic":
-            return anthropic_client.compose(api_key, model, system, prompt, image)
-        return openai_compatible.chat(ENDPOINTS[provider.id], api_key, model, system, prompt, self._timeout, image)
+            return anthropic_client.compose(api_key, model, system, prompt, image, provider.max_tokens)
+        return openai_compatible.chat(
+            ENDPOINTS[provider.id], api_key, model, system, prompt, self._timeout, image, provider.max_tokens
+        )
 
     def catalog(self, provider: Provider, api_key: str | None) -> list[dict]:
         if provider.id in self._catalogs:

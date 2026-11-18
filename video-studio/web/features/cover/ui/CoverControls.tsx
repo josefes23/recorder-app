@@ -16,6 +16,7 @@ import { useImages } from "@/features/illustrations/model/use-images";
 import { useScenes } from "@/features/scenes/model/use-scenes";
 import { useScript } from "@/features/script/model/use-script";
 import { useStudioActions } from "@/features/studio/model/use-studio-actions";
+import { ActionError } from "@/features/studio/ui/ActionError";
 import { useWriter } from "@/features/writer/model/use-writer";
 
 /** El título como saldrá: lo resaltado, resaltado. */
@@ -78,6 +79,7 @@ export function CoverControls() {
         </p>
       </div>
 
+      <ActionError place="cover" />
       {writer.label && (
         <div className="stack cover-suggest">
           <button
@@ -131,6 +133,7 @@ export function CoverControls() {
         <div className="cover-strip">
           {candidates.map((name) => {
             const meta = backgrounds.items.find((b) => b.name === name);
+            const thumb = meta?.thumb ? backgrounds.thumbUrl(meta.thumb) : null;
             return (
               <button
                 key={name}
@@ -140,8 +143,13 @@ export function CoverControls() {
                 // La automática se elige como «automática»: así sigue a las escenas si cambian.
                 onClick={() => cover.setBackground(name === cover.automatic ? null : name)}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img className="scene-thumb" src={meta ? backgrounds.thumbUrl(meta.thumb) : ""} alt="" />
+                {/* Sin miniatura (o con la galería aún cargando), un hueco del mismo tamaño */}
+                {thumb ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className="scene-thumb" src={thumb} alt="" />
+                ) : (
+                  <span className="scene-thumb" aria-hidden="true" />
+                )}
               </button>
             );
           })}

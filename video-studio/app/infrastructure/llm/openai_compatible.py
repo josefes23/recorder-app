@@ -30,6 +30,7 @@ def chat(
     prompt: str,
     timeout: int,
     image: GeneratedImage | None = None,
+    max_tokens: int = 4096,
 ) -> str:
     import requests
 
@@ -50,8 +51,9 @@ def chat(
         # Holgado a propósito. Los modelos que razonan gastan el presupuesto en
         # pensar antes de escribir —medido con Gemini 3.6 Flash: 980 tokens de
         # razonamiento y solo 40 para el guion— y con el límite justo la
-        # respuesta salía cortada a mitad de frase.
-        "max_tokens": 4096,
+        # respuesta salía cortada a mitad de frase. Lo fija cada proveedor
+        # (`Provider.max_tokens`).
+        "max_tokens": max_tokens,
         "temperature": 0.7,
         "top_p": 0.9,
         "stream": False,

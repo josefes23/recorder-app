@@ -21,6 +21,7 @@ from app.domain.animation import (
     animation_name,
     animation_prompt,
     new_animation_key,
+    validate_motion,
     validate_seconds,
 )
 from app.domain.background import is_image
@@ -75,15 +76,18 @@ class AnimationUseCases:
         characters: list[Mapping] | None = None,
         seed: int | None = None,
         format: str = "9:16",
+        motion: str = "",
     ) -> Event:
         """
         Encola la animación de una imagen de la galería y devuelve el evento
         con la clave del trabajo. La descripción y la guía del video (estilo y
-        reparto) ayudan al modelo a saber qué debe moverse y cómo.
+        reparto) ayudan al modelo a saber qué debe moverse; `motion` dice
+        cómo, y sin él se pide un movimiento sutil.
         """
         source = self._animatable(source)
         seconds = validate_seconds(seconds)
         description = validate_description(description, required=False)
+        motion = validate_motion(motion)
         guide = validate_guide(look, characters, seed)
         fmt = format_by_id(format)
         if not self._credentials.get(self._provider.key_env):
@@ -100,6 +104,7 @@ class AnimationUseCases:
                 "source": source,
                 "seconds": seconds,
                 "description": description,
+                "motion": motion,
                 **guide.as_dict(),
                 "provider": self._provider.id,
                 "model": self.model(),
@@ -122,7 +127,7 @@ class AnimationUseCases:
             payload.get("model") or self.model(),
             {self._provider.key_env: self._credentials.get(self._provider.key_env)},
             GeneratedImage(data, Path(source).suffix.lower()),
-            animation_prompt(payload.get("description") or "", guide),
+            animation_prompt(payload.get("description") or "", guide, payload.get("motion") or ""),
             int(payload.get("seconds") or 0),
             format_by_id(payload.get("format")).id,
         )

@@ -1,5 +1,6 @@
 import { isImageFile } from "./background.ts";
-import type { ImageReview, StoryboardScene } from "./illustration";
+import { reviewNote, type ImageReview, type StoryboardScene } from "./illustration.ts";
+import type { Transition } from "./transition.ts";
 
 export type Scene = {
   background: string | null;
@@ -7,6 +8,11 @@ export type Scene = {
   start: number;
   /** Qué debe mostrar la imagen generada: lo que propuso el guion visual o lo que escribió el usuario. */
   prompt?: string;
+  /**
+   * Qué se mueve y qué hace la cámara si se anima: lo propone el guion visual
+   * y lo cambia el usuario. Sin él, el clip lleva un movimiento sutil.
+   */
+  motion?: string;
   /** Imagen pedida que aún no ha llegado. */
   job?: string;
   /** Por qué falló la última imagen pedida. */
@@ -22,6 +28,11 @@ export type Scene = {
   clipJob?: string;
   /** Por qué falló la última animación pedida. */
   clipError?: string;
+  /**
+   * Cómo entra, y cómo cambia de encuadre si es una imagen fija. Sin ella, la
+   * del video (`Production.transition`).
+   */
+  transition?: Transition;
 };
 
 export type TimelineSegment = {
@@ -95,10 +106,10 @@ export function appended(scenes: Scene[], background: string | null): Scene[] {
   return [...scenes, { background, start: scenes.length ? last + NEXT_SCENE_GAP : 0 }];
 }
 
-/** Claves de estado que se quitan (no se dejan en `undefined`) al cambiar la escena. */
-type Transient = "still" | "clipJob" | "clipError";
+/** Claves que se quitan (no se dejan en `undefined`) al cambiar la escena. */
+type Removable = Exclude<keyof Scene, "background" | "start">;
 
-function omit(scene: Scene, ...keys: Transient[]): Scene {
+function omit(scene: Scene, ...keys: Removable[]): Scene {
   const rest = { ...scene };
   for (const key of keys) delete rest[key];
   return rest;
@@ -109,6 +120,55 @@ const withoutClip = (scene: Scene): Scene => omit(scene, "still", "clipJob", "cl
 
 export const withStart = (scenes: Scene[], index: number, start: number): Scene[] =>
   scenes.map((scene, i) => (i === index ? { ...scene, start } : scene));
+
+/**
+ * Cambia lo que se mueve al animar esa escena. Se guarda tal cual se escribe
+ * —recortarlo a cada tecla se comería los espacios— y vacío se quita.
+ */
+export const withMotion = (scenes: Scene[], index: number, motion: string): Scene[] =>
+  scenes.map((scene, i) => {
+    if (i !== index) return scene;
+    return motion ? { ...scene, motion } : omit(scene, "motion");
+  });
+
+/** Lo menos que puede durar una escena al arrastrar uno de sus bordes. */
+export const MIN_DRAG_SPAN = 0.5;
+
+/**
+ * Adónde llega el inicio de la escena `index` al arrastrar su borde hasta
+ * `seconds`: en décimas y sin pasar de sus vecinas, que conservan al menos
+ * MIN_DRAG_SPAN. Así arrastrar nunca desordena las escenas. La primera no se
+ * mueve: empieza siempre en 0.
+ */
+export function draggedStart(scenes: Scene[], index: number, seconds: number, total: number): number {
+  const current = scenes[index]?.start ?? 0;
+  if (index <= 0 || index >= scenes.length) return index === 0 ? 0 : current;
+  const previous = index - 1 === 0 ? 0 : scenes[index - 1].start;
+  const next = index + 1 < scenes.length ? scenes[index + 1].start : total;
+  const low = Math.ceil((previous + MIN_DRAG_SPAN) * 10) / 10;
+  const high = Math.floor((next - MIN_DRAG_SPAN) * 10) / 10;
+  if (high < low) return current;
+  return Math.min(high, Math.max(low, Math.round(seconds * 10) / 10));
+}
+
+/** En qué está una escena, para la lista compacta: lo que pide atención va primero. */
+export type SceneState = "painting" | "animating" | "failed" | "review" | "empty" | "ready";
+
+export function sceneState(scene: Scene): SceneState {
+  if (scene.job) return "painting";
+  if (scene.clipJob) return "animating";
+  if (scene.error || scene.clipError) return "failed";
+  if (!scene.background) return "empty";
+  if (scene.review && reviewNote(scene.review).warn) return "review";
+  return "ready";
+}
+
+/** Cambia cómo entra esa escena; null vuelve a la del video. */
+export const withTransition = (scenes: Scene[], index: number, transition: Transition | null): Scene[] =>
+  scenes.map((scene, i) => {
+    if (i !== index) return scene;
+    return transition ? { ...scene, transition } : omit(scene, "transition");
+  });
 
 /**
  * Pone un fondo elegido a mano. Si la escena esperaba una imagen, deja de
@@ -123,7 +183,12 @@ export const withBackground = (scenes: Scene[], index: number, background: strin
 
 /** Escenas nuevas desde el guion visual, aún sin imagen: se marcan según sale cada encargo. */
 export const fromStoryboard = (scenes: StoryboardScene[]): Scene[] =>
-  scenes.map((scene) => ({ background: null, start: scene.start, prompt: scene.description }));
+  scenes.map((scene) => ({
+    background: null,
+    start: scene.start,
+    prompt: scene.description,
+    ...(scene.motion ? { motion: scene.motion } : {}),
+  }));
 
 /** Marca la escena como «pintándose»; `null` la añade al final. */
 export function withJob(scenes: Scene[], index: number | null, job: string, prompt: string): Scene[] {
@@ -143,7 +208,15 @@ export const withImage = (
 ): Scene[] =>
   scenes.map((scene) =>
     scene.job === job
-      ? { background, start: scene.start, prompt: scene.prompt, ...(review ? { review } : {}) }
+      ? {
+          background,
+          start: scene.start,
+          prompt: scene.prompt,
+          // La imagen nueva sigue siendo la misma escena: se mueve y entra igual.
+          ...(scene.motion ? { motion: scene.motion } : {}),
+          ...(scene.transition ? { transition: scene.transition } : {}),
+          ...(review ? { review } : {}),
+        }
       : scene,
   );
 
@@ -166,6 +239,13 @@ export function animatable(scene: Scene): string | null {
   if (scene.still) return scene.still;
   return scene.background && isImageFile(scene.background) ? scene.background : null;
 }
+
+/**
+ * Si tiene sentido decirle cómo moverse: lleva o espera una imagen, o ya es
+ * un clip animado desde una. Un clip de Pexels ya se mueve solo.
+ */
+export const takesMotion = (scene: Scene): boolean =>
+  Boolean(scene.still || scene.job || !scene.background || isImageFile(scene.background));
 
 /** Marca esa escena como «animándose». */
 export const withClipJobAt = (scenes: Scene[], index: number, clipJob: string): Scene[] =>
@@ -213,12 +293,66 @@ export const withStillImage = (scenes: Scene[], index: number): Scene[] =>
 
 export const pendingClips = (scenes: Scene[]): number => scenes.filter((s) => s.clipJob).length;
 
-/** Lo que viaja al motor: fondo y segundo. Lo demás es estado de la edición. */
+/** Lo que viaja al motor: fondo, segundo y, si eligió una, su transición. Lo demás es estado de la edición. */
 export const forEngine = (scenes: Scene[]): Scene[] =>
-  scenes.map(({ background, start }) => ({ background, start }));
+  scenes.map(({ background, start, transition }) => ({ background, start, ...(transition ? { transition } : {}) }));
 
 export const without = (scenes: Scene[], index: number): Scene[] =>
   scenes.filter((_, i) => i !== index);
+
+// --------------------------------------------------------------------------- //
+// Mover imágenes entre escenas: la imagen cambia de sitio, el tiempo no
+// --------------------------------------------------------------------------- //
+
+/**
+ * Lo que es de la imagen y viaja con ella: el fondo, lo que muestra, cómo se
+ * mueve, su clip, lo que se espera y lo que dijo el revisor. Se quedan en su
+ * sitio el segundo (la palabra con que entra) y la transición del corte: así
+ * una imagen movida pasa a acompañar lo que se dice en su nuevo sitio.
+ */
+type Visual = Omit<Scene, "start" | "transition">;
+
+const visualOf = (scene: Scene): Visual => {
+  const visual: Partial<Scene> = { ...scene };
+  delete visual.start;
+  delete visual.transition;
+  return visual as Visual;
+};
+
+const inSlot = (slot: Scene, visual: Visual): Scene => ({
+  ...visual,
+  start: slot.start,
+  ...(slot.transition ? { transition: slot.transition } : {}),
+});
+
+/** Intercambia las imágenes de dos escenas. */
+export function swapImages(scenes: Scene[], a: number, b: number): Scene[] {
+  if (a === b || !scenes[a] || !scenes[b]) return scenes;
+  return scenes.map((scene, i) =>
+    i === a ? inSlot(scene, visualOf(scenes[b])) : i === b ? inSlot(scene, visualOf(scenes[a])) : scene,
+  );
+}
+
+/**
+ * Lleva la imagen de la escena `from` a la escena `to`; las de en medio se
+ * corren un sitio, como al reordenar una lista. Con dos vecinas es lo mismo
+ * que intercambiarlas. Se deshace moviéndola de `to` a `from`.
+ */
+export function moveImage(scenes: Scene[], from: number, to: number): Scene[] {
+  if (from === to || !scenes[from] || !scenes[to]) return scenes;
+  const visuals = scenes.map(visualOf);
+  const [moved] = visuals.splice(from, 1);
+  visuals.splice(to, 0, moved);
+  return scenes.map((slot, i) => inSlot(slot, visuals[i]));
+}
+
+/** Varias de una vez: las marcadas en la lista. */
+export const withoutMany = (scenes: Scene[], indices: number[]): Scene[] =>
+  scenes.filter((_, i) => !indices.includes(i));
+
+/** La misma transición en varias escenas; null las devuelve a la del video. */
+export const withTransitionOn = (scenes: Scene[], indices: number[], transition: Transition | null): Scene[] =>
+  indices.reduce((acc, index) => withTransition(acc, index, transition), scenes);
 
 /** Las escenas que no usan ese fondo: lo que queda cuando se borra de la galería. */
 export const withoutBackground = (scenes: Scene[], background: string): Scene[] =>

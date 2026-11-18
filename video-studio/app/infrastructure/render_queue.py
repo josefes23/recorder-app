@@ -33,8 +33,12 @@ class SubprocessRenderQueue:
         listener: RenderListener,
         python: str = sys.executable,
         worker_module: str = WORKER_MODULE,
+        takes_dir: Path | None = None,
     ) -> None:
         self._jobs_dir = jobs_dir
+        #: Dónde guarda el servidor las tomas de voz: el worker usa la misma
+        #: carpeta para reutilizarlas, aunque el servidor no use la de siempre.
+        self._takes_dir = takes_dir
         self._outputs = outputs_dir
         self._root = root
         self._listener = listener
@@ -49,6 +53,8 @@ class SubprocessRenderQueue:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         job = spec.as_dict()
         job["output"] = str(self._outputs / output_filename(spec.topic, stamp))
+        if self._takes_dir is not None:
+            job["takes_dir"] = str(self._takes_dir)
         self._job_file(video_id).write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
 
         self._listener.queued(video_id)

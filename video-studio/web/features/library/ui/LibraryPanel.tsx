@@ -1,83 +1,173 @@
 "use client";
 
-import { isPlayable, type VideoItem } from "@/domain/library";
+import { useMemo, useState } from "react";
+
+import {
+  DEFAULT_FILTER,
+  LIBRARY_PAGE,
+  countByStatus,
+  dayLabel,
+  filterVideos,
+  isPlayable,
+  videoFormat,
+  type LibraryFilter,
+  type StatusFilter,
+} from "@/domain/library";
 import { useLibrary } from "@/features/library/model/use-library";
 import { useStudioActions } from "@/features/studio/model/use-studio-actions";
-import { CopyButton } from "@/shared/ui/CopyButton";
+import { Lightbox } from "@/shared/ui/Lightbox";
 
-function Meta({ item }: { item: VideoItem }) {
-  return (
-    <p className={`hint${item.status !== "done" ? ` status-${item.status}` : ""}`}>
-      {isPlayable(item) ? (
-        <>
-          <b className="num">{item.duration ?? "?"}</b> s ·{" "}
-          <b className="num">{item.size_mb ?? "?"}</b> MB ·{" "}
-          <b className="num">{item.captions ?? "?"}</b> bloques
-        </>
-      ) : item.status === "error" ? (
-        "Falló"
-      ) : (
-        item.status
-      )}
-      <br />
-      {item.created_at?.replace("T", " ")}
-    </p>
-  );
-}
+import { LibraryCard } from "./LibraryCard";
 
+const STATUSES: { id: StatusFilter; label: string }[] = [
+  { id: "all", label: "Todos" },
+  { id: "done", label: "Listos" },
+  { id: "failed", label: "Con fallos" },
+  { id: "active", label: "En curso" },
+];
+
+/**
+ * Los videos ya hechos, como una cuadrícula de portadas: se reconocen por lo
+ * que se publicó. Con decenas de videos, se buscan y filtran, y se enseñan de
+ * doce en doce. Cada portada sale pequeña y guardada en el servidor; el video
+ * solo se carga al abrirlo.
+ */
 export function LibraryPanel() {
   const library = useLibrary();
   const { reuse } = useStudioActions();
+  const [filter, setFilter] = useState<LibraryFilter>(DEFAULT_FILTER);
+  const [shown, setShown] = useState(LIBRARY_PAGE);
+  /** El video abierto en el reproductor, por id. */
+  const [open, setOpen] = useState<number | null>(null);
+
+  const counts = useMemo(() => countByStatus(library.items), [library.items]);
+  const found = useMemo(() => filterVideos(library.items, filter), [library.items, filter]);
+  const formats = useMemo(() => new Set(library.items.map(videoFormat)), [library.items]);
+  const visible = found.slice(0, shown);
+  const filtered = filter.query.trim() !== "" || filter.status !== "all" || filter.format !== "all";
+
+  // Cambiar el filtro vuelve a la primera página.
+  const refine = (changes: Partial<LibraryFilter>) => {
+    setFilter((prev) => ({ ...prev, ...changes }));
+    setShown(LIBRARY_PAGE);
+  };
+
+  // El reproductor pasa de uno a otro entre los que se pueden ver, con el filtro de ahora.
+  const playable = found.filter(isPlayable);
+  const at = playable.findIndex((item) => item.id === open);
+  const current = at >= 0 ? playable[at] : undefined;
 
   return (
-    <section className="panel panel--loose stack">
-      <h2 className="panel-title">Biblioteca</h2>
+    <section className="panel panel--loose stack" id="biblioteca" aria-labelledby="biblioteca-titulo">
+      <div className="spread">
+        <h2 className="panel-title" id="biblioteca-titulo">
+          Biblioteca
+        </h2>
+        {library.items.length > 0 && (
+          <span className="hint">
+            {counts.all === 1 ? "1 video" : `${counts.all} videos`}
+          </span>
+        )}
+      </div>
+
       {library.items.length === 0 ? (
         <p className="hint">Aquí aparecerán los videos en cuanto renderices el primero.</p>
       ) : (
-        <div className="library">
-          {library.items.map((item) => (
-            <div className="lib-item" key={item.id}>
-              {isPlayable(item) && (
-                <video src={library.videoUrl(item.id)} controls preload="metadata" />
-              )}
-              <h3>{item.topic}</h3>
-              <Meta item={item} />
-              {item.error && <p className="error">{item.error}</p>}
-              <div className="cluster">
-                {isPlayable(item) && (
-                  <>
-                    <a className="btn btn--sm" href={library.videoUrl(item.id)} download>
-                      Descargar
-                    </a>
-                    <a
-                      className="btn btn--sm"
-                      href={library.coverUrl(item.id)}
-                      download
-                      title="La portada con su título, a 1080x1920"
-                    >
-                      Portada
-                    </a>
-                    {item.description?.trim() && (
-                      <CopyButton text={item.description} label="Descripción" />
-                    )}
-                  </>
-                )}
-                <button className="btn btn--sm" onClick={() => reuse(item)}>
-                  Reutilizar
-                </button>
+        <>
+          <div className="lib-toolbar">
+            <input
+              type="search"
+              className="lib-search"
+              value={filter.query}
+              placeholder="Buscar por tema, guion o descripción"
+              aria-label="Buscar en la biblioteca"
+              onChange={(e) => refine({ query: e.target.value })}
+            />
+            <div className="tabs lib-status-tabs" role="group" aria-label="Filtrar por estado">
+              {STATUSES.filter((s) => s.id !== "active" || counts.active > 0).map((s) => (
                 <button
-                  className="btn btn--sm"
-                  onClick={() => {
-                    if (confirm("¿Borrar este video y su archivo?")) library.remove(item.id);
-                  }}
+                  key={s.id}
+                  type="button"
+                  className={`tab${filter.status === s.id ? " is-on" : ""}`}
+                  aria-pressed={filter.status === s.id}
+                  onClick={() => refine({ status: s.id })}
                 >
-                  Borrar
+                  {s.label} <span className="num">{counts[s.id]}</span>
                 </button>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
+            {formats.size > 1 && (
+              <select
+                className="lib-format"
+                aria-label="Filtrar por formato"
+                value={filter.format}
+                onChange={(e) => refine({ format: e.target.value as LibraryFilter["format"] })}
+              >
+                <option value="all">Todos los formatos</option>
+                <option value="9:16">Vertical 9:16</option>
+                <option value="16:9">Horizontal 16:9</option>
+              </select>
+            )}
+          </div>
+
+          {found.length === 0 ? (
+            <div className="cluster">
+              <p className="hint">Ningún video coincide con la búsqueda.</p>
+              <button type="button" className="btn btn--sm" onClick={() => refine(DEFAULT_FILTER)}>
+                Quitar filtros
+              </button>
+            </div>
+          ) : (
+            <>
+              {filtered && (
+                <p className="hint" role="status">
+                  {found.length === 1 ? "1 video" : `${found.length} videos`} con este filtro
+                </p>
+              )}
+              <div className="library">
+                {visible.map((item) => (
+                  <LibraryCard key={item.id} item={item} onOpen={() => setOpen(item.id)} />
+                ))}
+              </div>
+              {found.length > shown && (
+                <button type="button" className="btn btn--block" onClick={() => setShown((n) => n + LIBRARY_PAGE)}>
+                  Ver más · quedan {found.length - shown}
+                </button>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {current && (
+        <Lightbox
+          id={`video-${current.id}`}
+          media={{ kind: "video", src: library.videoUrl(current.id), poster: library.posterUrl(current), player: true }}
+          info={
+            <>
+              <strong>{current.topic}</strong> · {dayLabel(current.created_at)}
+            </>
+          }
+          actions={
+            <>
+              <a className="btn" href={library.videoUrl(current.id)} download>
+                Descargar
+              </a>
+              <button
+                className="btn"
+                onClick={() => {
+                  setOpen(null);
+                  reuse(current);
+                }}
+              >
+                Reutilizar
+              </button>
+            </>
+          }
+          onPrev={at > 0 ? () => setOpen(playable[at - 1].id) : undefined}
+          onNext={at < playable.length - 1 ? () => setOpen(playable[at + 1].id) : undefined}
+          onClose={() => setOpen(null)}
+        />
       )}
     </section>
   );

@@ -183,7 +183,7 @@ class MotionTests(unittest.TestCase):
             build_background=lambda path, topic, duration: built.append((path, duration)) or _solid(duration),
         )
         with mock.patch.object(render_worker, "emit"), \
-                mock.patch.object(render_worker, "moving_image", side_effect=lambda p, d, size, seed: built.append(("mov", p.name, size)) or _solid(d)):
+                mock.patch.object(render_worker, "moving_image", side_effect=lambda p, d, size, seed, transition: built.append(("mov", p.name, size)) or _solid(d)):
             track = render_worker.build_track(
                 gen, self.dir, [{"background": "ia-x_1.jpg", "start": 0}, {"background": "clip.mp4", "start": 3}], "t", 5.0,
             )
@@ -251,6 +251,22 @@ class VisionTests(unittest.TestCase):
             post.return_value = fake_response(200, {"choices": [{"message": {"content": "guion"}}]})
             openai_compatible.chat(GOOGLE, "k", "m", "sys", "Tema", 30)
         self.assertEqual(post.call_args.kwargs["json"]["messages"][1]["content"], "Tema")
+
+    def test_each_provider_gets_its_own_answer_budget(self):
+        # NVIDIA no publica su límite: se queda en lo que ya se sabe que acepta.
+        self.assertEqual(provider_by_id("nvidia").max_tokens, 4096)
+        composer = HttpScriptComposer()
+        for provider_id, budget in (("nvidia", 4096), ("google", 8192), ("deepseek", 8192)):
+            with mock.patch("requests.post") as post:
+                post.return_value = fake_response(200, {"choices": [{"message": {"content": "guion"}}]})
+                composer.compose(provider_by_id(provider_id), "m", "k", "sys", "Tema")
+            self.assertEqual(post.call_args.kwargs["json"]["max_tokens"], budget, provider_id)
+
+        from app.infrastructure.llm import anthropic_client
+
+        with mock.patch.object(anthropic_client, "compose", return_value="guion") as compose:
+            composer.compose(provider_by_id("anthropic"), "m", "k", "sys", "Tema")
+        self.assertEqual(compose.call_args.args[-1], 8192)
 
     def test_anthropic_gets_an_image_block_before_the_text(self):
         from app.infrastructure.llm import anthropic_client

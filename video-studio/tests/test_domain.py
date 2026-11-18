@@ -4,6 +4,7 @@ import unittest
 from datetime import datetime, timedelta
 
 from app.domain import (
+    animation,
     background,
     cover,
     description,
@@ -413,6 +414,35 @@ class StoryboardTests(unittest.TestCase):
         self.assertNotIn("guardados", prompt + storyboard.SYSTEM_PROMPT)
         for word in ('"kind"', "animal", "objeto", "lugar", "ya están en el video"):
             self.assertIn(word, storyboard.SYSTEM_PROMPT)
+
+    def test_each_scene_brings_its_motion_and_a_missing_one_is_not_an_error(self):
+        self.assertIn('"motion"', storyboard.SYSTEM_PROMPT)
+        self.assertIn("un solo plano", storyboard.SYSTEM_PROMPT)
+        scenes = [
+            {"from": 1, "description": "Jesús entra en el Jordán", "motion": " el agua\n se agita; la cámara se acerca "},
+            {"from": 2, "description": "Una mujer sonríe"},
+        ]
+        board = storyboard.parse_storyboard(self.answer(scenes=scenes), self.SENTENCES, seed=1)
+        self.assertEqual(board.scenes[0].motion, "el agua se agita; la cámara se acerca")
+        self.assertEqual(board.scenes[1].motion, "")
+        self.assertEqual(board.as_dict()["scenes"][1]["motion"], "")
+
+        long = [{"from": 1, "description": "Jesús", "motion": "despacio " * 100}]
+        board = storyboard.parse_storyboard(self.answer(scenes=long), self.SENTENCES, seed=1)
+        self.assertLessEqual(len(board.scenes[0].motion), animation.MOTION_LIMIT)
+
+    def test_the_motion_stays_with_its_scene_when_cuts_are_repaired_or_trimmed(self):
+        scenes = [
+            {"from": 2, "description": "dos", "motion": "se aleja"},
+            {"from": 1, "description": "uno", "motion": "se acerca"},
+        ]
+        board = storyboard.parse_storyboard(self.answer(scenes=scenes), self.SENTENCES, seed=1)
+        self.assertEqual([(s.description, s.motion) for s in board.scenes], [("uno", "se acerca"), ("dos", "se aleja")])
+
+        sentences = [f"Frase número {n} del guion." for n in range(1, 17)]
+        many = [{"from": n, "description": f"plano {n}", "motion": f"mov {n}"} for n in range(1, 17)]
+        board = storyboard.parse_storyboard(self.answer(scenes=many), sentences, seed=1)
+        self.assertTrue(all(s.motion == s.description.replace("plano", "mov") for s in board.scenes))
 
     def test_parse_keeps_what_the_model_reuses_exactly_as_it_was(self):
         current = (

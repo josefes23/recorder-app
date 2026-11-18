@@ -78,6 +78,7 @@ export function readStoryboard(result: Record<string, unknown>): Storyboard {
       start: typeof scene.start === "number" ? scene.start : 0,
       text: isText(scene.text) ? scene.text : "",
       description: isText(scene.description) ? scene.description : "",
+      motion: isText(scene.motion) ? scene.motion : "",
     })),
   };
 }

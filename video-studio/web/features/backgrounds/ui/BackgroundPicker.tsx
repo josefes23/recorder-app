@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { describeDownload } from "@/domain/stock";
 import { useBackgrounds } from "@/features/backgrounds/model/use-backgrounds";
 import { useStatus, useStudioActions } from "@/features/studio/model/use-studio-actions";
+import { ActionError } from "@/features/studio/ui/ActionError";
 import { Lightbox } from "@/shared/ui/Lightbox";
 
 type Props = {
@@ -19,13 +20,11 @@ type Peek = { of: "results" | "gallery"; index: number };
 export function BackgroundPicker({ onSelect, onClose }: Props) {
   const backgrounds = useBackgrounds();
   const { deleteBackground } = useStudioActions();
-  const { busy, error } = useStatus();
+  const { busy } = useStatus();
   const [query, setQuery] = useState("");
   const [chosen, setChosen] = useState<Set<number>>(() => new Set());
   const [peek, setPeek] = useState<Peek | null>(null);
   const [note, setNote] = useState("");
-  /* El error es global; aquí solo interesa si lo provocó algo de este diálogo. */
-  const [acted, setActed] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const working = busy !== null;
@@ -34,7 +33,6 @@ export function BackgroundPicker({ onSelect, onClose }: Props) {
   const peekedItem = peek?.of === "gallery" ? items[peek.index] : undefined;
 
   const search = async () => {
-    setActed(true);
     setNote("");
     setChosen(new Set());
     setPeek(null);
@@ -50,7 +48,6 @@ export function BackgroundPicker({ onSelect, onClose }: Props) {
     });
 
   const download = async () => {
-    setActed(true);
     setNote("Descargando…");
     const report = await backgrounds.download([...chosen]);
     setNote(report ? describeDownload(report) : "");
@@ -58,7 +55,6 @@ export function BackgroundPicker({ onSelect, onClose }: Props) {
   };
 
   const upload = async (file: File) => {
-    setActed(true);
     setNote("Subiendo…");
     await backgrounds.upload(file);
     setNote("Subido.");
@@ -67,7 +63,6 @@ export function BackgroundPicker({ onSelect, onClose }: Props) {
 
   const remove = async (name: string) => {
     if (!window.confirm(`¿Borrar «${name}» de la galería? Se elimina el archivo.`)) return;
-    setActed(true);
     setPeek(null);
     setNote("Borrando…");
     const ok = await deleteBackground(name);
@@ -107,7 +102,7 @@ export function BackgroundPicker({ onSelect, onClose }: Props) {
           </label>
         </div>
 
-        {acted && error && <p className="error">{error}</p>}
+        <ActionError place="picker" />
         {note && <p className="hint">{note}</p>}
 
         {results && (
@@ -193,8 +188,12 @@ export function BackgroundPicker({ onSelect, onClose }: Props) {
           ) : (
             items.map((bg, index) => (
               <figure key={bg.name} onClick={() => onSelect(bg.name)} title="Usar este fondo">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={backgrounds.thumbUrl(bg.thumb)} alt="" loading="lazy" />
+                {bg.thumb ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={backgrounds.thumbUrl(bg.thumb)} alt="" loading="lazy" />
+                ) : (
+                  <span className="gallery-blank" aria-hidden="true" />
+                )}
                 <button
                   type="button"
                   className="peek peek--delete"
@@ -270,7 +269,7 @@ export function BackgroundPicker({ onSelect, onClose }: Props) {
           media={{
             kind: peekedItem.kind,
             src: backgrounds.fileUrl(peekedItem.name),
-            poster: backgrounds.thumbUrl(peekedItem.thumb),
+            poster: backgrounds.thumbUrl(peekedItem.thumb) || undefined,
           }}
           info={
             <>

@@ -129,6 +129,19 @@ def camera_at(shots: list[Shot], t: float) -> tuple[float, float, float]:
     return zoom, fx, fy
 
 
+def camera_on(shot: Shot, t: float) -> tuple[float, float, float]:
+    """
+    Como `camera_at`, pero de ese plano aunque `t` caiga un poco fuera de él:
+    en una transición se ven dos planos a la vez, y el que ya debería haber
+    acabado (o aún no empezado) sigue su movimiento en vez de quedarse quieto.
+    """
+    k = (t - shot.start) / shot.duration if shot.duration > 0 else 0.0
+    zoom = max(1.0, shot.zoom_from + (shot.zoom_to - shot.zoom_from) * k)
+    fx = shot.focus_from[0] + (shot.focus_to[0] - shot.focus_from[0]) * k
+    fy = shot.focus_from[1] + (shot.focus_to[1] - shot.focus_from[1]) * k
+    return zoom, fx, fy
+
+
 def crop_box(
     source: tuple[int, int], frame: tuple[int, int], zoom: float, focus: tuple[float, float]
 ) -> tuple[float, float, float, float]:

@@ -20,6 +20,7 @@ from app.domain.animation import (
     animation_name,
     animation_prompt,
     clip_seconds,
+    validate_motion,
     validate_seconds,
 )
 from app.domain.background import Background
@@ -81,7 +82,23 @@ class AnimationDomainTests(unittest.TestCase):
         prompt = animation_prompt("")
         self.assertNotIn("Qué pasa", prompt)
         self.assertIn("Estilo:", prompt)
-        self.assertIn(animation.MOTION, prompt)
+        self.assertIn(f"{animation.MOTION} {animation.ONE_SHOT}", prompt)
+
+    def test_the_scene_motion_replaces_the_generic_one_and_keeps_a_single_shot(self):
+        prompt = animation_prompt("Ana sirve un café", motion="  el vapor sube;\n la cámara se acerca despacio ")
+        self.assertIn("Movimiento: el vapor sube; la cámara se acerca despacio. Un solo plano, sin cortes.", prompt)
+        self.assertNotIn(animation.MOTION, prompt)
+        # El orden: qué pasa, estilo, movimiento y, al final, el silencio.
+        lines = prompt.splitlines()
+        self.assertTrue(lines[-2].startswith("Movimiento:"))
+        self.assertEqual(lines[-1], animation.QUIET)
+
+    def test_motion_is_one_line_and_has_a_limit(self):
+        self.assertEqual(validate_motion("  la cámara\n se aleja "), "la cámara se aleja")
+        self.assertEqual(validate_motion(None), "")
+        self.assertEqual(len(validate_motion("x" * animation.MOTION_LIMIT)), animation.MOTION_LIMIT)
+        with self.assertRaisesRegex(ValidationError, "demasiado largo"):
+            validate_motion("x" * (animation.MOTION_LIMIT + 1))
 
 
 class AnimationUseCaseTests(unittest.TestCase):
@@ -105,6 +122,17 @@ class AnimationUseCaseTests(unittest.TestCase):
         self.assertEqual(event.payload["topic"], "Café")
         self.assertEqual(event.payload["look"], "acuarela")
         self.assertEqual(event.payload["model"], "gemini-omni-1.2-flash")
+        self.assertEqual(event.payload["motion"], "")
+
+    def test_the_scene_motion_travels_with_the_job_and_reaches_the_prompt(self):
+        event = self.request(motion=" la cámara se acerca\n a Ana ")
+        self.assertEqual(event.payload["motion"], "la cámara se acerca a Ana")
+        self.studio.animations.handle_request(event)
+        prompt = self.fakes.animator.calls[0][4]
+        self.assertIn("Movimiento: la cámara se acerca a Ana. Un solo plano, sin cortes.", prompt)
+
+        with self.assertRaisesRegex(ValidationError, "demasiado largo"):
+            self.request(motion="x" * (animation.MOTION_LIMIT + 1))
 
     def test_only_images_from_the_gallery_are_animated(self):
         with self.assertRaisesRegex(ValidationError, "Solo se animan imágenes"):
@@ -250,6 +278,12 @@ class AnimationApiTests(unittest.TestCase):
         response = self.client.post("/api/animations", json={"topic": "Café", "source": IMAGE, "seconds": 6})
         self.assertEqual(response.status_code, 202)
         self.assertTrue(response.json()["job"].startswith("an-"))
+
+        moving = self.client.post(
+            "/api/animations", json={"source": IMAGE, "seconds": 6, "motion": "la cámara se aleja"}
+        )
+        self.assertEqual(moving.status_code, 202)
+        self.assertEqual(self.fakes.events.events[-1].payload["motion"], "la cámara se aleja")
 
     def test_a_clip_cannot_be_animated(self):
         response = self.client.post("/api/animations", json={"source": "bosque_1.mp4", "seconds": 6})

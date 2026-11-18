@@ -22,6 +22,9 @@ export type AnimationSettings = {
 export const MIN_CLIP_SECONDS = 3;
 export const MAX_CLIP_SECONDS = 15;
 
+/** Lo que se mueve en una escena cabe en una frase: el servidor no admite más. */
+export const MOTION_LIMIT = 300;
+
 /** Los segundos que se piden para cubrir un tramo: hacia arriba, entre 3 y 15. */
 export function clipSeconds(span: number): number {
   // El margen evita que 6.0000001 (sumas de flotantes) se pida como 7.

@@ -9,11 +9,13 @@ import { OutputPanel } from "@/features/render/ui/OutputPanel";
 import { ScenesStep } from "@/features/scenes/ui/ScenesStep";
 import { ScriptStep } from "@/features/script/ui/ScriptStep";
 import { StudioProvider } from "@/features/studio/model/studio-context";
+import { JobsTray } from "@/features/studio/ui/JobsTray";
 import { Topbar } from "@/features/studio/ui/Topbar";
 import { VoiceStep } from "@/features/voice/ui/VoiceStep";
 import { WriterSettings } from "@/features/writer/ui/WriterSettings";
 import { httpGateway } from "@/infrastructure/http-gateway";
 import { sseEventStream } from "@/infrastructure/sse-event-stream";
+import { StepsProvider } from "@/shared/ui/steps";
 
 /**
  * La ruta es la raíz de composición: elige la implementación del gateway y
@@ -22,26 +24,29 @@ import { sseEventStream } from "@/infrastructure/sse-event-stream";
 export default function Page() {
   return (
     <StudioProvider gateway={httpGateway} events={sseEventStream}>
-      <Topbar />
+      <StepsProvider>
+        <Topbar />
 
-      <main className="workbench">
-        {/* Los pasos en un solo panel: son una secuencia, no herramientas
-            sueltas, y los filetes lo cuentan mejor que las cajas */}
-        <div className="panel">
-          <ScriptStep settings={<WriterSettings />} />
-          <VoiceStep />
-          <SoundStep />
-          <CaptionsStep />
-          <ScenesStep settings={<ImageSettingsPanel />} />
-          <DescriptionStep />
-        </div>
+        <main className="workbench">
+          {/* Los pasos en un solo panel: son una secuencia, no herramientas
+              sueltas, y los filetes lo cuentan mejor que las cajas */}
+          <div className="panel">
+            <ScriptStep settings={<WriterSettings />} />
+            <VoiceStep />
+            <SoundStep />
+            <CaptionsStep />
+            <ScenesStep settings={<ImageSettingsPanel />} />
+            <DescriptionStep />
+          </div>
 
-        <aside className="rail">
-          <OutputPanel />
-        </aside>
-      </main>
+          <aside className="rail">
+            <OutputPanel />
+          </aside>
+        </main>
 
-      <LibraryPanel />
+        <LibraryPanel />
+        <JobsTray />
+      </StepsProvider>
     </StudioProvider>
   );
 }

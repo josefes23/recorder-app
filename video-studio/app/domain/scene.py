@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import asdict, dataclass, replace
+from dataclasses import dataclass, replace
 
 from app.domain.script import WORDS_PER_SECOND, clean_script
+from app.domain.transition import Transition, read_transition, validate_transition
 
 # Un tramo más corto que esto no aporta nada y rompe la concatenación.
 MIN_SPAN_SECONDS = 0.05
@@ -16,14 +17,34 @@ MIN_SPAN_SECONDS = 0.05
 class Scene:
     background: str | None = None
     start: float = 0.0
+    #: Cómo entra, y cómo cambia de encuadre si es una imagen fija
+    #: (`domain.transition`). None: la del video.
+    transition: Transition | None = None
 
     @classmethod
     def from_dict(cls, data: dict | None) -> Scene:
         data = data or {}
-        return cls(background=data.get("background") or None, start=float(data.get("start") or 0.0))
+        return cls(
+            background=data.get("background") or None,
+            start=float(data.get("start") or 0.0),
+            transition=read_transition(data.get("transition")),
+        )
 
     def as_dict(self) -> dict:
-        return asdict(self)
+        # Sin transición propia no se guarda la clave: las escenas de siempre
+        # siguen siendo {background, start}.
+        data: dict = {"background": self.background, "start": self.start}
+        if self.transition is not None:
+            data["transition"] = self.transition.as_dict()
+        return data
+
+
+def checked_scenes(scenes: Iterable[Scene]) -> list[Scene]:
+    """Las escenas que llegan de la interfaz, con su transición comprobada."""
+    return [
+        scene if scene.transition is None else replace(scene, transition=validate_transition(scene.transition))
+        for scene in scenes
+    ]
 
 
 @dataclass(frozen=True)
@@ -33,6 +54,8 @@ class Span:
     background: str
     start: float
     end: float
+    #: La de su escena; None: la del video.
+    transition: Transition | None = None
 
     @property
     def duration(self) -> float:
@@ -55,7 +78,7 @@ def timeline_spans(scenes: Iterable[Scene], duration: float) -> list[Span]:
         end = min(end, duration)
         if end - start <= MIN_SPAN_SECONDS:
             continue
-        spans.append(Span(scene.background or "", start, end))
+        spans.append(Span(scene.background or "", start, end, scene.transition))
     return spans
 
 

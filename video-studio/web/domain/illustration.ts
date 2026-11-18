@@ -96,7 +96,8 @@ export type VisualGuide = {
 };
 
 /** Una escena del guion visual: cuándo entra, qué dice la voz y qué se ve. */
-export type StoryboardScene = { start: number; text: string; description: string };
+/** `motion`: qué se mueve si la escena se anima; vacío si el modelo no lo dijo. */
+export type StoryboardScene = { start: number; text: string; description: string; motion: string };
 
 export type Storyboard = { guide: VisualGuide; scenes: StoryboardScene[] };
 

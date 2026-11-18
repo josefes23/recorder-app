@@ -29,6 +29,7 @@ from app.api.routes import (
     music,
     render,
     scripts,
+    takes,
     web,
     writer,
 )
@@ -50,6 +51,7 @@ ROUTERS = (
     library.router,
     cover.router,
     description.router,
+    takes.router,
 )
 
 

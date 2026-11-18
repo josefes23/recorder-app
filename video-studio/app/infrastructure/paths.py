@@ -27,6 +27,16 @@ class Paths:
         return self.data / "thumbs"
 
     @property
+    def takes(self) -> Path:
+        """Las tomas de voz: el audio y el segundo de cada palabra."""
+        return self.data / "takes"
+
+    @property
+    def posters(self) -> Path:
+        """Las portadas en pequeño de la biblioteca, una por video."""
+        return self.data / "posters"
+
+    @property
     def references(self) -> Path:
         """Imágenes de referencia de la biblioteca de elementos."""
         return self.data / "references"

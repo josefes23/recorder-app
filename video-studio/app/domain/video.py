@@ -77,6 +77,12 @@ class RenderSpec:
     music_volume: float = 0.25
     #: Mezclar debajo de la voz el sonido de los clips (los animados lo traen).
     ambient: bool = False
+    #: La transición por defecto: la de las escenas que no eligen la suya.
+    transition: dict = field(default_factory=dict)
+    #: La toma de voz que usa: si ya está generada, el render no sintetiza otra.
+    take: str = ""
+    #: Dónde están las tomas: la carpeta del servidor que encarga el render.
+    takes_dir: str = ""
 
     @classmethod
     def from_dict(cls, data: dict) -> RenderSpec:
@@ -95,6 +101,9 @@ class RenderSpec:
             music=data.get("music") or "",
             music_volume=float(data.get("music_volume", 0.25)),
             ambient=bool(data.get("ambient", False)),
+            transition=data.get("transition") or {},
+            take=data.get("take") or "",
+            takes_dir=data.get("takes_dir") or "",
         )
 
     def as_dict(self) -> dict:
