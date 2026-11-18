@@ -995,3 +995,17 @@ ol.growth-list { counter-reset: growth; }
 .growth-part-note { grid-column: 1 / -1; }
 .growth-bar { height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .growth-bar > span { display: block; height: 100%; background: currentColor; }
+
+/* Confirmación antes de borrar trabajo */
+.confirm {
+  position: fixed; inset: 0; z-index: 80; background: rgba(0, 0, 0, 0.72);
+  display: grid; place-items: center; padding: var(--s5);
+}
+.confirm-box {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
+  padding: var(--s5); width: min(460px, 100%); display: flex; flex-direction: column; gap: var(--s3);
+}
+.confirm-box h2 { margin: 0; font-size: var(--t-md, 16px); }
+.confirm-box p { margin: 0; font-size: var(--t-sm); line-height: 1.55; }
+.confirm-box ul { margin: 0; padding-left: 1.2em; font-size: var(--t-xs); color: var(--warn); line-height: 1.5; }
+.confirm-actions { justify-content: flex-end; }

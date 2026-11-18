@@ -31,6 +31,8 @@ export type ImagesSlice = {
   setCharacters: Dispatch<SetStateAction<Character[]>>;
   /** Toma la guía que trae un guion visual nuevo, semilla incluida. */
   adopt: (guide: VisualGuide) => void;
+  /** Un video en blanco: el estilo del servidor, sin reparto y sin semilla. */
+  reset: () => void;
   /**
    * Que el modelo del guion revise cada imagen —manos de más, cuerpos
    * fundidos, letras— y repinte las que tengan fallos. Activado de serie.
@@ -86,6 +88,12 @@ export function useImagesSlice({ gateway, run }: SliceDeps): ImagesSlice {
     setSeed(next.seed);
   }, []);
 
+  const reset = useCallback(() => {
+    setLook(null);
+    setCharacters([]);
+    setSeed(null);
+  }, []);
+
   return useMemo(
     () => ({
       settings,
@@ -96,6 +104,7 @@ export function useImagesSlice({ gateway, run }: SliceDeps): ImagesSlice {
       setLook,
       setCharacters,
       adopt,
+      reset,
       review,
       setReview,
       editing,
@@ -103,6 +112,6 @@ export function useImagesSlice({ gateway, run }: SliceDeps): ImagesSlice {
       load,
       save,
     }),
-    [settings, choice, guide, adopt, review, editing, load, save],
+    [settings, choice, guide, adopt, reset, review, editing, load, save],
   );
 }

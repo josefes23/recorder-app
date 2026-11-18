@@ -41,7 +41,7 @@ import { firstBackground, readCover, resolveCover, type Cover } from "@/domain/c
 import type { VideoItem } from "@/domain/library";
 import { DEFAULT_STYLE, type Style } from "@/domain/captions";
 import { assignVoices, speakersIn, type DialogueVoices } from "@/domain/dialogue";
-import { HORIZONTAL_CAPTIONS, lengthRange, splitStoredStyle, storedTake, type FormatId } from "@/domain/production";
+import { DEFAULT_PRODUCTION, HORIZONTAL_CAPTIONS, lengthRange, splitStoredStyle, storedTake, type FormatId } from "@/domain/production";
 import { animatable, buildTimeline, fromStoryboard, withoutBackground, type Scene } from "@/domain/scene";
 import { formatPitch, formatRate } from "@/domain/voice";
 import { useAnimationSlice, type AnimationSlice } from "@/features/animation/model/animation-slice";
@@ -113,6 +113,8 @@ export type StudioActions = {
   illustrateCover: (description: string) => Promise<boolean>;
   /** Pide al modelo del guion la descripción para publicar; sustituye a la que hubiera. */
   writeDescription: () => Promise<void>;
+  /** Deja el estudio en blanco: todos los pasos vuelven a su estado inicial. Sin confirmar: eso lo hace `useFreshStart`. */
+  startOver: () => void;
   /** Pide un consejo de crecimiento al modelo del guion sobre el video de ahora. */
   advise: (kind: GrowthKind) => Promise<boolean>;
   /** Pone un gancho como primera frase del guion (sustituye al que se puso antes). */
@@ -402,6 +404,24 @@ export function StudioProvider({
     [scenes.items, script.seconds, animate, startClipOn, failClipOn],
   );
 
+  /* Todos los pasos a su estado inicial. La biblioteca de videos y los ajustes
+     del servidor (modelos, claves, voces) no son de este video y se quedan. */
+  const resetAll = useCallback(() => {
+    script.reset();
+    voice.reset(config?.voices[0]?.id);
+    captions.apply(config?.defaultStyle ?? DEFAULT_STYLE);
+    production.restore(DEFAULT_PRODUCTION);
+    scenes.replaceAll([]);
+    images.reset();
+    coverSlice.restore(null);
+    coverSlice.setSuggestions([]);
+    description.setText("");
+    growth.reset();
+    take.clear();
+    render.clear();
+    setError(null);
+  }, [script, voice, captions, production, scenes, images, coverSlice, description, growth, take, render, config, setError]);
+
   const actions = useMemo<StudioActions>(
     () => ({
       write: async (useTemplate) => {
@@ -450,7 +470,11 @@ export function StudioProvider({
         loadLibrary();
       },
 
+      startOver: resetAll,
+
       reuse: (item) => {
+        // Primero en blanco: lo que el video guardado no trae (reparto, consejos, render…) no se arrastra.
+        resetAll();
         script.setTopic(item.topic);
         script.setText(item.script);
         voice.setId(item.voice);
@@ -728,7 +752,7 @@ export function StudioProvider({
       gateway, jobs, run, setError, script, voice, captions, scenes, backgrounds, render,
       loadLibrary, images, adoptGuide, startImage, trackImage, characters, setCharacters,
       loadCharacters, trackReference, coverSlice, resolvedCover, loadBackgrounds, description, growth,
-      animate, startClipAt, failClipOn, production, config, animateIndices, take,
+      animate, startClipAt, failClipOn, production, config, animateIndices, take, resetAll,
     ],
   );
 

@@ -15,6 +15,8 @@ export type RenderSlice = {
   showPreview: (frame: Blob) => void;
   /** Sigue un trabajo recién encolado hasta que termina o falla. */
   track: (id: number) => void;
+  /** Quita la vista previa y el último resultado; un render en curso sigue su camino. */
+  clear: () => void;
 };
 
 export function useRenderSlice(
@@ -61,6 +63,13 @@ export function useRenderSlice(
     [gateway, setError, onSettled, stop],
   );
 
+  const clear = useCallback(() => {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    previewRef.current = null;
+    setPreviewUrl(null);
+    setJob((current) => (isRendering(current) ? current : null));
+  }, []);
+
   /* Un intervalo vivo y una URL de blob sobreviven al desmontaje si no se
      limpian: el primero seguiría llamando a la API, la segunda filtra memoria. */
   useEffect(
@@ -72,7 +81,7 @@ export function useRenderSlice(
   );
 
   return useMemo(
-    () => ({ previewUrl, job, rendering: isRendering(job), showPreview, track }),
-    [previewUrl, job, showPreview, track],
+    () => ({ previewUrl, job, rendering: isRendering(job), showPreview, track, clear }),
+    [previewUrl, job, showPreview, track, clear],
   );
 }

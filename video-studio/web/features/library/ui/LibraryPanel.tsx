@@ -14,7 +14,7 @@ import {
   type StatusFilter,
 } from "@/domain/library";
 import { useLibrary } from "@/features/library/model/use-library";
-import { useStudioActions } from "@/features/studio/model/use-studio-actions";
+import { useFreshStart } from "@/features/studio/model/use-fresh-start";
 import { Lightbox } from "@/shared/ui/Lightbox";
 
 import { LibraryCard } from "./LibraryCard";
@@ -34,7 +34,7 @@ const STATUSES: { id: StatusFilter; label: string }[] = [
  */
 export function LibraryPanel() {
   const library = useLibrary();
-  const { reuse } = useStudioActions();
+  const { reuse } = useFreshStart();
   const [filter, setFilter] = useState<LibraryFilter>(DEFAULT_FILTER);
   const [shown, setShown] = useState(LIBRARY_PAGE);
   /** El video abierto en el reproductor, por id. */
@@ -156,8 +156,8 @@ export function LibraryPanel() {
               <button
                 className="btn"
                 onClick={() => {
-                  setOpen(null);
-                  reuse(current);
+                  // La vista se cierra solo si se carga: si se cancela, sigue donde estaba.
+                  void reuse(current).then((loaded) => loaded && setOpen(null));
                 }}
               >
                 Reutilizar

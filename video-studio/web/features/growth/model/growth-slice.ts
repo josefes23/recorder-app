@@ -14,6 +14,8 @@ export type GrowthSlice = {
   /** El último gancho puesto en el guion: para cambiarlo sin apilar dos. */
   appliedHook: string | null;
   setAppliedHook: (hook: string | null) => void;
+  /** Un video en blanco: los consejos de otro video no valen para este. */
+  reset: () => void;
 };
 
 export function useGrowthSlice(): GrowthSlice {
@@ -36,8 +38,13 @@ export function useGrowthSlice(): GrowthSlice {
     [],
   );
 
+  const reset = useCallback(() => {
+    setResults({});
+    setAppliedHook(null);
+  }, []);
+
   return useMemo(
-    () => ({ results, pending, setResult, setPending, appliedHook, setAppliedHook }),
-    [results, pending, setResult, setPending, appliedHook],
+    () => ({ results, pending, setResult, setPending, appliedHook, setAppliedHook, reset }),
+    [results, pending, setResult, setPending, appliedHook, reset],
   );
 }

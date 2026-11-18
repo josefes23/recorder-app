@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { countWords, durationVerdict, estimateSeconds, type DurationVerdict } from "@/domain/script";
 
@@ -11,6 +11,8 @@ export type ScriptSlice = {
   setNotes: (notes: string) => void;
   text: string;
   setText: (script: string) => void;
+  /** Vuelve al video en blanco: sin tema, sin indicaciones y sin guion. */
+  reset: () => void;
   /* Derivados del dominio, no del componente */
   words: number;
   seconds: number;
@@ -22,16 +24,21 @@ export function useScriptSlice(range?: [number, number]): ScriptSlice {
   const [topic, setTopic] = useState("");
   const [notes, setNotes] = useState("");
   const [text, setText] = useState("");
+  const reset = useCallback(() => {
+    setTopic("");
+    setNotes("");
+    setText("");
+  }, []);
 
   return useMemo(
     () => ({
       topic, setTopic,
       notes, setNotes,
-      text, setText,
+      text, setText, reset,
       words: countWords(text),
       seconds: estimateSeconds(text),
       verdict: durationVerdict(text, range),
     }),
-    [topic, notes, text, range],
+    [topic, notes, text, range, reset],
   );
 }

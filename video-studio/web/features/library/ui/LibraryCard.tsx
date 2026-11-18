@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { clockTime, dayLabel, isPlayable, videoFormat, type VideoItem } from "@/domain/library";
 import { useLibrary } from "@/features/library/model/use-library";
-import { useStudioActions } from "@/features/studio/model/use-studio-actions";
+import { useFreshStart } from "@/features/studio/model/use-fresh-start";
 import { Menu, type MenuItem } from "@/shared/ui/Menu";
 
 /** Descarga un archivo sin salir de la página: un enlace con `download`, pulsado por código. */
@@ -37,7 +37,7 @@ type Props = {
  */
 export function LibraryCard({ item, onOpen }: Props) {
   const library = useLibrary();
-  const { reuse } = useStudioActions();
+  const { reuse } = useFreshStart();
   /** La portada no llegó (un servidor anterior, un fallo al pintarla): se enseña el tema. */
   const [broken, setBroken] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -132,7 +132,7 @@ export function LibraryCard({ item, onOpen }: Props) {
         </div>
       ) : (
         <div className="lib-actions">
-          <button type="button" className="btn btn--sm" onClick={() => reuse(item)} title="Cargar su guion, voz, escenas y ajustes en el estudio">
+          <button type="button" className="btn btn--sm" onClick={() => void reuse(item)} title="Cargar su guion, voz, escenas y ajustes en el estudio">
             Reutilizar
           </button>
           {playable && (

@@ -16,6 +16,7 @@ import { VoiceStep } from "@/features/voice/ui/VoiceStep";
 import { WriterSettings } from "@/features/writer/ui/WriterSettings";
 import { httpGateway } from "@/infrastructure/http-gateway";
 import { sseEventStream } from "@/infrastructure/sse-event-stream";
+import { ConfirmProvider } from "@/shared/ui/confirm";
 import { StepsProvider } from "@/shared/ui/steps";
 
 /**
@@ -25,6 +26,7 @@ import { StepsProvider } from "@/shared/ui/steps";
 export default function Page() {
   return (
     <StudioProvider gateway={httpGateway} events={sseEventStream}>
+      <ConfirmProvider>
       <StepsProvider>
         <Topbar />
 
@@ -49,6 +51,7 @@ export default function Page() {
         <LibraryPanel />
         <JobsTray />
       </StepsProvider>
+      </ConfirmProvider>
     </StudioProvider>
   );
 }
