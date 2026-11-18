@@ -531,6 +531,33 @@ vista previa, portada y render) y se guarda con el video dentro de su `style`,
 bajo la clave `production`: así «Reutilizar» lo recupera y la base no cambia de
 esquema (un servidor de una versión anterior la sigue leyendo).
 
+## Prompts
+
+El botón **Prompts** de la barra superior abre todos los prompts que el estudio
+manda por debajo (guion, guion visual, imágenes, animación, portada,
+descripción y los consejos de Optimizar). Cada uno es una plantilla: el texto
+se edita y las `{variables}` las rellena el programa con los datos del video.
+Debajo se ve el prompt ya montado con datos de ejemplo. Lo editado se guarda
+en la tabla `prompt_overrides` de `studio.db` y vale para los videos nuevos;
+«Restaurar» vuelve al original. El tema y las frases numeradas viajan aparte
+como mensaje del usuario y no se editan.
+
+## Optimizar: ganchos, retención y puntaje
+
+El paso 7 reúne lo que haría un vidIQ, con el modelo del guion y sobre el
+video abierto: **ganchos** para los tres primeros segundos, **retención**
+(dónde se cae el guion y cómo arreglarlo), **títulos** con nota, **SEO** de la
+descripción (puntaje, versión mejorada y etiquetas), **puntaje** del video
+entero y **tendencias e ideas** de videos nuevos. Hay atajos: «Ganchos» junto
+al guion y «Puntuar SEO» junto a la descripción. Un gancho puede ponerse como
+primera frase del guion (el siguiente lo sustituye, no se apilan).
+
+Ojo: el modelo **no consulta datos en vivo** de YouTube, TikTok ni Instagram.
+Los puntajes y las «tendencias» son criterio, no estadísticas. Van por el flujo
+de eventos (`growth.requested` → `growth.completed`), con un solo consumidor
+para los seis consejos, y sus prompts se editan desde el botón Prompts
+(`growth_hooks`, `growth_retention`…).
+
 ## Portada
 
 La pestaña **Portada** del panel de salida enseña la miniatura del video: un

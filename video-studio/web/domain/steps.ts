@@ -24,9 +24,11 @@ export type StudioProgress = {
   /** Escenas que entran después de la voz o segundos desordenados. */
   timelineIssues: boolean;
   description: boolean;
+  /** El puntaje del video, si ya se pidió. */
+  score: number | null;
 };
 
-export const STEP_TITLES = ["Guion", "Voz", "Música", "Subtítulos", "Escenas", "Descripción"] as const;
+export const STEP_TITLES = ["Guion", "Voz", "Música", "Subtítulos", "Escenas", "Descripción", "Optimizar"] as const;
 
 function scenesStep(scenes: Scene[], timelineIssues: boolean): [StepState, string] {
   if (scenes.length === 0) return ["optional", "fondo generado"];
@@ -53,6 +55,7 @@ export function stepStates(progress: StudioProgress): StepInfo[] {
     ["done", ""],
     scenesStep(progress.scenes, progress.timelineIssues),
     progress.description ? ["done", "escrita"] : ["optional", "sin escribir"],
+    progress.score === null ? ["optional", "ganchos, títulos y puntaje"] : ["done", `puntaje ${progress.score}`],
   ];
   return states.map(([state, note], i) => ({ n: i + 1, title: STEP_TITLES[i], state, note }));
 }

@@ -23,6 +23,8 @@ from app.application.use_cases.cover import CoverUseCases
 from app.application.use_cases.voice_takes import VoiceTakeUseCases
 from app.application.use_cases.description import CONSUMER_GROUP as DESCRIBER_GROUP
 from app.application.use_cases.description import DescriptionUseCases
+from app.application.use_cases.growth import CONSUMER_GROUP as GROWTH_GROUP
+from app.application.use_cases.growth import GrowthUseCases
 from app.application.use_cases.illustrations import CONSUMER_GROUP as ILLUSTRATOR_GROUP
 from app.application.use_cases.illustrations import IllustrationUseCases, ImageSettings, ReviewedPainter
 from app.application.use_cases.library import LibraryUseCases
@@ -37,6 +39,7 @@ from app.application.use_cases.writer_settings import WriterSettings
 from app.domain.events import (
     ANIMATION_REQUESTED,
     DESCRIPTION_REQUESTED,
+    GROWTH_REQUESTED,
     ILLUSTRATION_REQUESTED,
     REFERENCE_REQUESTED,
     SCRIPT_REQUESTED,
@@ -123,6 +126,7 @@ def build_container(paths: Paths | None = None) -> Container:
     posters = FilePosterStore(paths.posters)
     cover = CoverUseCases(events, writer, composer, PillowCoverPainter(gen), store, videos, posters, prompts)
     description = DescriptionUseCases(events, writer, composer, prompts)
+    growth = GrowthUseCases(events, writer, composer, prompts)
 
     studio = Studio(
         writer=writer,
@@ -144,6 +148,7 @@ def build_container(paths: Paths | None = None) -> Container:
         characters=characters,
         cover=cover,
         description=description,
+        growth=growth,
         takes=VoiceTakeUseCases(EngineVoiceSynthesizer(gen, paths.takes), FileTakeStore(paths.takes)),
         generator=str(paths.generator),
         prompts=prompts,
@@ -152,6 +157,7 @@ def build_container(paths: Paths | None = None) -> Container:
     consumer = EventConsumer(events, CONSUMER_GROUP, (SCRIPT_REQUESTED,), scripts.handle_request)
     titler = EventConsumer(events, TITLER_GROUP, (TITLES_REQUESTED,), cover.handle_request)
     describer = EventConsumer(events, DESCRIBER_GROUP, (DESCRIPTION_REQUESTED,), description.handle_request)
+    adviser = EventConsumer(events, GROWTH_GROUP, (GROWTH_REQUESTED,), growth.handle_request)
     storyboarder = EventConsumer(events, STORYBOARD_GROUP, (STORYBOARD_REQUESTED,), storyboards.handle_request)
     referencer = EventConsumer(events, REFERENCER_GROUP, (REFERENCE_REQUESTED,), characters.handle_request)
 
@@ -176,6 +182,7 @@ def build_container(paths: Paths | None = None) -> Container:
         threading.Thread(target=referencer.run_forever, daemon=True, name="reference-consumer").start()
         threading.Thread(target=titler.run_forever, daemon=True, name="titles-consumer").start()
         threading.Thread(target=describer.run_forever, daemon=True, name="description-consumer").start()
+        threading.Thread(target=adviser.run_forever, daemon=True, name="growth-consumer").start()
         for n, illustrator in enumerate(illustrators, start=1):
             threading.Thread(target=illustrator.run_forever, daemon=True, name=f"illustrator-{n}").start()
         for n, animator in enumerate(animators, start=1):

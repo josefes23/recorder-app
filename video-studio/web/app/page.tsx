@@ -2,6 +2,7 @@
 
 import { CaptionsStep } from "@/features/captions/ui/CaptionsStep";
 import { DescriptionStep } from "@/features/description/ui/DescriptionStep";
+import { GrowthStep } from "@/features/growth/ui/GrowthStep";
 import { ImageSettingsPanel } from "@/features/illustrations/ui/ImageSettingsPanel";
 import { LibraryPanel } from "@/features/library/ui/LibraryPanel";
 import { SoundStep } from "@/features/production/ui/SoundStep";
@@ -37,6 +38,7 @@ export default function Page() {
             <CaptionsStep />
             <ScenesStep settings={<ImageSettingsPanel />} />
             <DescriptionStep />
+            <GrowthStep />
           </div>
 
           <aside className="rail">

@@ -91,6 +91,16 @@ class DescriptionRequest(BaseModel):
     title: str = ""
 
 
+class GrowthRequest(BaseModel):
+    topic: str = ""
+    script: str = ""
+    #: El de la portada, con o sin asteriscos.
+    title: str = ""
+    description: str = ""
+    #: Reel, corto o «90s»: el objetivo de duración.
+    length: str = ""
+
+
 class RenderRequest(BaseModel):
     topic: str
     script: str

@@ -12,6 +12,8 @@ import {
   type FormatId,
   type LengthId,
 } from "@/domain/production";
+import { useAdvice } from "@/features/growth/model/use-advice";
+import { useGrowth } from "@/features/growth/model/use-growth";
 import { useProduction } from "@/features/production/model/use-production";
 import { useScript } from "@/features/script/model/use-script";
 import { useStatus, useStudioActions } from "@/features/studio/model/use-studio-actions";
@@ -108,6 +110,8 @@ export function ScriptStep({ settings }: { settings?: ReactNode }) {
   const actions = useStudioActions();
   const { label } = useWriter();
   const production = useProduction();
+  const growth = useGrowth();
+  const advise = useAdvice();
   const tips = adviceFor(production.length);
   const custom = customSeconds(production.length);
 
@@ -216,6 +220,14 @@ export function ScriptStep({ settings }: { settings?: ReactNode }) {
         </button>
         <button className="btn" disabled={busy !== null} onClick={() => actions.write(true)}>
           {busy === "template" ? "…" : "Usar plantilla"}
+        </button>
+        <button
+          className="btn"
+          disabled={busy !== null || growth.pending.has("hooks") || !label || (!script.topic.trim() && !script.text.trim())}
+          onClick={() => void advise("hooks")}
+          title="Cinco ganchos para los primeros tres segundos"
+        >
+          {growth.pending.has("hooks") ? "Pensando…" : "Ganchos"}
         </button>
         {busy === "writer" && (
           <span className="hint">

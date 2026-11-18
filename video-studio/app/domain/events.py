@@ -66,6 +66,11 @@ DESCRIPTION_COMPLETED = "description.completed"
 DESCRIPTION_FAILED = "description.failed"
 DESCRIPTION_TERMINAL = (DESCRIPTION_COMPLETED, DESCRIPTION_FAILED)
 
+GROWTH_REQUESTED = "growth.requested"
+GROWTH_COMPLETED = "growth.completed"
+GROWTH_FAILED = "growth.failed"
+GROWTH_TERMINAL = (GROWTH_COMPLETED, GROWTH_FAILED)
+
 Outcome = Literal["completed", "failed", "pending"]
 
 

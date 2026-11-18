@@ -150,6 +150,16 @@ export type RenderRequest = {
 
 export type DescriptionRequest = { topic: string; script: string; title: string };
 
+/** Lo que se sabe del video para aconsejar sobre él. */
+export type GrowthRequest = {
+  topic: string;
+  script: string;
+  title: string;
+  description: string;
+  /** Reel, corto o «90s»: el objetivo de duración. */
+  length: string;
+};
+
 /** La portada tal como está en el estudio; el tema da color al degradado si no hay imagen. */
 export type CoverRequest = Cover & { topic: string; format: FormatId };
 
@@ -226,6 +236,8 @@ export interface StudioGateway {
   requestTitles(topic: string, script: string): Promise<JobAccepted>;
   /** Encola la descripción para publicar; llega por el flujo de eventos. */
   requestDescription(request: DescriptionRequest): Promise<JobAccepted>;
+  /** Encola un consejo de crecimiento (ganchos, retención, títulos, SEO, puntaje, tendencias). */
+  requestGrowth(kind: string, request: GrowthRequest): Promise<JobAccepted>;
 
   startRender(request: RenderRequest): Promise<number>;
   job(id: number): Promise<VideoItem>;

@@ -17,6 +17,7 @@ from app.application.use_cases.backgrounds import BackgroundUseCases
 from app.application.use_cases.characters import CharacterUseCases
 from app.application.use_cases.cover import CoverUseCases
 from app.application.use_cases.description import DescriptionUseCases
+from app.application.use_cases.growth import GrowthUseCases
 from app.application.use_cases.illustrations import IllustrationUseCases, ImageSettings, ReviewedPainter
 from app.application.use_cases.library import LibraryUseCases
 from app.application.use_cases.voice_takes import VoiceTakeUseCases
@@ -502,6 +503,7 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
         characters=CharacterUseCases(events, character_library, references, images, painter),
         cover=CoverUseCases(events, writer, composer, cover_painter, backgrounds, videos, posters),
         description=DescriptionUseCases(events, writer, composer),
+        growth=GrowthUseCases(events, writer, composer),
         takes=VoiceTakeUseCases(synthesizer, takes),
         generator="/fake/auto-video-generator",
     )

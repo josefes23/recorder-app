@@ -4,6 +4,7 @@ import type {
   CharacterSaveRequest,
   CoverRequest,
   DescriptionRequest,
+  GrowthRequest,
   IllustrationRequest,
   JobAccepted,
   PreviewRequest,
@@ -215,6 +216,8 @@ export const httpGateway: StudioGateway = {
   requestTitles: (topic, script) => post<JobAccepted>("/api/cover/titles", { topic, script }),
 
   requestDescription: (payload: DescriptionRequest) => post<JobAccepted>("/api/description", payload),
+
+  requestGrowth: (kind: string, payload: GrowthRequest) => post<JobAccepted>(`/api/growth/${kind}`, payload),
 
   async startRender(payload: RenderRequest): Promise<number> {
     const { id } = await post<{ id: number; seconds: number }>("/api/render", payload);

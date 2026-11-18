@@ -32,6 +32,7 @@ import {
 import { paintCover, suggestTitles } from "@/application/use-cases/design-cover";
 import { previewFrame } from "@/application/use-cases/preview-frame";
 import { renderVideo } from "@/application/use-cases/render-video";
+import { askGrowth } from "@/application/use-cases/ask-growth";
 import { writeDescription } from "@/application/use-cases/write-description";
 import { writeScript } from "@/application/use-cases/write-script";
 import { isImageFile } from "@/domain/background";
@@ -48,6 +49,8 @@ import { useBackgroundsSlice, type BackgroundsSlice } from "@/features/backgroun
 import { useCaptionsSlice, type CaptionsSlice } from "@/features/captions/model/captions-slice";
 import { useCoverSlice, type CoverSlice } from "@/features/cover/model/cover-slice";
 import { useDescriptionSlice, type DescriptionSlice } from "@/features/description/model/description-slice";
+import { useGrowthSlice, type GrowthSlice } from "@/features/growth/model/growth-slice";
+import { withHook, type GrowthKind } from "@/domain/growth";
 import { useCharactersSlice, type CharactersSlice } from "@/features/illustrations/model/characters-slice";
 import { useImagesSlice, type ImagesSlice } from "@/features/illustrations/model/images-slice";
 import { useMusicSlice, type MusicSlice } from "@/features/production/model/music-slice";
@@ -110,6 +113,12 @@ export type StudioActions = {
   illustrateCover: (description: string) => Promise<boolean>;
   /** Pide al modelo del guion la descripción para publicar; sustituye a la que hubiera. */
   writeDescription: () => Promise<void>;
+  /** Pide un consejo de crecimiento al modelo del guion sobre el video de ahora. */
+  advise: (kind: GrowthKind) => Promise<boolean>;
+  /** Pone un gancho como primera frase del guion (sustituye al que se puso antes). */
+  applyHook: (hook: string) => void;
+  /** Cambia la descripción por la que propuso el análisis de SEO. */
+  applySeo: (text: string) => void;
   /**
    * Cambia el formato del video. Los subtítulos se acomodan: en horizontal van
    * más abajo, más anchos y en menos líneas.
@@ -144,6 +153,7 @@ export type Studio = {
   characters: CharactersSlice;
   cover: CoverState;
   description: DescriptionSlice;
+  growth: GrowthSlice;
   /** La toma de voz: para escuchar la animática y ver los tiempos reales. */
   take: TakeSlice;
   actions: StudioActions;
@@ -196,6 +206,7 @@ export function StudioProvider({
   const characters = useCharactersSlice(deps);
   const coverSlice = useCoverSlice();
   const description = useDescriptionSlice();
+  const growth = useGrowthSlice();
 
   /* La portada que sale de verdad. Depende del nombre de la imagen automática
      y no de la lista de escenas: esa cambia cada vez que una imagen pedida
@@ -682,11 +693,41 @@ export function StudioProvider({
           description.setWriting(false);
         }
       },
+
+      advise: async (kind) => {
+        setError(null);
+        growth.setPending(kind, true);
+        try {
+          growth.setResult(
+            kind,
+            await askGrowth(gateway, jobs, kind, {
+              topic: script.topic,
+              script: script.text,
+              title: resolvedCover?.title ?? "",
+              description: description.text,
+              length: production.length,
+            }),
+          );
+          return true;
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err), `growth-${kind}`);
+          return false;
+        } finally {
+          growth.setPending(kind, false);
+        }
+      },
+
+      applyHook: (hook) => {
+        script.setText(withHook(script.text, hook, growth.appliedHook));
+        growth.setAppliedHook(hook);
+      },
+
+      applySeo: (text) => description.setText(text),
     }),
     [
       gateway, jobs, run, setError, script, voice, captions, scenes, backgrounds, render,
       loadLibrary, images, adoptGuide, startImage, trackImage, characters, setCharacters,
-      loadCharacters, trackReference, coverSlice, resolvedCover, loadBackgrounds, description,
+      loadCharacters, trackReference, coverSlice, resolvedCover, loadBackgrounds, description, growth,
       animate, startClipAt, failClipOn, production, config, animateIndices, take,
     ],
   );
@@ -694,11 +735,11 @@ export function StudioProvider({
   const studio = useMemo<Studio>(
     () => ({
       config, status, script, voice, captions, scenes, backgrounds, library, render, writer, prompts,
-      images, animation, production, music, characters, cover, description, take, actions,
+      images, animation, production, music, characters, cover, description, growth, take, actions,
     }),
     [
       config, status, script, voice, captions, scenes, backgrounds, library, render, writer, prompts, images,
-      animation, production, music, characters, cover, description, take, actions,
+      animation, production, music, characters, cover, description, growth, take, actions,
     ],
   );
 

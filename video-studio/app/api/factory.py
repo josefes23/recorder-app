@@ -23,6 +23,7 @@ from app.api.routes import (
     config,
     cover,
     description,
+    growth,
     events,
     illustrations,
     library,
@@ -52,6 +53,7 @@ ROUTERS = (
     library.router,
     cover.router,
     description.router,
+    growth.router,
     prompts.router,
     takes.router,
 )

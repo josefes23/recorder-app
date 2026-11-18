@@ -3,11 +3,11 @@ import { test } from "node:test";
 
 import { foldable, stepStates, type StudioProgress } from "./steps.ts";
 
-const base: StudioProgress = { verdict: "ok", music: false, scenes: [], timelineIssues: false, description: false };
+const base: StudioProgress = { verdict: "ok", music: false, scenes: [], timelineIssues: false, description: false, score: null };
 
 test("un estudio recién abierto pide el guion y lo opcional no molesta", () => {
   const steps = stepStates({ ...base, verdict: "empty" });
-  assert.deepEqual(steps.map((s) => s.state), ["todo", "done", "optional", "done", "optional", "optional"]);
+  assert.deepEqual(steps.map((s) => s.state), ["todo", "done", "optional", "done", "optional", "optional", "optional"]);
   assert.equal(steps[0].note, "falta el guion");
 });
 

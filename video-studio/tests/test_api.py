@@ -286,6 +286,14 @@ class ApiTests(unittest.TestCase):
         )
         self.assertEqual(self.client.get("/api/videos/99/cover").status_code, 404)
 
+    def test_growth_advice_is_requested_by_kind(self):
+        accepted = self.client.post("/api/growth/hooks", json={"topic": "sueño", "title": "El *t*"})
+        self.assertEqual(accepted.status_code, 202)
+        self.assertEqual(self.fakes.events.events[-1].payload["kind"], "hooks")
+        self.assertEqual(self.fakes.events.events[-1].payload["title"], "El t")
+        self.assertEqual(self.client.post("/api/growth/retention", json={"topic": "t"}).status_code, 400)
+        self.assertEqual(self.client.post("/api/growth/nada", json={"topic": "t"}).status_code, 400)
+
     def test_description_is_requested_and_saved_with_the_video(self):
         accepted = self.client.post("/api/description", json={"topic": "t", "script": "Un guion.", "title": "El *t*"})
         self.assertEqual(accepted.status_code, 202)

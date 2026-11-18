@@ -20,6 +20,8 @@ from app.domain.animation import ANIMATION_TEMPLATE, animation_prompt
 from app.domain.cover import TITLES_SYSTEM_PROMPT, build_titles_prompt
 from app.domain.description import DESCRIPTION_SYSTEM_PROMPT, build_description_prompt
 from app.domain.errors import ValidationError
+from app.domain.growth import KINDS as GROWTH_KINDS
+from app.domain.growth import build_growth_prompt, prompt_id as growth_prompt_id
 from app.domain.illustration import (
     CORRECTION_TEMPLATE,
     IMAGE_TEMPLATE,
@@ -153,6 +155,26 @@ _ELEMENTS = Variable("elements", "Los rasgos de cada personaje u objeto que sale
 _REFERENCES = Variable("references", "Qué imagen de referencia es de quién. Vacío si no hay.")
 _STYLE = Variable("style", "El estilo común del video.")
 
+
+def _growth_example(template: str) -> tuple[Example, ...]:
+    return (
+        Example("Mensaje del sistema", template),
+        Example(
+            "Mensaje del usuario",
+            build_growth_prompt(_TOPIC, " ".join(_SENTENCES), "3 *hábitos* que arruinan tu sueño", "", "entre 30 y 45 segundos"),
+        ),
+    )
+
+
+_GROWTH_WHEN = {
+    "hooks": "Al pedir ganchos en el paso «Optimizar» o junto al guion.",
+    "retention": "Al analizar la retención en el paso «Optimizar».",
+    "titles": "Al pedir títulos con puntaje en el paso «Optimizar».",
+    "seo": "Al evaluar la descripción en el paso «Optimizar» o junto a ella.",
+    "score": "Al puntuar el video entero en el paso «Optimizar».",
+    "trends": "Al pedir tendencias e ideas en el paso «Optimizar».",
+}
+
 PROMPTS: tuple[PromptSpec, ...] = (
     PromptSpec(
         "script", "Guion", "texto", "Al pulsar «Escribir con IA» en el paso 1.",
@@ -242,6 +264,14 @@ PROMPTS: tuple[PromptSpec, ...] = (
     PromptSpec(
         "description", "Descripción para publicar", "texto", "Al escribir la descripción del video.",
         DESCRIPTION_SYSTEM_PROMPT, user_part="El tema, el título de la portada y el guion.", example=_description,
+    ),
+    *(
+        PromptSpec(
+            growth_prompt_id(kind), f"Crecimiento: {kind.name}", "texto", _GROWTH_WHEN[kind.id], kind.prompt,
+            user_part="El tema, la duración, el título, el guion y la descripción que haya.",
+            example=_growth_example,
+        )
+        for kind in GROWTH_KINDS
     ),
 )
 
