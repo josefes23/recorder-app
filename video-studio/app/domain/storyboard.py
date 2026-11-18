@@ -98,9 +98,9 @@ Responde solo con un objeto JSON, sin markdown ni comentarios, todo en español:
 
 def system_prompt(fmt: Format = VERTICAL, length: Length = REEL) -> str:
     """El encargo del director de arte, con el tipo de video y dónde caben las caras."""
-    if length is REEL and fmt.vertical:
+    if length.reel_like and fmt.vertical:
         kind = "videos cortos verticales (Reels, Shorts, TikTok)"
-    elif length is REEL:
+    elif length.reel_like:
         kind = "videos cortos horizontales"
     else:
         kind = f"cortometrajes en formato {'vertical' if fmt.vertical else 'horizontal'}"

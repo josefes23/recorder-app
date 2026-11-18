@@ -12,7 +12,25 @@ import type { DialogueVoices } from "./dialogue.ts";
 import { DEFAULT_TRANSITION, readTransition, type Transition } from "./transition.ts";
 
 export type FormatId = "9:16" | "16:9";
-export type LengthId = "reel" | "corto";
+/** Un preajuste o una duración a medida en segundos: «90s», «300s». */
+export type LengthId = "reel" | "corto" | `${number}s`;
+
+/** Límites de una duración a medida (los mismos que `app/domain/production.py`). */
+export const MIN_CUSTOM_SECONDS = 20;
+export const MAX_CUSTOM_SECONDS = 600;
+const CUSTOM_TOLERANCE = 0.15;
+
+/** Los segundos de una duración a medida, o null si es un preajuste o no vale. */
+export function customSeconds(length: string): number | null {
+  const match = /^(\d{1,4})s$/.exec(length);
+  if (!match) return null;
+  const seconds = Number(match[1]);
+  return seconds >= MIN_CUSTOM_SECONDS && seconds <= MAX_CUSTOM_SECONDS ? seconds : null;
+}
+
+/** Fija los segundos a medida dentro de los límites. */
+export const customLength = (seconds: number): LengthId =>
+  `${Math.min(MAX_CUSTOM_SECONDS, Math.max(MIN_CUSTOM_SECONDS, Math.round(seconds)))}s`;
 
 export const FORMATS: { id: FormatId; label: string; hint: string }[] = [
   { id: "9:16", label: "Vertical 9:16", hint: "Reels, Shorts y TikTok" },
@@ -25,8 +43,13 @@ export const LENGTHS: { id: LengthId; label: string; seconds: [number, number] }
 ];
 
 /** La horquilla de duración en la que el video no se queda corto ni pesa. */
-export const lengthRange = (length: LengthId): [number, number] =>
-  (LENGTHS.find((l) => l.id === length) ?? LENGTHS[0]).seconds;
+export const lengthRange = (length: LengthId): [number, number] => {
+  const custom = customSeconds(length);
+  if (custom !== null) {
+    return [Math.floor(custom * (1 - CUSTOM_TOLERANCE)), Math.ceil(custom * (1 + CUSTOM_TOLERANCE))];
+  }
+  return (LENGTHS.find((l) => l.id === length) ?? LENGTHS[0]).seconds;
+};
 
 /** Volumen de la música en los silencios, de 0 a 1: bajo, es fondo. */
 export const DEFAULT_MUSIC_VOLUME = 0.25;
@@ -76,7 +99,8 @@ export function forServer(production: Production) {
 export const PRODUCTION_KEY = "production";
 
 const isFormat = (value: unknown): value is FormatId => value === "9:16" || value === "16:9";
-const isLength = (value: unknown): value is LengthId => value === "reel" || value === "corto";
+const isLength = (value: unknown): value is LengthId =>
+  value === "reel" || value === "corto" || (typeof value === "string" && customSeconds(value) !== null);
 
 /**
  * Separa lo que guardó el servidor dentro del estilo: el estilo de los

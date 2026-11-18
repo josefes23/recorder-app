@@ -9,11 +9,14 @@ Las mismas reglas viven en `web/domain/production.ts`.
 
 from __future__ import annotations
 
+import math
+import re
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import PurePath
 
 from app.domain.errors import ValidationError
+from app.domain.script import WORDS_PER_SECOND
 from app.domain.transition import Transition, validate_transition
 
 
@@ -106,6 +109,8 @@ class Length:
     structure: str
     #: Qué escribe el redactor: «Reels y Shorts», «cortometrajes».
     kind: str
+    #: Un video corto de redes (gancho y llamada a la acción) y no una historia.
+    reel_like: bool = False
 
 
 REEL = Length(
@@ -119,6 +124,7 @@ REEL = Length(
         "y cierre con una llamada a la acción."
     ),
     kind="Reels y Shorts",
+    reel_like=True,
 )
 
 SHORT_FILM = Length(
@@ -138,14 +144,52 @@ SHORT_FILM = Length(
 
 LENGTHS = {length.id: length for length in (REEL, SHORT_FILM)}
 
+#: Una duración a medida: los segundos que se quieren, p. ej. «90s» o «300s».
+#: Sigue siendo un texto para viajar por los mismos campos `length` de siempre.
+CUSTOM_LENGTH = re.compile(r"^(\d{1,4})s$")
+MIN_CUSTOM_SECONDS = 20
+MAX_CUSTOM_SECONDS = 600
+#: Holgura a cada lado de lo pedido: la voz nunca sale al segundo exacto.
+CUSTOM_TOLERANCE = 0.15
+#: Un video de hasta esto se escribe como un reel; más largo, como un corto.
+REEL_MAX_SECONDS = 60
+
+
+def custom_length(seconds: int) -> Length:
+    """Una duración elegida a mano, con las mismas medidas que los preajustes."""
+    if not MIN_CUSTOM_SECONDS <= seconds <= MAX_CUSTOM_SECONDS:
+        raise ValidationError(
+            f"La duración debe estar entre {MIN_CUSTOM_SECONDS} segundos y "
+            f"{MAX_CUSTOM_SECONDS // 60} minutos."
+        )
+    low = math.floor(seconds * (1 - CUSTOM_TOLERANCE))
+    high = math.ceil(seconds * (1 + CUSTOM_TOLERANCE))
+    base = REEL if seconds <= REEL_MAX_SECONDS else SHORT_FILM
+    return Length(
+        id=f"{seconds}s",
+        name=f"{seconds} s",
+        words=(round(low * WORDS_PER_SECOND), round(high * WORDS_PER_SECOND)),
+        seconds=(low, high),
+        max_scenes=max(3, min(base.max_scenes, math.ceil(seconds / 6))),
+        structure=base.structure,
+        kind=base.kind,
+        reel_like=base.reel_like,
+    )
+
 
 def length_by_id(length_id: str | None) -> Length:
     if not length_id:
         return REEL
-    found = LENGTHS.get(length_id.strip().lower())
-    if found is None:
-        raise ValidationError(f"Duración desconocida: «{length_id}». Usa reel o corto.")
-    return found
+    key = length_id.strip().lower()
+    found = LENGTHS.get(key)
+    if found is not None:
+        return found
+    custom = CUSTOM_LENGTH.match(key)
+    if custom:
+        return custom_length(int(custom.group(1)))
+    raise ValidationError(
+        f"Duración desconocida: «{length_id}». Usa reel, corto o los segundos, como 90s."
+    )
 
 
 #: Dónde se guardan los ajustes de producción dentro del `style` de un video.

@@ -1,8 +1,17 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
-import { FORMATS, LENGTHS, type FormatId, type LengthId } from "@/domain/production";
+import {
+  customLength,
+  customSeconds,
+  FORMATS,
+  LENGTHS,
+  MAX_CUSTOM_SECONDS,
+  MIN_CUSTOM_SECONDS,
+  type FormatId,
+  type LengthId,
+} from "@/domain/production";
 import { useProduction } from "@/features/production/model/use-production";
 import { useScript } from "@/features/script/model/use-script";
 import { useStatus, useStudioActions } from "@/features/studio/model/use-studio-actions";
@@ -11,7 +20,9 @@ import { useWriter } from "@/features/writer/model/use-writer";
 import { Field } from "@/shared/ui/Field";
 import { Step } from "@/shared/ui/Step";
 
-const ADVICE: Record<LengthId, { short: string; long: string; measure: string }> = {
+type Advice = { short: string; long: string; measure: string };
+
+const ADVICE: Record<"reel" | "corto", Advice> = {
   reel: {
     short: "Se queda corto para un Reel. Alarga hasta unos treinta segundos.",
     long: "Se pasa de largo. Recorta hasta unos cuarenta y cinco segundos.",
@@ -24,6 +35,72 @@ const ADVICE: Record<LengthId, { short: string; long: string; measure: string }>
   },
 };
 
+const CUSTOM = "custom";
+
+/** «90 s», «2 min» o «1 min 30 s». */
+function spoken(seconds: number): string {
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return rest ? `${minutes} min ${rest} s` : `${minutes} min`;
+}
+
+function adviceFor(length: LengthId): Advice {
+  const seconds = customSeconds(length);
+  if (seconds === null) return ADVICE[length as "reel" | "corto"] ?? ADVICE.reel;
+  return {
+    short: `Se queda corto para ${spoken(seconds)}. Alarga el guion.`,
+    long: `Se pasa de ${spoken(seconds)}. Recorta el guion.`,
+    measure: `apunta a ${spoken(seconds)}`,
+  };
+}
+
+/** Duración a medida: una cantidad y su unidad (segundos o minutos). */
+function CustomDuration({ seconds, onChange }: { seconds: number; onChange: (length: LengthId) => void }) {
+  const [unit, setUnit] = useState<"s" | "min">(seconds >= 60 && seconds % 60 === 0 ? "min" : "s");
+  const factor = unit === "min" ? 60 : 1;
+  /* Se escribe sin que el límite estorbe (un «9» camino del «90» no salta a 20):
+     se confirma, ajustado, al salir del campo o con Enter. */
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const commit = (nextUnit: "s" | "min" = unit) => {
+    const amount = Number(draft);
+    setDraft(null);
+    if (draft !== null && Number.isFinite(amount) && amount > 0) {
+      onChange(customLength(amount * (nextUnit === "min" ? 60 : 1)));
+    }
+  };
+
+  return (
+    <div className="cluster">
+      <input
+        id="length-amount"
+        type="number"
+        inputMode="decimal"
+        aria-label="Cantidad"
+        min={Math.ceil(MIN_CUSTOM_SECONDS / factor)}
+        max={MAX_CUSTOM_SECONDS / factor}
+        step={unit === "min" ? 0.5 : 1}
+        value={draft ?? String(seconds / factor)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => commit()}
+        onKeyDown={(e) => e.key === "Enter" && commit()}
+      />
+      <select
+        aria-label="Unidad"
+        value={unit}
+        onChange={(e) => {
+          setUnit(e.target.value as "s" | "min");
+          setDraft(null);
+        }}
+      >
+        <option value="s">segundos</option>
+        <option value="min">minutos</option>
+      </select>
+    </div>
+  );
+}
+
 /** `settings` es el hueco donde la ruta encaja los ajustes del modelo. */
 export function ScriptStep({ settings }: { settings?: ReactNode }) {
   const script = useScript();
@@ -31,7 +108,8 @@ export function ScriptStep({ settings }: { settings?: ReactNode }) {
   const actions = useStudioActions();
   const { label } = useWriter();
   const production = useProduction();
-  const tips = ADVICE[production.length];
+  const tips = adviceFor(production.length);
+  const custom = customSeconds(production.length);
 
   const advice = script.verdict === "short" || script.verdict === "long" ? tips[script.verdict] : null;
 
@@ -94,16 +172,24 @@ export function ScriptStep({ settings }: { settings?: ReactNode }) {
         <Field id="length" label="Duración">
           <select
             id="length"
-            value={production.length}
-            onChange={(e) => production.setLength(e.target.value as LengthId)}
+            value={custom === null ? production.length : CUSTOM}
+            onChange={(e) =>
+              production.setLength(e.target.value === CUSTOM ? customLength(60) : (e.target.value as LengthId))
+            }
           >
             {LENGTHS.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.label}
               </option>
             ))}
+            <option value={CUSTOM}>Personalizada…</option>
           </select>
         </Field>
+        {custom !== null && (
+          <Field id="length-amount" label="Cuánto dura">
+            <CustomDuration seconds={custom} onChange={production.setLength} />
+          </Field>
+        )}
       </div>
 
       <label className="cluster check" htmlFor="dialogue">

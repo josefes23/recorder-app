@@ -398,3 +398,21 @@ class HorizontalFramingTests(unittest.TestCase):
         self.assertEqual(crop_box((1080, 1920), (1080, 1920), 1.0, (0.5, 0.5)), (0.0, 0.0, 1080.0, 1920.0))
         _, top, _, _ = crop_box((1536, 864), (1920, 1080), 1.2, (0.5, 0.5))
         self.assertGreater(top, 0)  # centrado como siempre
+
+
+class CustomLengthTests(unittest.TestCase):
+    def test_segundos_a_medida(self):
+        from app.domain.errors import ValidationError
+        from app.domain.production import length_by_id
+
+        short = length_by_id("45s")
+        self.assertTrue(short.reel_like)
+        self.assertEqual(short.seconds, (38, 52))
+        long = length_by_id("300s")
+        self.assertFalse(long.reel_like)
+        self.assertEqual(long.max_scenes, 30)
+        self.assertGreater(long.words[0], 600)
+        for bad in ("5s", "601s", "90", "1m"):
+            with self.assertRaises(ValidationError):
+                length_by_id(bad)
+

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { DEFAULT_PRODUCTION, forServer, lengthRange, splitStoredStyle } from "./production.ts";
+import { customLength, customSeconds, DEFAULT_PRODUCTION, forServer, lengthRange, splitStoredStyle } from "./production.ts";
 import { durationVerdict } from "./script.ts";
 
 test("las voces solo viajan con el diálogo activado", () => {
@@ -48,4 +48,16 @@ test("un video guardado recuerda la toma de voz con que se renderizó", async ()
   assert.equal(storedTake({ production: { take: "../x" } }), null);
   assert.equal(storedTake({ font_size: 92 }), null); // uno de antes
   assert.equal(storedTake(undefined), null);
+});
+
+test("una duración a medida se ajusta a los límites y da su horquilla", () => {
+  assert.equal(customSeconds("90s"), 90);
+  assert.equal(customSeconds("10s"), null);
+  assert.equal(customSeconds("corto"), null);
+  assert.equal(customLength(5), "20s");
+  assert.equal(customLength(9999), "600s");
+  assert.equal(customLength(90.4), "90s");
+  assert.deepEqual(lengthRange("100s"), [85, 115]);
+  assert.equal(splitStoredStyle({ production: { length: "150s" } }).production.length, "150s");
+  assert.equal(splitStoredStyle({ production: { length: "5s" } }).production.length, "reel");
 });

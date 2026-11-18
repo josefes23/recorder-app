@@ -500,6 +500,12 @@ se acomoda solo.
 | Imágenes, clips animados y Pexels | verticales | horizontales |
 | Portada | 1080x1920 | 1280x720, la miniatura de YouTube |
 
+**Duración a medida.** Además de Reel y Cortometraje, la duración puede ser
+«Personalizada…»: se escribe una cantidad en segundos o minutos (de 20 s a
+10 min). Viaja como `90s`, `300s`… por el mismo campo `length`; el redactor
+recibe ese objetivo con un ±15 % de holgura y el tope de escenas se ajusta
+(hasta 60 s se escribe como un reel, más largo como un corto).
+
 Una imagen vertical que se usa en un video horizontal se encuadra más arriba,
 donde las imágenes generadas ponen las caras.
 
