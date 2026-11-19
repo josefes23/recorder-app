@@ -1,7 +1,11 @@
 "use client";
 
-import { scoreTone, type GrowthKind, type GrowthResults } from "@/domain/growth";
+import { useState } from "react";
+
+import { REGENERATION_LABELS, scoreTone, type GrowthKind, type GrowthResults } from "@/domain/growth";
+import { useStudioActions } from "@/features/studio/model/use-studio-actions";
 import { CopyButton } from "@/shared/ui/CopyButton";
+import { useConfirm } from "@/shared/ui/confirm";
 
 export function ScoreBadge({ score, label }: { score: number; label?: string }) {
   return (
@@ -159,7 +163,10 @@ export function GrowthResult<K extends GrowthKind>({
               <p className="growth-sub">Lo que más lo subiría</p>
               <ol className="growth-tips">
                 {r.actions.map((action) => (
-                  <li key={action}>{action}</li>
+                  <li key={action}>
+                    {action}
+                    <ApplyRecommendation text={action} />
+                  </li>
                 ))}
               </ol>
             </>
@@ -217,4 +224,54 @@ export function GrowthResult<K extends GrowthKind>({
       );
     }
   }
+}
+
+type ApplyState =
+  | { step: "idle" }
+  | { step: "working" }
+  | { step: "applied"; summary: string }
+  | { step: "nothing"; summary: string };
+
+/**
+ * «Aplicar» una recomendación a todo el proceso. El modelo dice qué cambiaría
+ * (guion, título, descripción); si solo cambia título o descripción se aplica
+ * sin más. Si cambia el guion y ya hay escenas pintadas o una toma de voz, eso
+ * queda desfasado: antes de rehacerlo —cuesta tiempo y créditos— se pregunta.
+ */
+function ApplyRecommendation({ text }: { text: string }) {
+  const { planRecommendation, applyRecommendation } = useStudioActions();
+  const confirm = useConfirm();
+  const [state, setState] = useState<ApplyState>({ step: "idle" });
+
+  const apply = async () => {
+    setState({ step: "working" });
+    const plan = await planRecommendation(text);
+    if (!plan) return setState({ step: "idle" }); // el error sale en la tarjeta
+    if (plan.changes.length === 0) return setState({ step: "nothing", summary: plan.summary });
+
+    if (plan.regenerates.length > 0) {
+      const accepted = await confirm({
+        title: "¿Aplicar y regenerar?",
+        message: `Esto cambia ${plan.changes.join(" y ")}. Lo que ya está hecho con el guion de antes quedaría desfasado, así que hay que rehacer:`,
+        details: plan.regenerates.map((what) => REGENERATION_LABELS[what]),
+        confirmLabel: "Aplicar y regenerar",
+      });
+      if (!accepted) return setState({ step: "idle" });
+    }
+
+    await applyRecommendation(plan);
+    setState({ step: "applied", summary: plan.summary });
+  };
+
+  return (
+    <span className="growth-apply">
+      <button className="btn btn--sm" disabled={state.step === "working"} onClick={() => void apply()}>
+        {state.step === "working" ? "Aplicando…" : state.step === "applied" ? "Aplicar otra vez" : "Aplicar"}
+      </button>
+      {state.step === "applied" && <span className="hint"> Aplicado{state.summary ? `: ${state.summary}` : "."}</span>}
+      {state.step === "nothing" && (
+        <span className="hint"> Sin cambios que hacer{state.summary ? `: ${state.summary}` : "."}</span>
+      )}
+    </span>
+  );
 }

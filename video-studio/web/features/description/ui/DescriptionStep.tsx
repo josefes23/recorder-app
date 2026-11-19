@@ -1,5 +1,6 @@
 "use client";
 
+import { STEP } from "@/domain/steps";
 import {
   DESCRIPTION_LIMIT,
   descriptionLength,
@@ -35,8 +36,9 @@ export function DescriptionStep() {
 
   return (
     <Step
-      n={6}
+      n={STEP.description}
       title="Descripción"
+      lead="El texto con el que se publica el video: que te encuentren al buscar."
       note={
         length > 0 ? (
           <>

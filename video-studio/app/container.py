@@ -20,6 +20,7 @@ from app.application.use_cases.characters import CONSUMER_GROUP as REFERENCER_GR
 from app.application.use_cases.characters import CharacterUseCases
 from app.application.use_cases.cover import CONSUMER_GROUP as TITLER_GROUP
 from app.application.use_cases.cover import CoverUseCases
+from app.application.use_cases.voice_catalog import VoiceCatalog
 from app.application.use_cases.voice_takes import VoiceTakeUseCases
 from app.application.use_cases.description import CONSUMER_GROUP as DESCRIBER_GROUP
 from app.application.use_cases.description import DescriptionUseCases
@@ -58,6 +59,8 @@ from app.infrastructure.music import FileMusicStore
 from app.infrastructure.paths import Paths
 from app.infrastructure.posters import FilePosterStore
 from app.infrastructure.takes import FileTakeStore
+from app.domain.voice import ELEVEN_KEY_SETTING
+from app.infrastructure.elevenlabs import ElevenLabsClient
 from app.infrastructure.voice import EngineVoiceSynthesizer
 from app.infrastructure.pexels import PexelsLibrary
 from app.infrastructure.preview import GeneratorPreviewer
@@ -127,6 +130,7 @@ def build_container(paths: Paths | None = None) -> Container:
     cover = CoverUseCases(events, writer, composer, PillowCoverPainter(gen), store, videos, posters, prompts)
     description = DescriptionUseCases(events, writer, composer, prompts)
     growth = GrowthUseCases(events, writer, composer, prompts)
+    eleven = ElevenLabsClient(lambda: credentials.get(ELEVEN_KEY_SETTING))
 
     studio = Studio(
         writer=writer,
@@ -149,7 +153,9 @@ def build_container(paths: Paths | None = None) -> Container:
         cover=cover,
         description=description,
         growth=growth,
-        takes=VoiceTakeUseCases(EngineVoiceSynthesizer(gen, paths.takes), FileTakeStore(paths.takes)),
+        takes=VoiceTakeUseCases(EngineVoiceSynthesizer(gen, paths.takes, eleven), FileTakeStore(paths.takes)),
+        voices=VoiceCatalog(credentials, eleven),
+        samples=VoiceTakeUseCases(EngineVoiceSynthesizer(gen, paths.samples, eleven), FileTakeStore(paths.samples)),
         generator=str(paths.generator),
         prompts=prompts,
     )

@@ -21,6 +21,7 @@ from app.application.use_cases.prompts import PromptBook
 from app.application.use_cases.render import RenderUseCases
 from app.application.use_cases.scripts import ScriptUseCases
 from app.application.use_cases.storyboard import StoryboardUseCases
+from app.application.use_cases.voice_catalog import VoiceCatalog
 from app.application.use_cases.voice_takes import VoiceTakeUseCases
 from app.application.use_cases.writer_settings import WriterSettings
 
@@ -45,6 +46,9 @@ class Studio:
     description: DescriptionUseCases
     growth: GrowthUseCases
     takes: VoiceTakeUseCases
+    voices: VoiceCatalog
+    #: Pruebas de voz: la frase de muestra con la voz que se está eligiendo.
+    samples: VoiceTakeUseCases
     #: Dónde está el motor, para poder situarlo si algo falla.
     generator: str
     #: Los prompts que se mandan a los modelos, con las ediciones del usuario.

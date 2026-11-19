@@ -1,5 +1,6 @@
 "use client";
 
+import { STEP } from "@/domain/steps";
 import { useState, type ReactNode } from "react";
 
 import {
@@ -119,8 +120,9 @@ export function ScriptStep({ settings }: { settings?: ReactNode }) {
 
   return (
     <Step
-      n={1}
+      n={STEP.script}
       title="Guion"
+      lead="Escribe, o deja que el modelo escriba, el texto que se va a narrar. De su largo depende todo lo demás."
       note={
         script.words > 0 ? (
           <>

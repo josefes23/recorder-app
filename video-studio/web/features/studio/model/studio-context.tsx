@@ -32,7 +32,7 @@ import {
 import { paintCover, suggestTitles } from "@/application/use-cases/design-cover";
 import { previewFrame } from "@/application/use-cases/preview-frame";
 import { renderVideo } from "@/application/use-cases/render-video";
-import { askGrowth } from "@/application/use-cases/ask-growth";
+import { askApplication, askGrowth } from "@/application/use-cases/ask-growth";
 import { writeDescription } from "@/application/use-cases/write-description";
 import { writeScript } from "@/application/use-cases/write-script";
 import { isImageFile } from "@/domain/background";
@@ -50,7 +50,7 @@ import { useCaptionsSlice, type CaptionsSlice } from "@/features/captions/model/
 import { useCoverSlice, type CoverSlice } from "@/features/cover/model/cover-slice";
 import { useDescriptionSlice, type DescriptionSlice } from "@/features/description/model/description-slice";
 import { useGrowthSlice, type GrowthSlice } from "@/features/growth/model/growth-slice";
-import { withHook, type GrowthKind } from "@/domain/growth";
+import { planApplication, withHook, type ApplyPlan, type GrowthKind } from "@/domain/growth";
 import { useCharactersSlice, type CharactersSlice } from "@/features/illustrations/model/characters-slice";
 import { useImagesSlice, type ImagesSlice } from "@/features/illustrations/model/images-slice";
 import { useMusicSlice, type MusicSlice } from "@/features/production/model/music-slice";
@@ -85,12 +85,19 @@ export type StudioActions = {
   write: (useTemplate: boolean) => Promise<void>;
   preview: () => Promise<void>;
   render: () => Promise<void>;
+  /** Guarda la clave de ElevenLabs (vacía la quita): sus voces se suman o se van de la lista. */
+  saveElevenLabsKey: (apiKey: string) => Promise<boolean>;
+  /** Vuelve a pedir las voces de la cuenta de ElevenLabs. */
+  refreshElevenLabsVoices: () => Promise<boolean>;
+  /** La URL del audio de esa voz diciendo una frase de prueba, o null si falló (el error se muestra). */
+  sampleVoice: (voiceId: string) => Promise<string | null>;
   /** Clona los ajustes de un video ya renderizado. */
   reuse: (item: VideoItem) => void;
   /** Borra un fondo de la galería y lo quita de las escenas que lo usaban. */
   deleteBackground: (name: string) => Promise<boolean>;
   /** Rehace las escenas desde el guion: guion visual primero y una imagen por tramo. */
-  illustrateAll: () => Promise<void>;
+  /** `scriptText`: el guion a usar si acaba de cambiar y el estado aún no lo refleja. */
+  illustrateAll: (scriptText?: string) => Promise<void>;
   /** Pide una imagen para esa escena; `null` añade una escena nueva al final. */
   illustrateScene: (index: number | null, description: string) => Promise<boolean>;
   /** Pide corregir la imagen de esa escena contando qué está mal; llega en su lugar. */
@@ -117,6 +124,16 @@ export type StudioActions = {
   startOver: () => void;
   /** Pide un consejo de crecimiento al modelo del guion sobre el video de ahora. */
   advise: (kind: GrowthKind) => Promise<boolean>;
+  /**
+   * Pregunta al modelo qué cambiaría esta recomendación del puntaje en el video
+   * de ahora, sin tocar nada. null si falló (el error sale en la tarjeta del puntaje).
+   */
+  planRecommendation: (recommendation: string) => Promise<ApplyPlan | null>;
+  /**
+   * Aplica lo planeado: cambia el guion, el título y la descripción, y rehace
+   * lo que el plan diga que hay que rehacer. Quien lo llama ya preguntó.
+   */
+  applyRecommendation: (plan: ApplyPlan) => Promise<void>;
   /** Pone un gancho como primera frase del guion (sustituye al que se puso antes). */
   applyHook: (hook: string) => void;
   /** Cambia la descripción por la que propuso el análisis de SEO. */
@@ -500,6 +517,27 @@ export function StudioProvider({
         window.scrollTo({ top: 0, behavior: "smooth" });
       },
 
+      saveElevenLabsKey: async (apiKey) => {
+        const saved = await run("elevenlabs", () => gateway.saveElevenLabsKey(apiKey));
+        if (!saved) return false;
+        setConfig(saved);
+        return true;
+      },
+
+      sampleVoice: async (voiceId) => {
+        const url = await run("sample", () =>
+          gateway.sampleVoice(voiceId, formatRate(voice.rate), formatPitch(voice.pitch)),
+        );
+        return url ?? null;
+      },
+
+      refreshElevenLabsVoices: async () => {
+        const refreshed = await run("elevenlabs", () => gateway.refreshElevenLabsVoices());
+        if (!refreshed) return false;
+        setConfig(refreshed);
+        return true;
+      },
+
       deleteBackground: async (name) => {
         const items = await backgrounds.remove(name);
         if (items === undefined) return false;
@@ -510,7 +548,7 @@ export function StudioProvider({
         return true;
       },
 
-      illustrateAll: async () => {
+      illustrateAll: async (scriptText) => {
         const { choice } = images;
         if (!choice) {
           setError("Configura un generador de imágenes en «Generador de imágenes».", "storyboard");
@@ -524,7 +562,7 @@ export function StudioProvider({
             length: production.length,
             format: production.format,
             topic: script.topic,
-            script: script.text,
+            script: scriptText ?? script.text,
             style: images.guide.look,
             // Solo lo que está en el reparto: lo guardado entra a mano, nunca solo.
             characters: images.guide.characters,
@@ -739,6 +777,47 @@ export function StudioProvider({
         } finally {
           growth.setPending(kind, false);
         }
+      },
+
+      planRecommendation: async (recommendation) => {
+        setError(null);
+        try {
+          const application = await askApplication(gateway, jobs, recommendation, {
+            topic: script.topic,
+            script: script.text,
+            title: resolvedCover?.title ?? "",
+            description: description.text,
+            length: production.length,
+          });
+          return planApplication(application, {
+            aiScenes: scenes.items.filter((scene) => scene.prompt).length,
+            canPaint: Boolean(images.choice),
+            voiceTake: take.take !== null,
+          });
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err), "growth-score");
+          return null;
+        }
+      },
+
+      applyRecommendation: async (plan) => {
+        if (plan.script) {
+          script.setText(plan.script);
+          growth.setAppliedHook(null);
+        }
+        if (plan.title) coverSlice.setTitle(plan.title);
+        if (plan.description) description.setText(plan.description);
+        // El estado aún no se actualizó: lo que se rehace usa el guion nuevo, no el que había.
+        if (plan.script && plan.regenerates.includes("voice")) {
+          await take.generate({
+            script: plan.script,
+            voice: voice.id,
+            rate: formatRate(voice.rate),
+            pitch: formatPitch(voice.pitch),
+            voices: production.dialogue ? production.voices : {},
+          });
+        }
+        if (plan.script && plan.regenerates.includes("scenes")) await actions.illustrateAll(plan.script);
       },
 
       applyHook: (hook) => {

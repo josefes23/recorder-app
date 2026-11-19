@@ -20,6 +20,7 @@ from app.application.use_cases.description import DescriptionUseCases
 from app.application.use_cases.growth import GrowthUseCases
 from app.application.use_cases.illustrations import IllustrationUseCases, ImageSettings, ReviewedPainter
 from app.application.use_cases.library import LibraryUseCases
+from app.application.use_cases.voice_catalog import VoiceCatalog
 from app.application.use_cases.voice_takes import VoiceTakeUseCases
 from app.application.use_cases.music import MusicUseCases
 from app.application.use_cases.preview import PreviewUseCase
@@ -415,6 +416,28 @@ class FakeCoverPainter:
         return b"\xff\xd8JPEG " + " ".join(w.text for w in words).encode()
 
 
+class FakeRemoteVoices:
+    """Las voces de una cuenta de ElevenLabs de mentira."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.problem: Exception | None = None
+
+    def ready(self) -> bool:
+        return True
+
+    def voices(self):
+        from app.domain.voice import eleven_voice
+
+        self.calls += 1
+        if self.problem:
+            raise self.problem
+        return [
+            eleven_voice("abc123", "Rachel", "american", "female", "https://x/rachel.mp3"),
+            eleven_voice("def456", "Adam"),
+        ]
+
+
 class FakeVoiceSynthesizer:
     """Una voz de mentira: cada palabra dura 0,4 s, una detrás de otra."""
 
@@ -485,6 +508,8 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
     cover_painter = FakeCoverPainter()
     posters = FakePosterStore()
     synthesizer = FakeVoiceSynthesizer()
+    eleven_remote = FakeRemoteVoices()
+    sample_synthesizer = FakeVoiceSynthesizer()
     takes = InMemoryTakeStore()
     studio = Studio(
         writer=writer,
@@ -505,6 +530,8 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
         description=DescriptionUseCases(events, writer, composer),
         growth=GrowthUseCases(events, writer, composer),
         takes=VoiceTakeUseCases(synthesizer, takes),
+        voices=VoiceCatalog(credentials, eleven_remote),
+        samples=VoiceTakeUseCases(sample_synthesizer, InMemoryTakeStore()),
         generator="/fake/auto-video-generator",
     )
     fakes = SimpleNamespace(
@@ -512,6 +539,7 @@ def make_studio(credentials: DictCredentials | None = None, composer: FakeCompos
         queue=queue, files=files, backgrounds=backgrounds, stock=stock, previewer=previewer, jobs=jobs,
         illustrator=illustrator, painter=painter, character_library=character_library, references=references,
         cover_painter=cover_painter, animator=animator, music=music, posters=posters,
-        synthesizer=synthesizer, takes=takes,
+        synthesizer=synthesizer, takes=takes, eleven=eleven_remote,
+        sample_synthesizer=sample_synthesizer,
     )
     return studio, fakes

@@ -1,5 +1,5 @@
 import type { GrowthRequest, JobTracker, StudioGateway } from "@/application/ports";
-import { growthBlocker, readGrowth, type GrowthKind, type GrowthResults } from "@/domain/growth";
+import { growthBlocker, readApplication, readGrowth, type Application, type GrowthKind, type GrowthResults } from "@/domain/growth";
 
 /**
  * Un consejo de crecimiento, escrito por el modelo del guion. Como el guion,
@@ -19,4 +19,25 @@ export async function askGrowth<K extends GrowthKind>(
     description: request.description.trim(),
   });
   return readGrowth(kind, await jobs.waitFor(job));
+}
+
+/**
+ * Pide al modelo que aplique una recomendación del puntaje al video de ahora:
+ * devuelve lo que cambiaría (guion, título, descripción), sin tocar nada.
+ */
+export async function askApplication(
+  gateway: StudioGateway,
+  jobs: JobTracker,
+  recommendation: string,
+  request: GrowthRequest,
+): Promise<Application> {
+  const blocker = growthBlocker("score", request.topic, request.script);
+  if (blocker) throw new Error(blocker);
+  const { job } = await gateway.requestGrowth("apply", {
+    ...request,
+    topic: request.topic.trim(),
+    description: request.description.trim(),
+    recommendation: recommendation.trim(),
+  });
+  return readApplication(await jobs.waitFor(job));
 }

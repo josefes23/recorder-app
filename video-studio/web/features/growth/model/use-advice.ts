@@ -1,5 +1,6 @@
 "use client";
 
+import { STEP } from "@/domain/steps";
 import { useCallback } from "react";
 
 import type { GrowthKind } from "@/domain/growth";
@@ -7,7 +8,7 @@ import { useStudioActions } from "@/features/studio/model/use-studio-actions";
 import { useSteps } from "@/shared/ui/steps";
 
 /** El paso «Optimizar», donde se leen todos los consejos. */
-export const GROWTH_STEP = 7;
+export const GROWTH_STEP = STEP.growth;
 
 /**
  * Pide un consejo desde otro paso (un atajo) y, cuando llega, lleva allí a

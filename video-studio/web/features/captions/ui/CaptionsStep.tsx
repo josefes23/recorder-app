@@ -1,5 +1,6 @@
 "use client";
 
+import { STEP } from "@/domain/steps";
 import { useCaptions } from "@/features/captions/model/use-captions";
 import { Disclosure } from "@/shared/ui/Disclosure";
 import { Slider } from "@/shared/ui/Slider";
@@ -9,7 +10,7 @@ export function CaptionsStep() {
   const { style, setField } = useCaptions();
 
   return (
-    <Step n={4} title="Subtítulos">
+    <Step n={STEP.captions} title="Subtítulos" lead="Cómo se ven las palabras en pantalla: tamaño, posición y estilo.">
       {/* Arriba lo que se retoca en cada video; lo demás se ajusta una vez */}
       <div className="fields">
         <Slider

@@ -31,6 +31,9 @@ from app.domain.style import CaptionStyle  # noqa: E402
 from app.domain.transition import Transition, plan_changes, reach, read_transition  # noqa: E402
 from app.domain.video import RenderSpec  # noqa: E402
 from app.domain.voice_take import take_key, take_request  # noqa: E402
+from app.domain.voice import ELEVEN_KEY_SETTING  # noqa: E402
+from app.infrastructure.elevenlabs import ElevenLabsClient  # noqa: E402
+from app.infrastructure.env_credentials import HOME_ENV_FILES, EnvCredentials  # noqa: E402
 from app.infrastructure.generator import apply_format, apply_style, load_generator  # noqa: E402
 from app.infrastructure.motion import moving_image  # noqa: E402
 from app.infrastructure.paths import Paths  # noqa: E402
@@ -149,7 +152,10 @@ def main() -> None:
         words = take.words
     else:
         emit(phase="tts", progress=0.05, message="Generando voz…" if not voices else f"Generando {len(lines)} intervenciones…")
-        audio_bytes, words, seconds = EngineVoiceSynthesizer(gen, out_path.parent).synthesize(request)
+        # Las claves se leen aquí, de los .env: la clave de ElevenLabs puede haberse puesto después de arrancar.
+        credentials = EnvCredentials(paths.env_file, extra_files=(paths.generator_env, *HOME_ENV_FILES))
+        eleven = ElevenLabsClient(lambda: credentials.get(ELEVEN_KEY_SETTING))
+        audio_bytes, words, seconds = EngineVoiceSynthesizer(gen, out_path.parent, eleven).synthesize(request)
         tmp_mp3.write_bytes(audio_bytes)
         takes.save(key, audio_bytes, words, seconds)
 

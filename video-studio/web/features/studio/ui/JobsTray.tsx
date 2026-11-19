@@ -1,5 +1,6 @@
 "use client";
 
+import { STEP } from "@/domain/steps";
 import { useEffect, useRef, useState } from "react";
 
 import { pendingClips, pendingImages } from "@/domain/scene";
@@ -113,13 +114,13 @@ export function JobsTray() {
             </button>
           )}
           {images > 0 && (
-            <button type="button" className="job" onClick={() => goTo(stepAnchor(5), 5)}>
+            <button type="button" className="job" onClick={() => goTo(stepAnchor(STEP.scenes), STEP.scenes)}>
               <span>Imágenes</span>
               <span className="num">{images}</span>
             </button>
           )}
           {clips > 0 && (
-            <button type="button" className="job" onClick={() => goTo(stepAnchor(5), 5)}>
+            <button type="button" className="job" onClick={() => goTo(stepAnchor(STEP.scenes), STEP.scenes)}>
               <span>Animaciones</span>
               <span className="num">{clips}</span>
             </button>

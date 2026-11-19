@@ -1,5 +1,6 @@
 "use client";
 
+import { STEP } from "@/domain/steps";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { MAX_ATTEMPTS } from "@/domain/illustration";
@@ -155,8 +156,9 @@ export function ScenesStep({ settings }: Props) {
 
   return (
     <Step
-      n={5}
+      n={STEP.scenes}
       title="Escenas"
+      lead="Las imágenes de cada tramo. Píntalas al final, cuando el guion y la voz ya están decididos."
       note={scenes.items.length ? `${scenes.items.length} sobre ${voice.toFixed(0)} s` : "fondo generado"}
     >
       <div className="ai-panel">
@@ -200,7 +202,7 @@ export function ScenesStep({ settings }: Props) {
         <button
           className="btn btn--primary btn--block"
           disabled={!images.choice || !writer.label || !hasScript || busy !== null}
-          onClick={actions.illustrateAll}
+          onClick={() => void actions.illustrateAll()}
         >
           {busy === "storyboard"
             ? "Escribiendo el guion visual…"

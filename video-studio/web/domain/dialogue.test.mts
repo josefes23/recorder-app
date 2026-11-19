@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { assignVoices, guessVoiceGender, speakersIn } from "./dialogue.ts";
+import type { Voice } from "./voice.ts";
 
-const VOICES = [
-  { id: "dalia", label: "Dalia — México ♀" },
-  { id: "jorge", label: "Jorge — México ♂" },
-  { id: "elena", label: "Elena — Argentina ♀" },
+const VOICES: Voice[] = [
+  { id: "dalia", label: "Dalia — México ♀", provider: "edge" },
+  { id: "jorge", label: "Jorge — México ♂", provider: "edge" },
+  { id: "elena", label: "Elena — Argentina ♀", provider: "edge" },
 ];
 
 test("encuentra los personajes en orden, sin el narrador ni etiquetas vacías", () => {
@@ -35,4 +36,18 @@ test("con más personajes que voces, las repite", () => {
 test("sin etiquetas queda lo que se oye", async () => {
   const { withoutLabels } = await import("./dialogue.ts");
   assert.equal(withoutLabels("NARRADOR: Era de noche.\nANA: ¿Oíste?\nsin etiqueta"), "Era de noche.\n¿Oíste?\nsin etiqueta");
+});
+
+test("la asignación automática nunca elige una voz de ElevenLabs", () => {
+  const withEleven: Voice[] = [
+    ...VOICES,
+    { id: "eleven:abc", label: "Rachel — ElevenLabs", provider: "elevenlabs" },
+  ];
+  const assigned = assignVoices(["ANA", "LUIS", "SOFI", "PEDRO", "MARTA"], withEleven, "dalia");
+  for (const id of Object.values(assigned)) assert.notEqual(id, "eleven:abc");
+});
+
+test("una voz de ElevenLabs que el usuario eligió se respeta", () => {
+  const withEleven: Voice[] = [...VOICES, { id: "eleven:abc", label: "Rachel — ElevenLabs", provider: "elevenlabs" }];
+  assert.equal(assignVoices(["ANA"], withEleven, "dalia", { ANA: "eleven:abc" }).ANA, "eleven:abc");
 });

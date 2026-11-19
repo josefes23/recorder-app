@@ -544,7 +544,7 @@ como mensaje del usuario y no se editan.
 
 ## Optimizar: ganchos, retención y puntaje
 
-El paso 7 reúne lo que haría un vidIQ, con el modelo del guion y sobre el
+El paso 6 reúne lo que haría un vidIQ, con el modelo del guion y sobre el
 video abierto: **ganchos** para los tres primeros segundos, **retención**
 (dónde se cae el guion y cómo arreglarlo), **títulos** con nota, **SEO** de la
 descripción (puntaje, versión mejorada y etiquetas), **puntaje** del video

@@ -83,3 +83,70 @@ export function withHook(script: string, hook: string, previous: string | null =
   const body = previous && text.startsWith(previous.trim()) ? text.slice(previous.trim().length).trim() : text;
   return body ? `${head} ${body}` : head;
 }
+
+/**
+ * Lo que cambia una recomendación del puntaje. Un campo en null es un campo
+ * que no cambia: que no cambie ninguno es una respuesta válida (la
+ * recomendación pedía otra música, otra hora de publicación…).
+ */
+export type Application = {
+  summary: string;
+  script: string | null;
+  title: string | null;
+  description: string | null;
+};
+
+/** Qué hay hecho con el guion de antes que quedaría desfasado si el guion cambia. */
+export type ExistingWork = {
+  /** Escenas que salieron del guion visual (llevan su descripción de imagen). */
+  aiScenes: number;
+  /** Se puede pintar otra vez: hay un generador de imágenes configurado. */
+  canPaint: boolean;
+  /** Ya hay una toma de voz generada. */
+  voiceTake: boolean;
+};
+
+export type Regeneration = "scenes" | "voice";
+
+export type ApplyPlan = Application & {
+  /** Qué cambia, en lenguaje llano: «el guion», «el título»… */
+  changes: string[];
+  /** Lo que hay que rehacer para que todo case con el guion nuevo; vacío = nada que preguntar. */
+  regenerates: Regeneration[];
+};
+
+export const REGENERATION_LABELS: Record<Regeneration, string> = {
+  scenes: "El guion visual y las imágenes de las escenas",
+  voice: "La toma de voz",
+};
+
+/** Comprueba la forma de lo que llegó por el flujo de eventos. */
+export function readApplication(event: Record<string, unknown>): Application {
+  const result = event.result;
+  if (!isObject(result)) throw new Error("La respuesta llegó vacía. Vuelve a intentarlo.");
+  const text = (value: unknown) => (typeof value === "string" && value.trim() ? value : null);
+  return {
+    summary: typeof result.summary === "string" ? result.summary : "",
+    script: text(result.script),
+    title: text(result.title),
+    description: text(result.description),
+  };
+}
+
+/**
+ * Qué hay que hacer para aplicarla. Solo un guion nuevo obliga a rehacer algo:
+ * el título y la descripción se cambian sin más, y sin preguntar nada. Las
+ * escenas manuales (clips de stock) no salen del guion, así que no cuentan.
+ */
+export function planApplication(application: Application, work: ExistingWork): ApplyPlan {
+  const changes: string[] = [];
+  if (application.script) changes.push("el guion");
+  if (application.title) changes.push("el título");
+  if (application.description) changes.push("la descripción");
+  const regenerates: Regeneration[] = [];
+  if (application.script) {
+    if (work.aiScenes > 0 && work.canPaint) regenerates.push("scenes");
+    if (work.voiceTake) regenerates.push("voice");
+  }
+  return { ...application, changes, regenerates };
+}

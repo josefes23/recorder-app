@@ -1,5 +1,6 @@
 "use client";
 
+import { STEP } from "@/domain/steps";
 import { useRef } from "react";
 
 import { MUSIC_ACCEPT } from "@/domain/music";
@@ -35,7 +36,7 @@ export function SoundStep() {
   };
 
   return (
-    <Step n={3} title="Música y sonido" note={chosen ? chosen.name : "solo la voz"}>
+    <Step n={STEP.sound} title="Música y sonido" lead="Un fondo sonoro, si quieres. Baja solo cuando alguien habla." note={chosen ? chosen.name : "solo la voz"}>
       <Field id="music" label="Música de fondo">
         <select id="music" value={production.music} onChange={(e) => production.setMusic(e.target.value)}>
           <option value="">Sin música</option>

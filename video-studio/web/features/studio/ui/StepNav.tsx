@@ -1,5 +1,7 @@
 "use client";
 
+import type { CSSProperties } from "react";
+
 import { foldable, type StepState } from "@/domain/steps";
 import { useStepStates } from "@/features/studio/model/use-step-states";
 import { stepAnchor, useSteps } from "@/shared/ui/steps";
@@ -30,7 +32,9 @@ export function StepNav() {
           <li key={step.n}>
             <a
               href={`#${stepAnchor(step.n)}`}
-              className={`step-link is-${step.state}`}
+              className={`step-link is-${step.state}${ui?.current === step.n ? " is-current" : ""}`}
+              style={{ "--hue": `var(--step-${step.n})` } as CSSProperties}
+              aria-current={ui?.current === step.n ? "step" : undefined}
               title={`${step.title}: ${step.note || SAYS[step.state]}`}
               onClick={() => ui?.unfold(step.n)}
             >

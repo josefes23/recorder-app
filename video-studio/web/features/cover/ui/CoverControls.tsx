@@ -168,7 +168,7 @@ export function CoverControls() {
         </div>
         {candidates.length === 0 && (
           <p className="hint">
-            Sin escenas, la portada lleva el degradado del tema. Elige fondos en el paso 4
+            Sin escenas, la portada lleva el degradado del tema. Elige fondos en el paso 7
             {images.choice ? " o pinta una imagen con IA." : "."}
           </p>
         )}

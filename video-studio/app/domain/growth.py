@@ -86,6 +86,18 @@ Importante: no tienes datos en vivo. Todo lo que dices sale de lo que sabes sobr
 {_COMMON}
 Formato: {{"ideas": [{{"title": "...", "angle": "...", "why": "...", "hook": "..."}}], "trends": [{{"topic": "...", "why": "..."}}], "note": "aviso sobre los datos"}}"""
 
+APPLY_PROMPT = f"""Eres un editor de videos cortos verticales (YouTube Shorts, TikTok, Reels). Recibes un video —tema, título, guion y descripción— y UNA recomendación para mejorarlo. Tu trabajo es aplicarla.
+
+Reglas:
+- Cambia solo lo que la recomendación pide. Si habla del gancho, del ritmo, de la claridad o del cierre, reescribe el guion; si habla del título, el título; si habla de la descripción, la descripción. Lo demás queda igual, palabra por palabra.
+- Si cambias el guion, devuélvelo ENTERO, no un fragmento. Mantén más o menos la misma duración (unos diez por ciento arriba o abajo) salvo que la recomendación pida otra cosa. Sin markdown ni emojis. Si el guion es un diálogo (líneas que empiezan con «NOMBRE:»), conserva las etiquetas y una intervención por línea.
+- Si cambias el título, conserva los *asteriscos* que marcan la palabra resaltada, de como mucho sesenta caracteres.
+- Si la recomendación no se puede aplicar escribiendo texto (pide otra música, otra hora de publicación, otra imagen…), deja los tres campos en null.
+- Un campo que no cambias va en null, no repetido.
+
+{_COMMON}
+Formato: {{"summary": "qué cambiaste, en una frase", "script": "el guion completo, o null", "title": "el título, o null", "description": "la descripción, o null"}}"""
+
 
 @dataclass(frozen=True)
 class Kind:
@@ -203,6 +215,23 @@ def _trends(data: dict) -> dict:
     return {"ideas": ideas, "trends": trends, "note": _text(data.get("note"))}
 
 
+def _optional_text(value: object, limit: int) -> str | None:
+    if value is None:
+        return None
+    text = "\n".join(" ".join(line.split()) for line in str(value).splitlines()).strip()
+    return text[:limit] or None if text.lower() != "null" else None
+
+
+def _apply(data: dict) -> dict:
+    """Lo que cambia la recomendación. Que no cambie nada es un resultado válido, no un error."""
+    return {
+        "summary": _text(data.get("summary")),
+        "script": _optional_text(data.get("script"), 20000),
+        "title": _optional_text(data.get("title"), 120),
+        "description": _optional_text(data.get("description"), 5000),
+    }
+
+
 KINDS: tuple[Kind, ...] = (
     Kind("hooks", "Ganchos", HOOKS_PROMPT, False, _hooks),
     Kind("retention", "Retención", RETENTION_PROMPT, True, _retention),
@@ -210,6 +239,7 @@ KINDS: tuple[Kind, ...] = (
     Kind("seo", "SEO de la descripción", SEO_PROMPT, True, _seo),
     Kind("score", "Puntaje del video", SCORE_PROMPT, True, _score_video),
     Kind("trends", "Tendencias e ideas", TRENDS_PROMPT, False, _trends),
+    Kind("apply", "Aplicar una recomendación", APPLY_PROMPT, True, _apply),
 )
 BY_ID = {kind.id: kind for kind in KINDS}
 
@@ -236,7 +266,9 @@ def check_inputs(kind: Kind, topic: str, script: str) -> None:
         raise ValidationError("Escribe un tema o el guion para poder aconsejarte.")
 
 
-def build_growth_prompt(topic: str, script: str = "", title: str = "", description: str = "", length: str = "") -> str:
+def build_growth_prompt(
+    topic: str, script: str = "", title: str = "", description: str = "", length: str = "", recommendation: str = "",
+) -> str:
     """Lo que se sabe del video, como mensaje del usuario."""
     lines = [f"Tema: {topic.strip() or 'sin tema'}"]
     if length.strip():
@@ -248,7 +280,29 @@ def build_growth_prompt(topic: str, script: str = "", title: str = "", descripti
         prompt += f"\n\nGuion del video:\n{script.strip()}"
     if description.strip():
         prompt += f"\n\nDescripción actual:\n{description.strip()}"
+    if recommendation.strip():
+        prompt += f"\n\nRecomendación a aplicar:\n{recommendation.strip()}"
     return prompt
+
+
+def unchanged_removed(result: dict, script: str, title: str, description: str) -> dict:
+    """
+    Lo que de verdad cambia: un campo que el modelo devolvió igual que estaba
+    cuenta como no cambiado (None). Se compara sin tener en cuenta espacios,
+    saltos de línea ni los *asteriscos* del título.
+    """
+
+    def same(a: str | None, b: str) -> bool:
+        return " ".join((a or "").replace("*", "").split()) == " ".join(b.replace("*", "").split())
+
+    return {
+        "summary": result["summary"],
+        "script": None if result["script"] is None or same(result["script"], script) else result["script"],
+        "title": None if result["title"] is None or same(result["title"], title) else result["title"],
+        "description": None
+        if result["description"] is None or same(result["description"], description)
+        else result["description"],
+    }
 
 
 def _json_object(raw: str | None) -> dict:

@@ -19,7 +19,7 @@ import type { Background } from "@/domain/background";
 import type { Track } from "@/domain/music";
 import type { FormatId } from "@/domain/production";
 import type { Style } from "@/domain/captions";
-import type { Config } from "@/domain/config";
+import type { Config, ElevenLabs } from "@/domain/config";
 import { readSaved, type ImageSettings, type ImageSettingsDraft } from "@/domain/illustration";
 import type { VideoItem } from "@/domain/library";
 import type { Take } from "@/domain/narration";
@@ -41,7 +41,21 @@ import type { Writer, WriterDraft } from "@/domain/writer";
  * desde su mismo origen.
  */
 
-type ConfigDto = { voices: Voice[]; default_style: Style; writer: string | null; generator: string };
+type ConfigDto = {
+  voices: Voice[];
+  elevenlabs: ElevenLabs;
+  default_style: Style;
+  writer: string | null;
+  generator: string;
+};
+
+const toConfig = (dto: ConfigDto): Config => ({
+  voices: dto.voices,
+  elevenlabs: dto.elevenlabs,
+  defaultStyle: dto.default_style,
+  writer: dto.writer,
+  generator: dto.generator,
+});
 
 type AnimationSettingsDto = Omit<AnimationSettings, "usdPerSecond"> & { usd_per_second: number };
 
@@ -68,15 +82,13 @@ const post = <T,>(path: string, body: unknown): Promise<T> =>
   request<T>(path, { method: "POST", body: JSON.stringify(body) });
 
 export const httpGateway: StudioGateway = {
-  async config(): Promise<Config> {
-    const dto = await request<ConfigDto>("/api/config");
-    return {
-      voices: dto.voices,
-      defaultStyle: dto.default_style,
-      writer: dto.writer,
-      generator: dto.generator,
-    };
-  },
+  config: async (): Promise<Config> => toConfig(await request<ConfigDto>("/api/config")),
+
+  refreshElevenLabsVoices: async (): Promise<Config> =>
+    toConfig(await post<ConfigDto>("/api/elevenlabs/refresh", {})),
+
+  saveElevenLabsKey: async (apiKey: string): Promise<Config> =>
+    toConfig(await post<ConfigDto>("/api/elevenlabs", { api_key: apiKey })),
 
   writer: () => request<Writer>("/api/writer"),
 
@@ -246,5 +258,9 @@ export const httpGateway: StudioGateway = {
   posterUrl: (id, version) => `/api/videos/${id}/poster?v=${encodeURIComponent(version)}`,
   requestTake: (input) => post<Take>("/api/takes", input),
   take: (key) => request<Take>(`/api/takes/${encodeURIComponent(key)}`),
+  sampleVoice: async (voice, rate, pitch) => {
+    const sample = await post<{ key: string }>("/api/samples", { voice, rate, pitch });
+    return `/api/samples/${encodeURIComponent(sample.key)}/audio`;
+  },
   takeAudioUrl: (key) => `/api/takes/${encodeURIComponent(key)}/audio`,
 };

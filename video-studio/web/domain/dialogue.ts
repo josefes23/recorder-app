@@ -59,7 +59,8 @@ export function assignVoices(
   narrator: string,
   current: DialogueVoices = {},
 ): DialogueVoices {
-  const pool = voices.filter((v) => v.id !== narrator);
+  // Solo edge-tts por defecto: una voz de ElevenLabs gasta créditos y la elige el usuario, no el azar.
+  const pool = voices.filter((v) => v.id !== narrator && v.provider !== "elevenlabs");
   const taken = new Set(speakers.map((s) => current[s]).filter(Boolean));
   const assigned: DialogueVoices = {};
   let next = 0;

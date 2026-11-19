@@ -9,12 +9,16 @@ export type StepsUi = {
   fold: (ns: number[]) => void;
   unfold: (n: number) => void;
   unfoldAll: () => void;
+  /** El paso que se está mirando (el que cruza la mitad de la pantalla), o el último donde se tocó algo. */
+  current: number | null;
+  setCurrent: (n: number) => void;
 };
 
 const StepsContext = createContext<StepsUi | null>(null);
 
 export function StepsProvider({ children }: { children: ReactNode }) {
   const [folded, setFolded] = useState<ReadonlySet<number>>(() => new Set());
+  const [current, setCurrent] = useState<number | null>(null);
 
   const toggle = useCallback(
     (n: number) =>
@@ -39,7 +43,10 @@ export function StepsProvider({ children }: { children: ReactNode }) {
   );
   const unfoldAll = useCallback(() => setFolded(new Set()), []);
 
-  const value = useMemo(() => ({ folded, toggle, fold, unfold, unfoldAll }), [folded, toggle, fold, unfold, unfoldAll]);
+  const value = useMemo(
+    () => ({ folded, toggle, fold, unfold, unfoldAll, current, setCurrent }),
+    [folded, toggle, fold, unfold, unfoldAll, current],
+  );
   return <StepsContext.Provider value={value}>{children}</StepsContext.Provider>;
 }
 

@@ -14,6 +14,7 @@ REPLIES = {
     "titles": {"titles": [{"text": "A", "score": 40, "why": "x"}, {"text": "B", "score": "88", "why": "y"}]},
     "seo": {"score": 55, "improved": "  Una   descripción\n\n #tag ", "tags": ["#Uno", "dos"], "tips": ["más clave"]},
     "score": {"total": 71, "parts": [{"name": "Gancho", "score": 80, "note": "ok"}], "actions": ["a", "b"]},
+    "apply": {"summary": "Gancho nuevo", "script": "Nuevo gancho. El guion.", "title": None, "description": None},
     "trends": {"ideas": [{"title": "Idea", "angle": "a", "why": "w", "hook": "h"}], "trends": [{"topic": "t", "why": "w"}]},
 }
 
@@ -91,3 +92,52 @@ class GrowthTests(unittest.TestCase):
         growth.handle_request(growth.request("hooks", "tema"))
         self.assertEqual(f.composer.calls[0][3], "Dame ganchos picantes. Solo JSON.")
         self.assertIn("growth_hooks", [p["id"] for p in book.catalog()])
+
+
+class ApplyTests(unittest.TestCase):
+    SCRIPT = "ANA: Hola.\nLUIS: Qué tal."
+
+    def _run(self, reply, **given):
+        studio, f = make_studio(credentials=DictCredentials(NVIDIA_API_KEY="nv"), composer=FakeComposer(json.dumps(reply)))
+        args = {"topic": "Sueño", "script": self.SCRIPT, "title": "Lo que *nadie* dice", "description": "desc", **given}
+        event = studio.growth.request(
+            "apply", args["topic"], args["script"], args["title"], args["description"], "", "Abre con una pregunta",
+        )
+        studio.growth.handle_request(event)
+        return studio.outcome(event.key), f
+
+    def test_a_recommendation_is_required(self):
+        studio, _ = make_studio(credentials=DictCredentials(NVIDIA_API_KEY="nv"), composer=FakeComposer("{}"))
+        with self.assertRaisesRegex(ValidationError, "recomendación"):
+            studio.growth.request("apply", "tema", "un guion", "", "", "", "  ")
+
+    def test_the_model_sees_the_video_and_the_recommendation_and_a_dialogue_keeps_its_lines(self):
+        _, f = self._run({"summary": "x", "script": None, "title": None, "description": None})
+        prompt = f.composer.calls[0][4]
+        self.assertIn("Recomendación a aplicar:\nAbre con una pregunta", prompt)
+        self.assertIn("ANA: Hola.\nLUIS: Qué tal.", prompt)
+
+    def test_only_what_really_changes_comes_back(self):
+        outcome, _ = self._run({
+            "summary": "Nuevo gancho",
+            "script": "ANA: ¿Viste?\nLUIS: Qué tal.",
+            "title": "Lo que nadie dice",  # igual que el de ahora, sin asteriscos
+            "description": "desc",
+        })
+        result = outcome["result"]
+        self.assertEqual(outcome["status"], "completed")
+        self.assertEqual(result["script"], "ANA: ¿Viste?\nLUIS: Qué tal.")
+        self.assertIsNone(result["title"])
+        self.assertIsNone(result["description"])
+
+    def test_a_recommendation_that_changes_nothing_is_a_valid_answer(self):
+        for reply in (
+            {"summary": "Se arregla publicando de noche", "script": None, "title": None, "description": None},
+            {"summary": "Igual", "script": "ANA: Hola. LUIS: Qué tal.", "title": "null"},
+        ):
+            outcome, _ = self._run(reply)
+            self.assertEqual(outcome["status"], "completed")
+            self.assertEqual(
+                {k: outcome["result"][k] for k in ("script", "title", "description")},
+                {"script": None, "title": None, "description": None},
+            )

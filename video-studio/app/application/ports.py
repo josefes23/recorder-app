@@ -24,6 +24,7 @@ from app.domain.saved_characters import SavedCharacter
 from app.domain.stock import StockClip
 from app.domain.style import CaptionStyle
 from app.domain.video import NewVideo, RenderResult, RenderSpec, Video
+from app.domain.voice import Voice
 from app.domain.voice_take import TakeRequest, VoiceTake
 from app.domain.writer import Provider
 
@@ -154,6 +155,13 @@ class VoiceSynthesizer(Protocol):
     """
 
     def synthesize(self, request: TakeRequest) -> tuple[bytes, list[dict], float]: ...
+
+
+class RemoteVoices(Protocol):
+    """Las voces de una cuenta de pago (ElevenLabs): consultarlas gasta una llamada, no créditos."""
+
+    def ready(self) -> bool: ...
+    def voices(self) -> list[Voice]: ...
 
 
 class TakeStore(Protocol):

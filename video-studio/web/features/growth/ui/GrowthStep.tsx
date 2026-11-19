@@ -1,5 +1,6 @@
 "use client";
 
+import { STEP } from "@/domain/steps";
 import { GROWTH_KINDS, GROWTH_LABELS, growthBlocker, type GrowthKind } from "@/domain/growth";
 import { useGrowth } from "@/features/growth/model/use-growth";
 import { GrowthResult } from "@/features/growth/ui/GrowthResults";
@@ -29,7 +30,7 @@ export function GrowthStep() {
   const { label } = useWriter();
 
   return (
-    <Step n={7} title="Optimizar" note="ganchos, retención, títulos, SEO y puntaje">
+    <Step n={STEP.growth} title="Optimizar" lead="Revisa y mejora el video antes de pintar las imágenes: si algo cambia el guion, aún no hay nada que rehacer." note="ganchos, retención, títulos, SEO y puntaje">
       <p className="hint">
         Consejos del modelo del guion sobre este video. No consulta datos en vivo de YouTube, TikTok ni
         Instagram: son criterio de un editor que conoce cómo funcionan, no estadísticas.

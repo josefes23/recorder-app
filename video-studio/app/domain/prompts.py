@@ -173,6 +173,7 @@ _GROWTH_WHEN = {
     "seo": "Al evaluar la descripción en el paso «Optimizar» o junto a ella.",
     "score": "Al puntuar el video entero en el paso «Optimizar».",
     "trends": "Al pedir tendencias e ideas en el paso «Optimizar».",
+    "apply": "Al pulsar «Aplicar» en una recomendación del puntaje del video.",
 }
 
 PROMPTS: tuple[PromptSpec, ...] = (

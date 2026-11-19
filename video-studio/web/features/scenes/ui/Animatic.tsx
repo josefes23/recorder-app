@@ -143,7 +143,7 @@ export function Animatic() {
     <div className="stack">
       <div className={`frame animatic${format === "16:9" ? " frame--wide" : ""}`}>
         {shots.length === 0 ? (
-          <p className="frame-empty">Añade escenas en el paso 5 para ver cómo pasan con la voz.</p>
+          <p className="frame-empty">Añade escenas en el paso 7 para ver cómo pasan con la voz.</p>
         ) : (
           <>
             {shot?.src && (

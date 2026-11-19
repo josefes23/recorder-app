@@ -28,7 +28,15 @@ export type StudioProgress = {
   score: number | null;
 };
 
-export const STEP_TITLES = ["Guion", "Voz", "Música", "Subtítulos", "Escenas", "Descripción", "Optimizar"] as const;
+/**
+ * El orden de los pasos. Escenas va al final a propósito: pintar las imágenes
+ * cuesta tiempo y dinero, y se hace una vez que el guion, la voz y los consejos
+ * de Optimizar ya están decididos. Si un consejo cambia el guion después de
+ * pintar, hay que rehacer las imágenes.
+ */
+export const STEP = { script: 1, voice: 2, sound: 3, captions: 4, description: 5, growth: 6, scenes: 7 } as const;
+
+export const STEP_TITLES = ["Guion", "Voz", "Música", "Subtítulos", "Descripción", "Optimizar", "Escenas"] as const;
 
 function scenesStep(scenes: Scene[], timelineIssues: boolean): [StepState, string] {
   if (scenes.length === 0) return ["optional", "fondo generado"];
@@ -53,9 +61,9 @@ export function stepStates(progress: StudioProgress): StepInfo[] {
     ["done", ""],
     progress.music ? ["done", "con música"] : ["optional", "solo la voz"],
     ["done", ""],
-    scenesStep(progress.scenes, progress.timelineIssues),
     progress.description ? ["done", "escrita"] : ["optional", "sin escribir"],
     progress.score === null ? ["optional", "ganchos, títulos y puntaje"] : ["done", `puntaje ${progress.score}`],
+    scenesStep(progress.scenes, progress.timelineIssues),
   ];
   return states.map(([state, note], i) => ({ n: i + 1, title: STEP_TITLES[i], state, note }));
 }

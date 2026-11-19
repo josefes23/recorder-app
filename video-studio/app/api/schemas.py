@@ -55,6 +55,12 @@ class TakeIn(BaseModel):
     voices: dict = Field(default_factory=dict)
 
 
+class SampleIn(BaseModel):
+    voice: str = DEFAULT_VOICE
+    rate: str = DEFAULT_RATE
+    pitch: str = DEFAULT_PITCH
+
+
 class PreviewRequest(BaseModel):
     caption: str = ""
     topic: str = ""
@@ -99,6 +105,8 @@ class GrowthRequest(BaseModel):
     description: str = ""
     #: Reel, corto o «90s»: el objetivo de duración.
     length: str = ""
+    #: Solo para `apply`: la recomendación del puntaje que hay que aplicar.
+    recommendation: str = ""
 
 
 class RenderRequest(BaseModel):
@@ -124,6 +132,11 @@ class DownloadRequest(BaseModel):
     ids: list[int] = Field(default_factory=list)
     #: La orientación de los clips: la del video.
     format: str = "9:16"
+
+
+class ElevenLabsKey(BaseModel):
+    #: Vacía quita la clave guardada.
+    api_key: str = ""
 
 
 class ImageSettingsRequest(BaseModel):

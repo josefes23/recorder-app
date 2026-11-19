@@ -31,16 +31,16 @@ export default function Page() {
         <Topbar />
 
         <main className="workbench">
-          {/* Los pasos en un solo panel: son una secuencia, no herramientas
-              sueltas, y los filetes lo cuentan mejor que las cajas */}
-          <div className="panel">
+          {/* Los pasos son una secuencia, no herramientas sueltas: cada uno es una tarjeta
+              con su color y el índice de arriba marca el que se está mirando */}
+          <div className="steps">
             <ScriptStep settings={<WriterSettings />} />
             <VoiceStep />
             <SoundStep />
             <CaptionsStep />
-            <ScenesStep settings={<ImageSettingsPanel />} />
             <DescriptionStep />
             <GrowthStep />
+            <ScenesStep settings={<ImageSettingsPanel />} />
           </div>
 
           <aside className="rail">

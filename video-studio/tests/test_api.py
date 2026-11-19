@@ -33,7 +33,7 @@ class ApiTests(unittest.TestCase):
 
     def test_config_and_writer(self):
         config = self.client.get("/api/config").json()
-        self.assertEqual(config["voices"][0], {"id": "es-MX-DaliaNeural", "label": "Dalia — México ♀"})
+        self.assertEqual(config["voices"][0], {"id": "es-MX-DaliaNeural", "label": "Dalia — México ♀", "provider": "edge", "preview": ""})
         self.assertEqual(config["default_style"]["font_size"], 92)
         self.assertEqual(config["writer"], "NVIDIA · llama-3.3-70b-instruct")
         self.assertEqual(config["generator"], "/fake/auto-video-generator")

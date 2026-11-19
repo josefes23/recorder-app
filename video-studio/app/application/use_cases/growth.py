@@ -20,7 +20,9 @@ from app.domain.growth import (
     kind_by_id,
     parse_growth,
     prompt_id,
+    unchanged_removed,
 )
+from app.domain.dialogue import clean_lines
 from app.domain.script import clean_script
 
 CONSUMER_GROUP = "growth"
@@ -42,12 +44,16 @@ class GrowthUseCases:
     # Desde la API ------------------------------------------------------------ #
 
     def request(
-        self, kind_id: str, topic: str, script: str = "", title: str = "", description: str = "", length: str = ""
+        self, kind_id: str, topic: str, script: str = "", title: str = "", description: str = "", length: str = "",
+        recommendation: str = "",
     ) -> Event:
         """Encola el consejo y devuelve el evento con la clave del trabajo."""
         kind = kind_by_id(kind_id)
-        text = clean_script(script)
+        # Al aplicar una recomendación el guion vuelve reescrito: sin aplanar, para no perder las líneas de un diálogo.
+        text = clean_lines(script) if kind.id == "apply" else clean_script(script)
         check_inputs(kind, topic, text)
+        if kind.id == "apply" and not recommendation.strip():
+            raise ValidationError("Falta la recomendación que hay que aplicar.")
         if not self._writer.available():
             raise ValidationError(
                 "Los consejos los escribe el modelo del guion: añade una clave en «Modelo del guion»."
@@ -62,13 +68,15 @@ class GrowthUseCases:
                 "title": plain_title(title),
                 "description": description.strip(),
                 "length": length.strip(),
+                "recommendation": recommendation.strip(),
             },
         )
 
     # Desde el consumidor ------------------------------------------------------ #
 
     def advise(
-        self, kind_id: str, topic: str, script: str = "", title: str = "", description: str = "", length: str = ""
+        self, kind_id: str, topic: str, script: str = "", title: str = "", description: str = "", length: str = "",
+        recommendation: str = "",
     ) -> dict:
         """Pide el consejo ahora, bloqueando. Lo llama el consumidor, nunca la API."""
         kind = kind_by_id(kind_id)
@@ -80,9 +88,12 @@ class GrowthUseCases:
             self._writer.model_for(provider),
             self._writer.api_key(provider),
             self._prompts.template(prompt_id(kind)) or kind.prompt,
-            build_growth_prompt(topic, script, title, description, length),
+            build_growth_prompt(topic, script, title, description, length, recommendation),
         )
-        return parse_growth(kind, raw)
+        result = parse_growth(kind, raw)
+        if kind.id == "apply":
+            return unchanged_removed(result, script, title, description)
+        return result
 
     def handle_request(self, event: Event) -> None:
         """Atiende un `growth.requested` y publica su desenlace."""
@@ -94,7 +105,7 @@ class GrowthUseCases:
         try:
             result = self.advise(
                 p.get("kind", ""), p.get("topic", ""), p.get("script", ""),
-                p.get("title", ""), p.get("description", ""), p.get("length", ""),
+                p.get("title", ""), p.get("description", ""), p.get("length", ""), p.get("recommendation", ""),
             )
         except DomainError as exc:
             self._events.publish(GROWTH_FAILED, event.key, {"detail": str(exc)})

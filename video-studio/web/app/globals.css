@@ -49,6 +49,15 @@
   --t-base: 15px;
   --t-lg: 19px;
 
+  /* Un color por paso: quien se pierde se ubica por el color antes que por el número */
+  --step-1: #ff8a4c;  /* Guion */
+  --step-2: #4fc3c8;  /* Voz */
+  --step-3: #a78bfa;  /* Música */
+  --step-4: #f2c94c;  /* Subtítulos */
+  --step-5: #5aa9ff;  /* Descripción */
+  --step-6: #4ccf8f;  /* Optimizar */
+  --step-7: #f472b6;  /* Escenas */
+
   --r-sm: 6px;
   --r: 9px;
   --r-lg: 13px;
@@ -94,6 +103,58 @@
   border-radius: var(--r-sm);
 }
 :where(textarea) { resize: vertical; line-height: 1.6; }
+
+/* Los selects nativos con la misma piel que el resto de los campos: sin la
+   flecha del sistema, con una propia, y con la lista desplegada oscura. */
+:where(select) {
+  appearance: none;
+  color-scheme: dark;
+  padding-right: 32px;
+  cursor: pointer;
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%238d95a6' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M1.5 1.75 6 6.25l4.5-4.5'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+  transition: border-color 0.12s;
+}
+:where(select):hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+:where(select):disabled { opacity: 0.55; cursor: not-allowed; }
+:where(select option, select optgroup) { background: var(--surface); color: var(--text); }
+:where(select optgroup) { color: var(--muted); font-size: var(--t-xs); }
+
+/* El desplegable propio (shared/ui/Select): grupos, teclado y una lista con la misma piel */
+.select { position: relative; min-width: 0; flex: 1 1 200px; }
+.select-trigger {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: var(--s2);
+  padding: 9px 11px; text-align: left; cursor: pointer;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+  transition: border-color 0.12s;
+}
+.select-trigger:hover, .select.is-open .select-trigger { border-color: var(--accent); }
+.select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-chevron { flex: none; color: var(--muted); transition: transform 0.12s; }
+.select.is-open .select-chevron { transform: rotate(180deg); }
+.select-list {
+  position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px);
+  max-height: 280px; overflow-y: auto; padding: var(--s1);
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  color-scheme: dark; scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+}
+.select-list.is-up { top: auto; bottom: calc(100% + 4px); }
+.select-group {
+  padding: 8px 9px 4px; font-size: var(--t-xs); font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--muted);
+}
+.select-option {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s2);
+  padding: 7px 9px; border-radius: var(--r-sm); cursor: pointer;
+}
+.select-option.is-active { background: var(--surface-2); }
+.select-option[aria-selected="true"] { color: var(--accent); }
+.select-check { flex: none; font-size: var(--t-xs); }
+
 :where(input[type="range"]) { width: 100%; accent-color: var(--accent); }
 :where(input[type="checkbox"]) { accent-color: var(--accent); }
 
@@ -197,35 +258,51 @@
 
 /* ------------------------------------------------------------------- pasos */
 
-/* Las cuatro fases son una secuencia real: el guion fija la duración, la
-   duración condiciona las escenas. Por eso van numeradas y en un mismo panel,
-   separadas por filetes en lugar de flotar como cajas sueltas. */
+/* Los pasos son una secuencia real: el guion fija la duración, la duración
+   condiciona las escenas. Cada uno es su propia tarjeta, con su color, su
+   número grande y una línea que dice para qué sirve; el que se está mirando
+   se marca (`is-current`). */
+.steps { display: flex; flex-direction: column; gap: var(--s4); min-width: 0; }
 .step {
-  display: flex; flex-direction: column; gap: var(--s3); padding: var(--s4);
+  --hue: var(--accent);
+  display: flex; flex-direction: column; gap: var(--s3); padding: var(--s5);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--hue) 8%, var(--surface)) 0, var(--surface) 150px);
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  box-shadow: inset 0 3px 0 var(--hue);
+  transition: border-color 0.15s, box-shadow 0.15s;
   /* El índice de arriba salta aquí: que la barra fija no tape la cabecera */
   scroll-margin-top: calc(var(--topbar) + var(--s3));
 }
-.step + .step { border-top: 1px solid var(--line); }
-.step.is-folded { padding-block: var(--s3); }
+.step.is-current {
+  border-color: color-mix(in srgb, var(--hue) 55%, var(--line));
+  box-shadow: inset 0 3px 0 var(--hue), 0 0 0 1px color-mix(in srgb, var(--hue) 22%, transparent), 0 12px 32px rgba(0, 0, 0, 0.28);
+}
+.step.is-folded { padding-block: var(--s3); gap: 0; background: var(--surface); }
+@media (max-width: 640px) { .step { padding: var(--s4); } }
 /* El cuerpo mide su propio ancho: los pasos se reordenan según el sitio que
    tienen, no según la ventana (el panel de salida se lleva una parte). */
 .step-body { display: flex; flex-direction: column; gap: var(--s3); container-type: inline-size; }
 
-.step-head { display: flex; align-items: baseline; gap: var(--s2); }
+.step-head { display: flex; align-items: center; gap: var(--s3); }
 .step-toggle {
-  display: inline-flex; align-items: baseline; gap: var(--s2);
+  display: inline-flex; align-items: center; gap: var(--s3);
   background: none; border: none; padding: 0; color: inherit; font: inherit; cursor: pointer;
 }
 .step-toggle:hover .step-caret { color: var(--text); }
 .step-caret { color: var(--muted); font-size: var(--t-xs); transition: transform 0.15s; }
 .step.is-folded .step-caret { transform: rotate(-90deg); }
 .step-n {
-  font-family: var(--mono); font-size: var(--t-xs);
-  color: var(--accent); background: var(--accent-soft);
-  border-radius: var(--r-sm); padding: 1px 6px; flex-shrink: 0;
+  display: grid; place-items: center; flex: none; width: 32px; height: 32px;
+  font-family: var(--mono); font-size: var(--t-base); font-weight: 700;
+  color: var(--hue); background: color-mix(in srgb, var(--hue) 16%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--hue) 45%, transparent); border-radius: 50%;
 }
-.step-title { font-size: var(--t-sm); font-weight: 600; letter-spacing: 0.01em; }
+.step.is-folded .step-n { width: 26px; height: 26px; font-size: var(--t-sm); }
+.step-title { font-size: 18px; font-weight: 650; letter-spacing: 0.005em; }
+.step.is-folded .step-title { font-size: var(--t-base); }
+.step-lead { margin: calc(var(--s1) * -1) 0 var(--s1); max-width: 62ch; font-size: var(--t-sm); color: var(--muted); }
 .step-note { font-size: var(--t-xs); color: var(--muted); margin-left: auto; text-align: right; }
+.step :where(input[type="range"], input[type="checkbox"]) { accent-color: var(--hue); }
 
 /* ------------------------------------------------------------------ botones */
 
@@ -775,7 +852,8 @@ label.btn, a.btn { display: inline-block; text-decoration: none; }
 }
 .step-link:hover { color: var(--text); border-color: var(--line); }
 .step-link-icon { width: 1.1em; text-align: center; font-weight: 700; }
-.step-link-n { color: inherit; }
+.step-link-n { color: var(--hue, inherit); font-weight: 700; }
+.step-link.is-current { color: var(--text); background: color-mix(in srgb, var(--hue) 16%, transparent); border-color: color-mix(in srgb, var(--hue) 45%, transparent); }
 .step-link.is-done .step-link-icon { color: var(--ok); }
 .step-link.is-warn .step-link-icon, .step-link.is-warn { color: var(--warn); }
 .step-link.is-busy .step-link-icon { color: var(--accent); }
@@ -1009,3 +1087,6 @@ ol.growth-list { counter-reset: growth; }
 .confirm-box p { margin: 0; font-size: var(--t-sm); line-height: 1.55; }
 .confirm-box ul { margin: 0; padding-left: 1.2em; font-size: var(--t-xs); color: var(--warn); line-height: 1.5; }
 .confirm-actions { justify-content: flex-end; }
+
+/* El botón «Aplicar» de cada recomendación del puntaje */
+.growth-apply { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-left: var(--s2); vertical-align: middle; }

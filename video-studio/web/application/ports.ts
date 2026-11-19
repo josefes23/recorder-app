@@ -158,6 +158,8 @@ export type GrowthRequest = {
   description: string;
   /** Reel, corto o «90s»: el objetivo de duración. */
   length: string;
+  /** Solo para aplicar una recomendación del puntaje. */
+  recommendation?: string;
 };
 
 /** La portada tal como está en el estudio; el tema da color al degradado si no hay imagen. */
@@ -173,6 +175,10 @@ export type CoverRequest = Cover & { topic: string; format: FormatId };
  */
 export interface StudioGateway {
   config(): Promise<Config>;
+  /** Guarda la clave de ElevenLabs (vacía la quita) y devuelve la configuración con sus voces. */
+  saveElevenLabsKey(apiKey: string): Promise<Config>;
+  /** Vuelve a pedir las voces de la cuenta de ElevenLabs, sin esperar a que venza la lista guardada. */
+  refreshElevenLabsVoices(): Promise<Config>;
 
   writer(): Promise<Writer>;
   saveWriter(draft: WriterDraft): Promise<Writer>;
@@ -264,4 +270,6 @@ export interface StudioGateway {
   /** Una toma ya hecha: los tiempos reales con que se renderizó un video. */
   take(key: string): Promise<Take>;
   takeAudioUrl(key: string): string;
+  /** Cómo suena una voz: una frase corta. Devuelve la URL del audio. Gratis con edge-tts; con ElevenLabs gasta pocos créditos. */
+  sampleVoice(voice: string, rate: string, pitch: string): Promise<string>;
 }

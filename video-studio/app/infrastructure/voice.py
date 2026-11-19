@@ -14,6 +14,7 @@ from pathlib import Path
 from app.domain.dialogue import NARRATOR, Line, split_dialogue
 from app.domain.errors import EngineError
 from app.domain.voice_take import TakeRequest
+from app.infrastructure.elevenlabs import ElevenLabsClient, VoiceRouter
 from app.infrastructure.soundtrack import synthesize_dialogue
 
 
@@ -25,8 +26,9 @@ def audio_seconds(path: Path) -> float:
 
 
 class EngineVoiceSynthesizer:
-    def __init__(self, gen, scratch: Path) -> None:
-        self._gen = gen
+    def __init__(self, gen, scratch: Path, eleven: ElevenLabsClient | None = None) -> None:
+        # Cada voz va a su proveedor: edge-tts por el motor, ElevenLabs por su API.
+        self._gen = VoiceRouter(gen, eleven)
         #: Dónde se escribe el audio mientras se genera; se borra al acabar.
         self._scratch = scratch
 

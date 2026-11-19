@@ -27,6 +27,11 @@ class Paths:
         return self.data / "thumbs"
 
     @property
+    def samples(self) -> Path:
+        """Las pruebas de voz, aparte de las tomas: probar voces no desaloja el audio de un guion."""
+        return self.data / "samples"
+
+    @property
     def takes(self) -> Path:
         """Las tomas de voz: el audio y el segundo de cada palabra."""
         return self.data / "takes"
