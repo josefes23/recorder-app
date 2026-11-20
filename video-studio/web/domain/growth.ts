@@ -53,6 +53,19 @@ export function growthBlocker(kind: GrowthKind, topic: string, script: string): 
 }
 
 /** Cómo se pinta un puntaje: de 0 a 100, por tramos. */
+/**
+ * El encargo para corregir el guion con varias recomendaciones a la vez. Se
+ * manda por el mismo camino que «Aplicar» una sola: el modelo devuelve el
+ * guion entero reescrito y se pregunta antes de rehacer lo que quede desfasado.
+ */
+export function scriptFixInstruction(items: string[]): string {
+  const list = items.map((item) => item.trim()).filter(Boolean);
+  return [
+    "Corrige el guion aplicando TODAS estas recomendaciones a la vez. Cambia solo el guion; título y descripción quedan igual.",
+    ...list.map((item, i) => `${i + 1}. ${item}`),
+  ].join("\n");
+}
+
 export type ScoreTone = "bad" | "mid" | "good";
 
 export const scoreTone = (score: number): ScoreTone => (score >= 75 ? "good" : score >= 50 ? "mid" : "bad");

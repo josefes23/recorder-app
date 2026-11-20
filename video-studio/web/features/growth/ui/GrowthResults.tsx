@@ -2,14 +2,29 @@
 
 import { useState } from "react";
 
-import { REGENERATION_LABELS, scoreTone, type GrowthKind, type GrowthResults } from "@/domain/growth";
+import {
+  REGENERATION_LABELS,
+  scoreTone,
+  scriptFixInstruction,
+  type GrowthKind,
+  type GrowthResults,
+} from "@/domain/growth";
 import { useStudioActions } from "@/features/studio/model/use-studio-actions";
 import { CopyButton } from "@/shared/ui/CopyButton";
 import { useConfirm } from "@/shared/ui/confirm";
 
-export function ScoreBadge({ score, label }: { score: number; label?: string }) {
+export function ScoreBadge({
+  score,
+  label,
+}: {
+  score: number;
+  label?: string;
+}) {
   return (
-    <span className={`growth-score is-${scoreTone(score)}`} title={label ? `${label}: ${score} de 100` : `${score} de 100`}>
+    <span
+      className={`growth-score is-${scoreTone(score)}`}
+      title={label ? `${label}: ${score} de 100` : `${score} de 100`}
+    >
       <b className="num">{score}</b>
       <span className="visually-hidden"> de 100</span>
     </span>
@@ -42,7 +57,8 @@ export function GrowthResult<K extends GrowthKind>({
           {hooks.map((hook) => (
             <li key={hook.text} className="growth-item">
               <p className="growth-main">
-                {hook.type && <span className="chip">{hook.type}</span>} {hook.text}
+                {hook.type && <span className="chip">{hook.type}</span>}{" "}
+                {hook.text}
               </p>
               {hook.why && <p className="hint">{hook.why}</p>}
               <div className="cluster">
@@ -52,9 +68,15 @@ export function GrowthResult<K extends GrowthKind>({
                   disabled={appliedHook === hook.text}
                   title="Lo pone al principio del guion; si ya pusiste otro gancho, lo sustituye"
                 >
-                  {appliedHook === hook.text ? "En el guion" : "Usar como primera frase"}
+                  {appliedHook === hook.text
+                    ? "En el guion"
+                    : "Usar como primera frase"}
                 </button>
-                <CopyButton text={hook.text} label="Copiar" className="btn btn--sm" />
+                <CopyButton
+                  text={hook.text}
+                  label="Copiar"
+                  className="btn btn--sm"
+                />
               </div>
             </li>
           ))}
@@ -79,6 +101,20 @@ export function GrowthResult<K extends GrowthKind>({
               </li>
             ))}
           </ul>
+          {r.issues.length > 0 && (
+            <p className="growth-sub">
+              <ApplyRecommendation
+                text={scriptFixInstruction(
+                  r.issues.map(
+                    (i) =>
+                      `${i.at ? `«${i.at}»: ` : ""}${i.problem} Qué hacer: ${i.fix}`,
+                  ),
+                )}
+                label="Corregir guion con estas"
+                busy="Corrigiendo…"
+              />
+            </p>
+          )}
           {r.keep.length > 0 && (
             <p className="hint">
               <b>Funciona, no lo toques:</b> {r.keep.join(" · ")}
@@ -98,7 +134,11 @@ export function GrowthResult<K extends GrowthKind>({
               </p>
               {title.why && <p className="hint">{title.why}</p>}
               <div className="cluster">
-                <CopyButton text={title.text} label="Copiar" className="btn btn--sm" />
+                <CopyButton
+                  text={title.text}
+                  label="Copiar"
+                  className="btn btn--sm"
+                />
               </div>
             </li>
           ))}
@@ -110,7 +150,8 @@ export function GrowthResult<K extends GrowthKind>({
       return (
         <div className="growth-body">
           <p className="growth-head">
-            <ScoreBadge score={r.score} label="Descripción actual" /> la descripción de ahora
+            <ScoreBadge score={r.score} label="Descripción actual" /> la
+            descripción de ahora
           </p>
           {r.tips.length > 0 && (
             <ul className="growth-tips">
@@ -121,11 +162,24 @@ export function GrowthResult<K extends GrowthKind>({
           )}
           <pre className="growth-proposal">{r.improved}</pre>
           <div className="cluster">
-            <button className="btn btn--sm" onClick={() => actions.applySeo(r.improved)}>
+            <button
+              className="btn btn--sm"
+              onClick={() => actions.applySeo(r.improved)}
+            >
               Usar esta descripción
             </button>
-            <CopyButton text={r.improved} label="Copiar" className="btn btn--sm" />
-            {r.tags.length > 0 && <CopyButton text={r.tags.join(", ")} label="Copiar etiquetas" className="btn btn--sm" />}
+            <CopyButton
+              text={r.improved}
+              label="Copiar"
+              className="btn btn--sm"
+            />
+            {r.tags.length > 0 && (
+              <CopyButton
+                text={r.tags.join(", ")}
+                label="Copiar etiquetas"
+                className="btn btn--sm"
+              />
+            )}
           </div>
           {r.tags.length > 0 && (
             <p className="growth-tags">
@@ -150,11 +204,16 @@ export function GrowthResult<K extends GrowthKind>({
             {r.parts.map((part) => (
               <li key={part.name}>
                 <span className="growth-part-name">{part.name}</span>
-                <span className={`growth-bar is-${scoreTone(part.score)}`} aria-hidden="true">
+                <span
+                  className={`growth-bar is-${scoreTone(part.score)}`}
+                  aria-hidden="true"
+                >
                   <span style={{ width: `${part.score}%` }} />
                 </span>
                 <b className="num">{part.score}</b>
-                {part.note && <span className="hint growth-part-note">{part.note}</span>}
+                {part.note && (
+                  <span className="hint growth-part-note">{part.note}</span>
+                )}
               </li>
             ))}
           </ul>
@@ -169,6 +228,11 @@ export function GrowthResult<K extends GrowthKind>({
                   </li>
                 ))}
               </ol>
+              <ApplyRecommendation
+                text={scriptFixInstruction(r.actions)}
+                label="Corregir guion con todas"
+                busy="Corrigiendo…"
+              />
             </>
           )}
         </div>
@@ -199,10 +263,17 @@ export function GrowthResult<K extends GrowthKind>({
                   </p>
                 )}
                 <div className="cluster">
-                  <button className="btn btn--sm" onClick={() => actions.useTopic(idea.title)}>
+                  <button
+                    className="btn btn--sm"
+                    onClick={() => actions.useTopic(idea.title)}
+                  >
                     Usar como tema
                   </button>
-                  <CopyButton text={idea.title} label="Copiar" className="btn btn--sm" />
+                  <CopyButton
+                    text={idea.title}
+                    label="Copiar"
+                    className="btn btn--sm"
+                  />
                 </div>
               </li>
             ))}
@@ -238,7 +309,15 @@ type ApplyState =
  * sin más. Si cambia el guion y ya hay escenas pintadas o una toma de voz, eso
  * queda desfasado: antes de rehacerlo —cuesta tiempo y créditos— se pregunta.
  */
-function ApplyRecommendation({ text }: { text: string }) {
+function ApplyRecommendation({
+  text,
+  label = "Aplicar",
+  busy = "Aplicando…",
+}: {
+  text: string;
+  label?: string;
+  busy?: string;
+}) {
   const { planRecommendation, applyRecommendation } = useStudioActions();
   const confirm = useConfirm();
   const [state, setState] = useState<ApplyState>({ step: "idle" });
@@ -247,7 +326,8 @@ function ApplyRecommendation({ text }: { text: string }) {
     setState({ step: "working" });
     const plan = await planRecommendation(text);
     if (!plan) return setState({ step: "idle" }); // el error sale en la tarjeta
-    if (plan.changes.length === 0) return setState({ step: "nothing", summary: plan.summary });
+    if (plan.changes.length === 0)
+      return setState({ step: "nothing", summary: plan.summary });
 
     if (plan.regenerates.length > 0) {
       const accepted = await confirm({
@@ -265,12 +345,28 @@ function ApplyRecommendation({ text }: { text: string }) {
 
   return (
     <span className="growth-apply">
-      <button className="btn btn--sm" disabled={state.step === "working"} onClick={() => void apply()}>
-        {state.step === "working" ? "Aplicando…" : state.step === "applied" ? "Aplicar otra vez" : "Aplicar"}
+      <button
+        className="btn btn--sm"
+        disabled={state.step === "working"}
+        onClick={() => void apply()}
+      >
+        {state.step === "working"
+          ? busy
+          : state.step === "applied"
+            ? `${label} otra vez`
+            : label}
       </button>
-      {state.step === "applied" && <span className="hint"> Aplicado{state.summary ? `: ${state.summary}` : "."}</span>}
+      {state.step === "applied" && (
+        <span className="hint">
+          {" "}
+          Aplicado{state.summary ? `: ${state.summary}` : "."}
+        </span>
+      )}
       {state.step === "nothing" && (
-        <span className="hint"> Sin cambios que hacer{state.summary ? `: ${state.summary}` : "."}</span>
+        <span className="hint">
+          {" "}
+          Sin cambios que hacer{state.summary ? `: ${state.summary}` : "."}
+        </span>
       )}
     </span>
   );

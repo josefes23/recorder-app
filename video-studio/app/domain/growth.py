@@ -86,10 +86,10 @@ Importante: no tienes datos en vivo. Todo lo que dices sale de lo que sabes sobr
 {_COMMON}
 Formato: {{"ideas": [{{"title": "...", "angle": "...", "why": "...", "hook": "..."}}], "trends": [{{"topic": "...", "why": "..."}}], "note": "aviso sobre los datos"}}"""
 
-APPLY_PROMPT = f"""Eres un editor de videos cortos verticales (YouTube Shorts, TikTok, Reels). Recibes un video —tema, título, guion y descripción— y UNA recomendación para mejorarlo. Tu trabajo es aplicarla.
+APPLY_PROMPT = f"""Eres un editor de videos cortos verticales (YouTube Shorts, TikTok, Reels). Recibes un video —tema, título, guion y descripción— y una o varias recomendaciones para mejorarlo. Tu trabajo es aplicarlas todas.
 
 Reglas:
-- Cambia solo lo que la recomendación pide. Si habla del gancho, del ritmo, de la claridad o del cierre, reescribe el guion; si habla del título, el título; si habla de la descripción, la descripción. Lo demás queda igual, palabra por palabra.
+- Cambia solo lo que la recomendación pide (si son varias, aplícalas todas a la vez sin que se pisen). Si habla del gancho, del ritmo, de la claridad o del cierre, reescribe el guion; si habla del título, el título; si habla de la descripción, la descripción. Lo demás queda igual, palabra por palabra.
 - Si cambias el guion, devuélvelo ENTERO, no un fragmento. Mantén más o menos la misma duración (unos diez por ciento arriba o abajo) salvo que la recomendación pida otra cosa. Sin markdown ni emojis. Si el guion es un diálogo (líneas que empiezan con «NOMBRE:»), conserva las etiquetas y una intervención por línea.
 - Si cambias el título, conserva los *asteriscos* que marcan la palabra resaltada, de como mucho sesenta caracteres.
 - Si la recomendación no se puede aplicar escribiendo texto (pide otra música, otra hora de publicación, otra imagen…), deja los tres campos en null.
