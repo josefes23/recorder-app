@@ -584,6 +584,9 @@ label.btn, a.btn { display: inline-block; text-decoration: none; }
   display: block; height: min(72vh, 760px); aspect-ratio: 9 / 16; object-fit: cover;
   border-radius: var(--r-lg); border: 1px solid var(--line); background: #000;
 }
+.lightbox-media.is-wide video, .lightbox-media.is-wide img {
+  height: auto; width: min(80vw, 1100px); max-height: 72vh; aspect-ratio: 16 / 9; object-fit: contain;
+}
 .lightbox-nav { font-size: 24px; line-height: 1; padding: 8px 13px; }
 .lightbox-info {
   display: flex; flex-direction: column; align-items: center; gap: var(--s2);

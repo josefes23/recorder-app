@@ -142,7 +142,7 @@ export function LibraryPanel() {
       {current && (
         <Lightbox
           id={`video-${current.id}`}
-          media={{ kind: "video", src: library.videoUrl(current.id), poster: library.posterUrl(current), player: true }}
+          media={{ kind: "video", src: library.videoUrl(current.id), poster: library.posterUrl(current), player: true, wide: videoFormat(current) === "16:9" }}
           info={
             <>
               <strong>{current.topic}</strong> · {dayLabel(current.created_at)}

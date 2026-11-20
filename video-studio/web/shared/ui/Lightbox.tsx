@@ -12,6 +12,8 @@ export type LightboxMedia = {
    * fondo o un clip: mudo y en bucle, para mirarlo como se verá detrás.
    */
   player?: boolean;
+  /** Horizontal (16:9): el visor se tumba en vez de recortar el video a vertical. */
+  wide?: boolean;
 };
 
 type Props = {
@@ -53,7 +55,7 @@ export function Lightbox({ id, media, info, actions, onPrev, onNext, onClose }: 
               ‹
             </button>
           )}
-          <figure className="lightbox-media">
+          <figure className={`lightbox-media${media.wide ? " is-wide" : ""}`}>
             {media.kind === "video" ? (
               media.player ? (
                 <video key={id} src={media.src} poster={media.poster} autoPlay controls playsInline />

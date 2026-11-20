@@ -405,6 +405,7 @@ export function ScenesStep({ settings }: Props) {
             kind: peeked.kind,
             src: backgrounds.fileUrl(peeked.name),
             poster: backgrounds.thumbUrl(peeked.thumb) || undefined,
+            wide: production.format === "16:9",
           }}
           info={
             <>

@@ -231,7 +231,12 @@ export function BackgroundPicker({ onSelect, onClose }: Props) {
       {peek && peekedClip && results && (
         <Lightbox
           id={`stock-${peekedClip.id}`}
-          media={{ kind: "video", src: peekedClip.play, poster: peekedClip.preview }}
+          media={{
+            kind: "video",
+            src: peekedClip.play,
+            poster: peekedClip.preview,
+            wide: peekedClip.width > peekedClip.height,
+          }}
           info={
             <>
               <strong>{peekedClip.author}</strong> · {peekedClip.duration}s ·{" "}
