@@ -71,6 +71,43 @@ export function stepStates(progress: StudioProgress): StepInfo[] {
   return states.map(([state, note], i) => ({ n: i + 1, title: STEP_TITLES[i], state, note }));
 }
 
+export type NextStep = {
+  n: number;
+  title: string;
+  /** fix: algo falta o está por revisar; wait: llega solo; suggest: opcional pero conviene; render: no queda nada. */
+  kind: "fix" | "wait" | "suggest" | "render";
+  /** Lo que se le dice al usuario, en una frase. */
+  message: string;
+};
+
+/**
+ * Qué toca ahora. Primero el guion (todo depende de él); con el guion listo,
+ * Optimizar antes de pintar nada, porque cambiarlo después obliga a rehacer la
+ * voz y las imágenes; luego lo que falte o esté por revisar; al final, renderizar.
+ */
+export function nextStep(steps: StepInfo[]): NextStep {
+  const script = steps[STEP.script - 1];
+  const growth = steps[STEP.growth - 1];
+  if (script.state === "todo" || script.state === "warn") {
+    return { n: script.n, title: script.title, kind: "fix", message: script.state === "todo" ? "Falta escribir el guion." : `Revisa el guion: ${script.note} para la duración elegida.` };
+  }
+  if (growth.state === "optional") {
+    return {
+      n: growth.n,
+      title: growth.title,
+      kind: "suggest",
+      message: "Sugerido: puntúa y corrige el guion en Optimizar antes de pintar escenas.",
+    };
+  }
+  const pending = steps.find((step) => step.state === "todo" || step.state === "warn");
+  if (pending) {
+    return { n: pending.n, title: pending.title, kind: "fix", message: `Por revisar: ${pending.title}${pending.note ? ` (${pending.note})` : ""}.` };
+  }
+  const busy = steps.find((step) => step.state === "busy");
+  if (busy) return { n: busy.n, title: busy.title, kind: "wait", message: `Esperando: ${busy.title} (${busy.note}).` };
+  return { n: STEP.finish, title: steps[STEP.finish - 1].title, kind: "render", message: "Todo listo: puedes renderizar." };
+}
+
 /** Los que se pueden plegar sin esconder nada pendiente. */
 export const foldable = (steps: StepInfo[]): number[] =>
   steps.filter((step) => step.state === "done").map((step) => step.n);

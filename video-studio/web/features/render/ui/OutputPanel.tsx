@@ -14,6 +14,8 @@ import { useProduction } from "@/features/production/model/use-production";
 import { useRender } from "@/features/render/model/use-render";
 import { useScenes } from "@/features/scenes/model/use-scenes";
 import { Animatic } from "@/features/scenes/ui/Animatic";
+import { nextStep } from "@/domain/steps";
+import { useStepStates } from "@/features/studio/model/use-step-states";
 import { useScript } from "@/features/script/model/use-script";
 import { useStatus, useStudioActions } from "@/features/studio/model/use-studio-actions";
 import { ActionError } from "@/features/studio/ui/ActionError";
@@ -39,6 +41,7 @@ export function OutputPanel() {
   const voice = useVoice();
   const catalog = useVoiceCatalog();
   const { format, finish } = useProduction();
+  const next = nextStep(useStepStates());
   const finishing = finishDetails(finish);
   const extra = cardsSeconds(finish.cards);
   /* El cuadro toma la forma del video: vertical o apaisado. */
@@ -150,7 +153,11 @@ export function OutputPanel() {
         {render.rendering ? "Renderizando…" : "Renderizar video"}
       </button>
 
-      {!ready && <p className="hint">Escribe el guion del paso 1 para poder renderizar.</p>}
+      {!ready ? (
+        <p className="hint">Escribe el guion del paso 1 para poder renderizar.</p>
+      ) : render.rendering ? null : (
+        <p className={`hint${next.kind === "fix" ? " warn" : ""}`}>{next.message}</p>
+      )}
 
       {render.job && render.job.status !== "error" && (
         <div className="stack">

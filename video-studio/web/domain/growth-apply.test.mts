@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { planApplication, readApplication, type Application, type ExistingWork } from "./growth.ts";
+import { planApplication, readApplication, scriptTimingNote, type Application, type ExistingWork } from "./growth.ts";
 
 const NOTHING_DONE: ExistingWork = { aiScenes: 0, canPaint: true, voiceTake: false };
 const ALL_DONE: ExistingWork = { aiScenes: 6, canPaint: true, voiceTake: true };
@@ -38,4 +38,11 @@ test("lo que llega del servidor se lee y un campo vacío cuenta como no cambiado
   const read = readApplication({ result: { summary: "x", script: "  ", title: null, description: "Nueva" } });
   assert.deepEqual(read, { summary: "x", script: null, title: null, description: "Nueva" });
   assert.throws(() => readApplication({}), /vacía/);
+});
+
+test("Optimizar avisa cuándo sale caro cambiar el guion", () => {
+  assert.equal(scriptTimingNote(NOTHING_DONE).late, false);
+  assert.match(scriptTimingNote(ALL_DONE).text, /la toma de voz y las imágenes de las escenas/);
+  assert.match(scriptTimingNote({ aiScenes: 0, canPaint: true, voiceTake: true }).text, /Ya hay la toma de voz:/);
+  assert.equal(scriptTimingNote({ aiScenes: 4, canPaint: false, voiceTake: false }).late, false);
 });

@@ -1,10 +1,11 @@
 "use client";
 
 import { STEP } from "@/domain/steps";
-import { GROWTH_KINDS, GROWTH_LABELS, growthBlocker, type GrowthKind } from "@/domain/growth";
+import { GROWTH_KINDS, GROWTH_LABELS, growthBlocker, scriptTimingNote, type GrowthKind } from "@/domain/growth";
 import { useGrowth } from "@/features/growth/model/use-growth";
 import { GrowthResult } from "@/features/growth/ui/GrowthResults";
 import { useScript } from "@/features/script/model/use-script";
+import { useStudio } from "@/features/studio/model/studio-context";
 import { useStudioActions } from "@/features/studio/model/use-studio-actions";
 import { ActionError } from "@/features/studio/ui/ActionError";
 import { useWriter } from "@/features/writer/model/use-writer";
@@ -28,9 +29,16 @@ export function GrowthStep() {
   const script = useScript();
   const actions = useStudioActions();
   const { label } = useWriter();
+  const { take, scenes, images } = useStudio();
+  const timing = scriptTimingNote({
+    aiScenes: scenes.items.filter((scene) => scene.prompt).length,
+    canPaint: Boolean(images.choice),
+    voiceTake: take.take !== null,
+  });
 
   return (
     <Step n={STEP.growth} title="Optimizar" lead="Revisa y mejora el video antes de pintar las imágenes: si algo cambia el guion, aún no hay nada que rehacer." note="ganchos, retención, títulos, SEO y puntaje">
+      <p className={`hint${timing.late ? " warn" : ""}`}>{timing.text}</p>
       <p className="hint">
         Consejos del modelo del guion sobre este video. No consulta datos en vivo de YouTube, TikTok ni
         Instagram: son criterio de un editor que conoce cómo funcionan, no estadísticas.

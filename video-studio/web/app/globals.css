@@ -852,6 +852,7 @@ label.btn, a.btn { display: inline-block; text-decoration: none; }
   color: var(--muted); text-decoration: none; border: 1px solid transparent;
 }
 .step-link:hover { color: var(--text); border-color: var(--line); }
+.step-link.is-next:not(.is-current) { color: var(--text); border-color: color-mix(in srgb, var(--hue) 55%, transparent); border-style: dashed; }
 .step-link-icon { width: 1.1em; text-align: center; font-weight: 700; }
 .step-link-n { color: var(--hue, inherit); font-weight: 700; }
 .step-link.is-current { color: var(--text); background: color-mix(in srgb, var(--hue) 16%, transparent); border-color: color-mix(in srgb, var(--hue) 45%, transparent); }

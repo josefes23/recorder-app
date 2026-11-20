@@ -119,6 +119,20 @@ export type ExistingWork = {
   voiceTake: boolean;
 };
 
+/**
+ * Lo que se le dice al usuario en Optimizar sobre cuándo cambiar el guion:
+ * barato mientras no haya voz ni imágenes, caro después.
+ */
+export function scriptTimingNote(work: ExistingWork): { late: boolean; text: string } {
+  const late: string[] = [];
+  if (work.voiceTake) late.push("la toma de voz");
+  if (work.aiScenes > 0 && work.canPaint) late.push("las imágenes de las escenas");
+  if (late.length === 0) {
+    return { late: false, text: "Aún no hay voz ni imágenes con este guion: es el mejor momento para corregirlo." };
+  }
+  return { late: true, text: `Ya hay ${late.join(" y ")}: si cambias el guion, tendrás que rehacerlas.` };
+}
+
 export type Regeneration = "scenes" | "voice";
 
 export type ApplyPlan = Application & {

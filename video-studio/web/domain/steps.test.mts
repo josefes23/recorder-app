@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { foldable, STEP, stepStates, type StudioProgress } from "./steps.ts";
+import { foldable, nextStep, STEP, stepStates, type StudioProgress } from "./steps.ts";
 
 const base: StudioProgress = { verdict: "ok", music: false, scenes: [], timelineIssues: false, description: false, score: null, finish: [] };
 
@@ -39,4 +39,21 @@ test("el acabado es el último paso y cuenta qué retoques tiene", () => {
   const done = stepStates({ ...base, finish: ["audio", "color"] })[STEP.finish - 1];
   assert.deepEqual([done.state, done.note], ["done", "audio · color"]);
   assert.ok(STEP.scenes < STEP.finish);
+});
+
+test("qué sigue: primero el guion, luego Optimizar, luego lo que falte, al final renderizar", () => {
+  assert.deepEqual(
+    [nextStep(stepStates({ ...base, verdict: "empty" })).n, nextStep(stepStates({ ...base, verdict: "empty" })).kind],
+    [STEP.script, "fix"],
+  );
+  const suggest = nextStep(stepStates(base));
+  assert.deepEqual([suggest.n, suggest.kind], [STEP.growth, "suggest"]);
+
+  const scored = { ...base, score: 80 };
+  assert.equal(nextStep(stepStates(scored)).kind, "render");
+  const broken = [{ background: "a.jpg", start: 0 }, { background: "b.jpg", start: 5, clipError: "x" }];
+  const warn = nextStep(stepStates({ ...scored, scenes: broken }));
+  assert.deepEqual([warn.n, warn.kind], [STEP.scenes, "fix"]);
+  const waiting = nextStep(stepStates({ ...scored, scenes: [{ background: null, start: 0, job: "j" }] }));
+  assert.deepEqual([waiting.n, waiting.kind], [STEP.scenes, "wait"]);
 });

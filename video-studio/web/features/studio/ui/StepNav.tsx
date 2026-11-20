@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from "react";
 
-import { foldable, type StepState } from "@/domain/steps";
+import { foldable, nextStep, type StepState } from "@/domain/steps";
 import { useStepStates } from "@/features/studio/model/use-step-states";
 import { stepAnchor, useSteps } from "@/shared/ui/steps";
 
@@ -23,6 +23,7 @@ export function StepNav() {
   const steps = useStepStates();
   const ui = useSteps();
   const ready = foldable(steps);
+  const next = nextStep(steps);
   const anyFolded = (ui?.folded.size ?? 0) > 0;
 
   return (
@@ -32,10 +33,10 @@ export function StepNav() {
           <li key={step.n}>
             <a
               href={`#${stepAnchor(step.n)}`}
-              className={`step-link is-${step.state}${ui?.current === step.n ? " is-current" : ""}`}
+              className={`step-link is-${step.state}${ui?.current === step.n ? " is-current" : ""}${next.kind !== "render" && next.n === step.n ? " is-next" : ""}`}
               style={{ "--hue": `var(--step-${step.n})` } as CSSProperties}
               aria-current={ui?.current === step.n ? "step" : undefined}
-              title={`${step.title}: ${step.note || SAYS[step.state]}`}
+              title={`${step.title}: ${step.note || SAYS[step.state]}${next.kind !== "render" && next.n === step.n ? ` · ${next.message}` : ""}`}
               onClick={() => ui?.unfold(step.n)}
             >
               <span className="step-link-icon" aria-hidden="true">
