@@ -99,6 +99,35 @@ export function finishSummary(finish: Finish): string[] {
   return parts;
 }
 
+/**
+ * Lo que se va a aplicar al renderizar, en palabras claras: para el resumen
+ * junto al botón de Renderizar. Vacío si no hay ningún retoque.
+ */
+export function finishDetails(finish: Finish): string[] {
+  const details: string[] = [];
+  if (finish.audio.clean) details.push("voz con presencia");
+  if (finish.audio.normalize) details.push("volumen a −14 LUFS");
+  if (colorActive(finish.color)) {
+    const look = LOOKS.find((item) => item.id === finish.color.look);
+    details.push(look && look.id !== "none" ? `color ${look.label}` : "color ajustado");
+  }
+  if (finish.pace.tighten) details.push("pausas recortadas");
+  const cards = [finish.cards.intro && "entrada", finish.cards.outro && "cierre"].filter(Boolean);
+  if (cards.length) details.push(`tarjeta de ${cards.join(" y ")}`);
+  return details;
+}
+
+/** Lo que casi siempre conviene y no cambia cómo se ve: audio y ritmo. Sin color ni tarjetas, que son de gusto. */
+export const isRecommended = (finish: Finish): boolean =>
+  finish.audio.clean && finish.audio.normalize && finish.pace.tighten;
+
+/** Aplica lo recomendado sin tocar el color ni las tarjetas que ya se hayan elegido. */
+export const withRecommended = (finish: Finish): Finish => ({
+  ...finish,
+  audio: { clean: true, normalize: true },
+  pace: { tighten: true },
+});
+
 /** Cuánto se alarga el video con las tarjetas, en segundos. */
 export const cardsSeconds = (cards: Finish["cards"]): number =>
   (cards.intro ? INTRO_SECONDS : 0) + (cards.outro ? OUTRO_SECONDS : 0);

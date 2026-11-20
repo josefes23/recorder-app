@@ -5,11 +5,13 @@ import {
   colorActive,
   DEFAULT_FINISH,
   finishSummary,
+  isRecommended,
   INTRO_LIMIT,
   LOOKS,
   OUTRO_LIMIT,
   type Finish,
   type LookId,
+  withRecommended,
 } from "@/domain/finish";
 import { signed } from "@/domain/voice";
 import { STEP } from "@/domain/steps";
@@ -49,6 +51,19 @@ export function FinishStep() {
       lead="Retoques finales para que suene y se vea mejor: audio, color, ritmo y tarjetas. Todo es opcional."
       note={summary.length ? summary.join(" · ") : "sin retoques"}
     >
+      <div className="cluster">
+        <button
+          type="button"
+          className="btn btn--sm"
+          disabled={isRecommended(finish)}
+          onClick={() => production.setFinish(withRecommended(finish))}
+          title="Voz con presencia, volumen parejo y pausas recortadas. No toca el color ni las tarjetas."
+        >
+          {isRecommended(finish) ? "Recomendado puesto" : "Aplicar lo recomendado"}
+        </button>
+        <span className="hint">Audio y ritmo con un clic; el color y las tarjetas, a tu gusto.</span>
+      </div>
+
       <section className="finish-group" aria-labelledby="finish-audio">
         <h3 id="finish-audio" className="finish-title">Audio</h3>
         <label className="cluster check" htmlFor="finish-clean">

@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { cardsSeconds, colorActive, DEFAULT_FINISH, finishSummary, readFinish } from "./finish.ts";
+import {
+  cardsSeconds,
+  colorActive,
+  DEFAULT_FINISH,
+  finishDetails,
+  finishSummary,
+  isRecommended,
+  readFinish,
+  withRecommended,
+} from "./finish.ts";
 import { DEFAULT_PRODUCTION, forServer, splitStoredStyle } from "./production.ts";
 
 test("sin tocar nada no hay retoques", () => {
@@ -47,4 +56,31 @@ test("viaja al servidor y vuelve igual al reutilizar un video", () => {
   const stored = splitStoredStyle({ font_size: 90, production: sent });
   assert.deepEqual(stored.production.finish, finish);
   assert.deepEqual(splitStoredStyle({ font_size: 90 }).production.finish, DEFAULT_FINISH);
+});
+
+test("el resumen del render dice qué se va a aplicar", () => {
+  assert.deepEqual(finishDetails(DEFAULT_FINISH), []);
+  const finish = readFinish({
+    audio: { normalize: true },
+    color: { look: "cine" },
+    pace: { tighten: true },
+    cards: { intro: "Hola", outro: "Adiós" },
+  });
+  assert.deepEqual(finishDetails(finish), [
+    "volumen a −14 LUFS",
+    "color Cine",
+    "pausas recortadas",
+    "tarjeta de entrada y cierre",
+  ]);
+  assert.deepEqual(finishDetails(readFinish({ color: { exposure: 0.2 } })), ["color ajustado"]);
+});
+
+test("lo recomendado activa audio y ritmo sin tocar el color ni las tarjetas", () => {
+  assert.equal(isRecommended(DEFAULT_FINISH), false);
+  const base = readFinish({ color: { look: "warm" }, cards: { intro: "Hola" } });
+  const next = withRecommended(base);
+  assert.equal(isRecommended(next), true);
+  assert.equal(next.color.look, "warm");
+  assert.equal(next.cards.intro, "Hola");
+  assert.equal(isRecommended(DEFAULT_FINISH), false, "no muta el original");
 });
