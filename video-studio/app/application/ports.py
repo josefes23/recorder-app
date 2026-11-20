@@ -24,6 +24,7 @@ from app.domain.saved_characters import SavedCharacter
 from app.domain.stock import StockClip
 from app.domain.style import CaptionStyle
 from app.domain.video import NewVideo, RenderResult, RenderSpec, Video
+from app.domain.finish import ColorFinish
 from app.domain.voice import Voice
 from app.domain.voice_take import TakeRequest, VoiceTake
 from app.domain.writer import Provider
@@ -120,7 +121,8 @@ class FramePreviewer(Protocol):
     """Compone un fotograma con fondo y subtítulo en el formato del video. Devuelve un PNG."""
 
     def render(
-        self, text: str, style: CaptionStyle, background: str | None, topic: str, fmt: Format = VERTICAL
+        self, text: str, style: CaptionStyle, background: str | None, topic: str, fmt: Format = VERTICAL,
+        color: ColorFinish | None = None,
     ) -> bytes: ...
 
 

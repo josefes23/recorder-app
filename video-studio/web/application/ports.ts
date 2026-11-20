@@ -4,6 +4,7 @@ import type { Track } from "@/domain/music";
 import type { FormatId, LengthId, forServer } from "@/domain/production";
 import type { Style } from "@/domain/captions";
 import type { Config } from "@/domain/config";
+import type { Finish } from "@/domain/finish";
 import type { Cover } from "@/domain/cover";
 import type {
   Character,
@@ -65,6 +66,8 @@ export type PreviewRequest = {
   background: string | null;
   style: Style;
   format: FormatId;
+  /** El color del acabado, para verlo en el fotograma; null = sin tocar. */
+  color: Finish["color"] | null;
 };
 
 export type StoryboardRequest = {

@@ -26,6 +26,8 @@ export type StudioProgress = {
   description: boolean;
   /** El puntaje del video, si ya se pidió. */
   score: number | null;
+  /** Qué retoques hay puestos en el acabado («audio», «color»…); vacío si ninguno. */
+  finish: string[];
 };
 
 /**
@@ -34,9 +36,9 @@ export type StudioProgress = {
  * de Optimizar ya están decididos. Si un consejo cambia el guion después de
  * pintar, hay que rehacer las imágenes.
  */
-export const STEP = { script: 1, voice: 2, sound: 3, captions: 4, description: 5, growth: 6, scenes: 7 } as const;
+export const STEP = { script: 1, voice: 2, sound: 3, captions: 4, description: 5, growth: 6, scenes: 7, finish: 8 } as const;
 
-export const STEP_TITLES = ["Guion", "Voz", "Música", "Subtítulos", "Descripción", "Optimizar", "Escenas"] as const;
+export const STEP_TITLES = ["Guion", "Voz", "Música", "Subtítulos", "Descripción", "Optimizar", "Escenas", "Acabado"] as const;
 
 function scenesStep(scenes: Scene[], timelineIssues: boolean): [StepState, string] {
   if (scenes.length === 0) return ["optional", "fondo generado"];
@@ -64,6 +66,7 @@ export function stepStates(progress: StudioProgress): StepInfo[] {
     progress.description ? ["done", "escrita"] : ["optional", "sin escribir"],
     progress.score === null ? ["optional", "ganchos, títulos y puntaje"] : ["done", `puntaje ${progress.score}`],
     scenesStep(progress.scenes, progress.timelineIssues),
+    progress.finish.length ? ["done", progress.finish.join(" · ")] : ["optional", "sin retoques"],
   ];
   return states.map(([state, note], i) => ({ n: i + 1, title: STEP_TITLES[i], state, note }));
 }

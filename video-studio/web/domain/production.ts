@@ -9,6 +9,7 @@
  */
 import type { Style } from "./captions.ts";
 import type { DialogueVoices } from "./dialogue.ts";
+import { DEFAULT_FINISH, readFinish, type Finish } from "./finish.ts";
 import { DEFAULT_TRANSITION, readTransition, type Transition } from "./transition.ts";
 
 export type FormatId = "9:16" | "16:9";
@@ -67,6 +68,8 @@ export type Production = {
   ambient: boolean;
   /** Cómo entran las escenas que no eligen la suya. */
   transition: Transition;
+  /** Lo que se le hace al video una vez armado: audio, color, ritmo y tarjetas. */
+  finish: Finish;
 };
 
 export const DEFAULT_PRODUCTION: Production = {
@@ -78,6 +81,7 @@ export const DEFAULT_PRODUCTION: Production = {
   musicVolume: DEFAULT_MUSIC_VOLUME,
   ambient: false,
   transition: DEFAULT_TRANSITION,
+  finish: DEFAULT_FINISH,
 };
 
 /** Subtítulos que encajan en horizontal: más abajo, de menos líneas y más anchos. */
@@ -93,6 +97,7 @@ export function forServer(production: Production) {
     music_volume: production.musicVolume,
     ambient: production.ambient,
     transition: production.transition,
+    finish: production.finish,
   };
 }
 
@@ -129,6 +134,7 @@ export function splitStoredStyle(style: unknown): { style: Partial<Style>; produ
       musicVolume: typeof raw.music_volume === "number" ? raw.music_volume : DEFAULT_MUSIC_VOLUME,
       ambient: raw.ambient === true,
       transition: readTransition(raw.transition) ?? DEFAULT_TRANSITION,
+      finish: readFinish(raw.finish),
     },
   };
 }

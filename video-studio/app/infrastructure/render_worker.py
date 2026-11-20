@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from app.domain.background import VIDEO_EXTS  # noqa: E402
 from app.domain.captions import clip_to_duration  # noqa: E402
 from app.domain.dialogue import NARRATOR, Line, split_dialogue, spoken_text, validate_voices  # noqa: E402
+from app.domain.finish import INTRO_SECONDS, OUTRO_SECONDS, read_finish, tighten_plan  # noqa: E402
 from app.domain.music import validate_volume  # noqa: E402
 from app.domain.production import format_by_id  # noqa: E402
 from app.domain.motion import scene_seed  # noqa: E402
@@ -34,6 +35,9 @@ from app.domain.voice_take import take_key, take_request  # noqa: E402
 from app.domain.voice import ELEVEN_KEY_SETTING  # noqa: E402
 from app.infrastructure.elevenlabs import ElevenLabsClient  # noqa: E402
 from app.infrastructure.env_credentials import HOME_ENV_FILES, EnvCredentials  # noqa: E402
+from app.infrastructure.finish import (  # noqa: E402
+    card_clip, clean_voice, make_grade, normalize_loudness, tighten_audio,
+)
 from app.infrastructure.generator import apply_format, apply_style, load_generator  # noqa: E402
 from app.infrastructure.motion import moving_image  # noqa: E402
 from app.infrastructure.paths import Paths  # noqa: E402
@@ -89,6 +93,49 @@ def build_track(gen, backgrounds_dir: Path, scenes: list[dict], topic: str, dura
         pieces.append((start, CompositeVideoClip([clip], size=(gen.WIDTH, gen.HEIGHT)).with_duration(length)))
 
     return chain(pieces, changes, bounds[-1])
+
+
+def polish_voice(finish, mp3: Path, words: list[dict], duration: float) -> tuple[float, list[dict]]:
+    """
+    El acabado de la voz, sobre el audio ya generado: recortar pausas y realzarla.
+    Va antes de armar nada más, así que escenas y subtítulos se calculan ya sobre
+    la voz recortada. Devuelve la duración y las marcas de palabras finales.
+    """
+    from moviepy import AudioFileClip
+
+    if finish.pace.tighten and words:
+        plan = tighten_plan(words, duration)
+        if plan.changed:
+            emit(phase="tts", progress=0.10, message=f"Recortando {plan.removed:.1f} s de pausas…")
+            tight = mp3.with_suffix(".tight.mp3")
+            tighten_audio(mp3, plan.keep, tight)
+            os.replace(tight, mp3)
+            words = plan.words
+            with AudioFileClip(str(mp3)) as clip:
+                duration = float(clip.duration)
+    if finish.audio.clean:
+        emit(phase="tts", progress=0.12, message="Realzando la voz…")
+        clean = mp3.with_suffix(".clean.mp3")
+        clean_voice(mp3, clean)
+        os.replace(clean, mp3)
+    return duration, words
+
+
+def master_mix(finish, mix, out_path: Path):
+    """
+    La mezcla final (voz y música) llevada al volumen de destino, si el acabado
+    lo pide. Devuelve el clip a usar y los archivos temporales que borrar al acabar.
+    """
+    if not finish.audio.normalize:
+        return mix, []
+    from moviepy import AudioFileClip
+
+    emit(phase="render", progress=0.29, message="Igualando el volumen…")
+    raw, done = out_path.with_suffix(".mix.wav"), out_path.with_suffix(".norm.wav")
+    mix.write_audiofile(str(raw), fps=44100, logger=None)
+    heard = normalize_loudness(raw, done)
+    emit(phase="render", progress=0.29, message=f"Volumen: de {heard.integrated:.1f} a -14 LUFS")
+    return AudioFileClip(str(done)), [raw, done]
 
 
 def sound_layers(job: RenderSpec, paths: Paths, scenes: list[dict], words: list[dict], duration: float) -> list:
@@ -162,6 +209,8 @@ def main() -> None:
     from moviepy import AudioFileClip
     with AudioFileClip(str(tmp_mp3)) as audio:
         duration = float(audio.duration)
+    finish = read_finish(job.finish)
+    duration, words = polish_voice(finish, tmp_mp3, words, duration)
     emit(phase="tts", progress=0.15, message=f"Audio de {duration:.1f}s", duration=duration)
 
     emit(phase="captions", progress=0.20, message="Sincronizando subtítulos…")
@@ -181,6 +230,11 @@ def main() -> None:
         s.as_dict() for s in synced_to_voice(map(Scene.from_dict, job.scenes), clean_script(job.script), words or [])
     ]
     background = build_track(gen, paths.backgrounds, scenes, job.topic, duration, read_transition(job.transition))
+    # El color solo toca el fondo, antes de los subtítulos: el blanco de las letras no se tiñe.
+    grade = make_grade(finish.color)
+    if grade is not None:
+        emit(phase="background", progress=0.26, message="Aplicando el color…")
+        background = background.image_transform(grade)
 
     emit(phase="render", progress=0.30, message="Renderizando…")
 
@@ -203,24 +257,40 @@ def main() -> None:
     # parte con lógica real (build_caption_clips) se reutiliza tal cual.
     caption_clips = gen.build_caption_clips(captions, gen.resolve_font(None), style.animate)
     audio = AudioFileClip(str(tmp_mp3))
+    mix, temporary = master_mix(finish, soundtrack(audio, sound_layers(job, paths, scenes, words or [], duration)), out_path)
     video = (
         CompositeVideoClip([background, *caption_clips], size=(gen.WIDTH, gen.HEIGHT))
         .with_duration(duration)
-        .with_audio(soundtrack(audio, sound_layers(job, paths, scenes, words or [], duration)))
+        .with_audio(mix)
     )
-    video.write_videofile(
+    # Las tarjetas de entrada y de cierre van fuera del video armado: no mueven ni un tiempo de la voz.
+    from moviepy import concatenate_videoclips
+
+    size, font = (gen.WIDTH, gen.HEIGHT), gen.resolve_font(None)
+    parts = [
+        *([card_clip(finish.cards.intro, size, font, INTRO_SECONDS)] if finish.cards.intro else []),
+        video,
+        *([card_clip(finish.cards.outro, size, font, OUTRO_SECONDS)] if finish.cards.outro else []),
+    ]
+    final = concatenate_videoclips(parts, method="compose") if len(parts) > 1 else video
+    final.write_videofile(
         str(out_path), fps=gen.FPS, codec="libx264", audio_codec="aac",
         preset="medium", threads=os.cpu_count() or 4,
         temp_audiofile=str(out_path.with_suffix(".temp-audio.m4a")),
         logger=Reporter(),
     )
+    final.close()
     video.close()
     audio.close()
+    if mix is not audio:
+        mix.close()  # en Windows no se borra un archivo que sigue abierto
+    for leftover in temporary:
+        leftover.unlink(missing_ok=True)
 
     if not job.keep_audio:
         tmp_mp3.unlink(missing_ok=True)
 
-    emit(done=True, output=str(out_path), duration=round(duration, 1),
+    emit(done=True, output=str(out_path), duration=round(float(final.duration or duration), 1),
          size_mb=round(out_path.stat().st_size / 1e6, 1), captions=len(captions))
 
 

@@ -462,6 +462,7 @@ export function StudioProvider({
             scenes: scenes.items,
             style: captions.style,
             format: production.format,
+            color: production.finish.color,
           }),
         );
         if (frame) render.showPreview(frame);

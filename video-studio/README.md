@@ -542,6 +542,27 @@ en la tabla `prompt_overrides` de `studio.db` y vale para los videos nuevos;
 «Restaurar» vuelve al original. El tema y las frases numeradas viajan aparte
 como mensaje del usuario y no se editan.
 
+## Acabado: audio, color, ritmo y tarjetas
+
+El paso 8 reúne retoques opcionales, todos apagados por defecto: sin tocar
+nada el video sale como siempre. Se hacen dentro del mismo render, así que el
+video se codifica **una sola vez**. Las reglas puras están en
+`app/domain/finish.py` y el trabajo con ffmpeg, numpy y Pillow en
+`app/infrastructure/finish.py`; los ajustes viajan con la producción y se
+guardan en el estilo del video, de donde «Reutilizar» los recupera.
+
+| Retoque | Qué hace |
+|---|---|
+| Voz con presencia | Quita graves que ensucian, iguala el volumen de la voz (compresor suave) y le da brillo. Va sobre la voz sola, antes de mezclarla con la música. |
+| Volumen parejo | Lleva la **mezcla final** a −14 LUFS (techo de pico −1,5 dB) en dos pasadas de `loudnorm`: se mide y se corrige en lineal, sin «respirar». |
+| Color | Un look (natural, cálido, frío, cine, vivo, blanco y negro) más exposición, contraste y saturación de −100 a 100. Solo toca el fondo: los subtítulos no se tiñen. El botón «Fotograma» enseña el resultado. |
+| Recortar pausas | Una pausa de más de 0,45 s entre palabras queda en 0,25 s; el silencio final se acorta. Las marcas de cada palabra se corren lo que se quitó, así que subtítulos y escenas se calculan ya sobre la voz recortada. |
+| Tarjetas | Una de entrada (1,6 s) y una de cierre (2,6 s) con el texto que escribas; lo que va entre *asteriscos* sale resaltado. Van fuera del video armado: no mueven ni un tiempo de la voz. |
+
+La toma de voz guardada no se toca: el recorte y la limpieza se hacen sobre
+una copia en cada render. Se usa el ffmpeg de `imageio-ffmpeg` (el mismo que
+codifica el video), así que anda igual en Mac y en Windows.
+
 ## Optimizar: ganchos, retención y puntaje
 
 El paso 6 reúne lo que haría un vidIQ, con el modelo del guion y sobre el

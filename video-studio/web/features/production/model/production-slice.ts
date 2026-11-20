@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import type { DialogueVoices } from "@/domain/dialogue";
+import type { Finish } from "@/domain/finish";
 import { DEFAULT_PRODUCTION, type FormatId, type LengthId, type Production } from "@/domain/production";
 import type { Transition } from "@/domain/transition";
 
@@ -19,6 +20,8 @@ export type ProductionSlice = Production & {
   setAmbient: (ambient: boolean) => void;
   /** La de las escenas que no eligen la suya. */
   setTransition: (transition: Transition) => void;
+  /** El acabado entero: audio, color, ritmo y tarjetas. */
+  setFinish: (finish: Finish) => void;
   /** Lo que se guardó con un video, al reutilizarlo. */
   restore: (production: Production) => void;
 };
@@ -49,6 +52,7 @@ export function useProductionSlice(): ProductionSlice {
       setMusicVolume: (musicVolume: number) => patch({ musicVolume }),
       setAmbient: (ambient: boolean) => patch({ ambient }),
       setTransition: (transition: Transition) => patch({ transition }),
+      setFinish: (finish: Finish) => patch({ finish }),
       restore: setProduction,
     }),
     [production, patch, setVoice],
