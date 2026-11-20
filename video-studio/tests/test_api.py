@@ -63,7 +63,7 @@ class ApiTests(unittest.TestCase):
         template = self.client.post("/api/script/template", json={"topic": "gatos"}).json()
         self.assertEqual(set(template), {"script", "seconds"})
         estimate = self.client.post("/api/estimate", json={"topic": "", "notes": LONG_SCRIPT}).json()
-        self.assertEqual(estimate, {"seconds": 33.3, "words": 90, "in_range": True})
+        self.assertEqual(estimate, {"seconds": 33.3, "words": 90, "in_range": False})
 
     def test_render_jobs_and_library(self):
         response = self.client.post("/api/render", json={

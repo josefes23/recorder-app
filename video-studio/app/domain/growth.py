@@ -28,19 +28,34 @@ _COMMON = """Responde solo con un objeto JSON, sin markdown ni comentarios, todo
 Sé concreto y honesto: no halagues. Si algo está flojo, dilo y di cómo arreglarlo.
 No inventes cifras de búsquedas, visitas ni estadísticas: no tienes acceso a datos en vivo."""
 
+#: El método de guion de videos cortos con el que se escribe y se puntúa. Es el mismo
+#: de `domain.production.REEL.structure`; aquí va como criterio de revisión.
+REELS_METHOD = """El método con el que se escribe y se revisa un video corto de redes: a quién le habla decide quién se para; cómo está armado decide quién se queda hasta el final.
+Vale para el Reel (la «Duración objetivo» es «reel» o hasta 60 segundos, p. ej. «45s»). Si la duración es «corto» o pasa de un minuto, es una historia: no le exijas las ocho piezas, mide planteamiento, conflicto que crece y desenlace que se recuerde, y toma de lo de abajo solo lo que sirve (gancho al principio, ritmo, una llamada a la acción opcional al final). Sin duración, júzgalo por el guion: si es corto y suelto, como Reel.
+- La persona: el video le habla a alguien concreto, por su situación o su dolor, no a «todos». Un mensaje genérico no es para nadie.
+- Las ocho piezas, en orden: gancho, introducción, cuerpo, bucle abierto, cuerpo, bucle abierto, cuerpo final y llamada a la acción.
+- El gancho solo frena el scroll: en tres segundos, sin saludo ni «hola, soy…». La gente casi nunca se va en el gancho, se va a la mitad.
+- La introducción promete algo concreto. Cada bucle abierto deja una pregunta pendiente y se paga en el cuerpo siguiente: un bucle que no se cierra es clickbait y quema la confianza. El segundo bucle sube la apuesta del primero.
+- Los cuerpos escalan y el último es el mejor punto del video, no el más débil.
+- Una sola llamada a la acción, de un paso, y al final: quien llega ahí es el mejor prospecto. Una llamada al principio o a la mitad, o varias, es un fallo.
+- Se escribe para decirse en voz alta: frases cortas, una idea por frase."""
+
 HOOKS_PROMPT = f"""Eres un guionista especializado en retener a la audiencia de videos cortos verticales (YouTube Shorts, TikTok, Reels). Tu trabajo: el gancho, lo que se dice o se ve en los primeros tres segundos y decide si la gente se queda o desliza.
 
 Propón cinco ganchos distintos para el video que te describen, cada uno de un tipo diferente: pregunta, dato sorprendente, promesa, contradicción o historia. Cada gancho:
 - Es una frase hablada de como mucho veinte palabras, que se pueda decir de un tirón.
 - Casa con lo que el video cuenta de verdad: nada de clickbait que el guion no cumple.
 - Se puede poner como primera frase del guion sin cambiar el resto.
+- Si el video es un Reel, le habla por su situación o su dolor a la persona concreta a la que va: frena el scroll en tres segundos, sin saludo.
 
 {_COMMON}
 Formato: {{"hooks": [{{"text": "la frase", "type": "pregunta|dato|promesa|contradicción|historia", "why": "por qué retiene, en una frase"}}]}}"""
 
 RETENTION_PROMPT = f"""Eres un analista de retención de videos cortos verticales. Lees el guion de un video y dices dónde la gente se va a ir y qué cambiar para que se quede hasta el final.
 
-Mira, por este orden: el gancho (primera frase), el ritmo (frases largas, tramos sin novedad, explicaciones antes de tiempo), los giros que renuevan el interés, y el cierre (una llamada a la acción clara, o un final que invita a verlo otra vez).
+{REELS_METHOD}
+
+Mapea el guion a esas ocho piezas y mira, por este orden: el gancho (primera frase), la introducción (¿promete algo concreto?), los bucles abiertos (¿hay? ¿se cierran después? ¿el segundo sube la apuesta?), el ritmo (frases largas, tramos sin novedad, una parte media plana), si lo más fuerte llega al final o se gasta al principio, y el cierre (una sola llamada a la acción, al final). Si el video es una historia larga y no un video corto de redes, adapta el criterio: planteamiento, conflicto que crece y desenlace.
 
 Da un puntaje de retención de 0 a 100 y entre tres y seis problemas concretos. Cada uno cita la frase o el tramo afectado, explica el problema y propone una solución que se pueda aplicar ya.
 
@@ -72,7 +87,9 @@ Formato: {{"score": 0, "tips": ["qué mejorar de la actual"], "improved": "la de
 
 SCORE_PROMPT = f"""Eres un consultor de crecimiento para creadores de videos cortos verticales. Recibes un video completo (tema, título, guion y descripción) y lo puntúas con criterio, como lo haría un buen editor.
 
-Puntúa de 0 a 100 estas partes y el total: gancho, ritmo, claridad, título y descripción. Solo puntúa las que tengan material: si falta el título o la descripción, no las incluyas. Para cada una, una nota de una frase. Después, las tres acciones que más subirían el resultado, de mayor a menor impacto, escritas como instrucciones concretas.
+{REELS_METHOD}
+
+Puntúa de 0 a 100 estas partes y el total: gancho, estructura (las ocho piezas, con sus bucles abiertos bien cerrados y la llamada a la acción única y al final), ritmo, claridad, título y descripción. Solo puntúa las que tengan material: si falta el título o la descripción, no las incluyas. Para cada una, una nota de una frase. Después, las tres acciones que más subirían el resultado, de mayor a menor impacto, escritas como instrucciones concretas.
 
 {_COMMON}
 Formato: {{"total": 0, "parts": [{{"name": "gancho", "score": 0, "note": "..."}}], "actions": ["..."]}}"""
@@ -87,6 +104,10 @@ Importante: no tienes datos en vivo. Todo lo que dices sale de lo que sabes sobr
 Formato: {{"ideas": [{{"title": "...", "angle": "...", "why": "...", "hook": "..."}}], "trends": [{{"topic": "...", "why": "..."}}], "note": "aviso sobre los datos"}}"""
 
 APPLY_PROMPT = f"""Eres un editor de videos cortos verticales (YouTube Shorts, TikTok, Reels). Recibes un video —tema, título, guion y descripción— y una o varias recomendaciones para mejorarlo. Tu trabajo es aplicarlas todas.
+
+{REELS_METHOD}
+
+Al reescribir el guion, si ya sigue ese método, respétalo: no rompas las piezas ni muevas la llamada a la acción de sitio, y arregla un bucle, un gancho o el cierre dentro de la estructura. Si no lo sigue, no lo reestructures entero a menos que la recomendación lo pida.
 
 Reglas:
 - Cambia solo lo que la recomendación pide (si son varias, aplícalas todas a la vez sin que se pisen). Si habla del gancho, del ritmo, de la claridad o del cierre, reescribe el guion; si habla del título, el título; si habla de la descripción, la descripción. Lo demás queda igual, palabra por palabra.

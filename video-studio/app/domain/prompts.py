@@ -161,7 +161,7 @@ def _growth_example(template: str) -> tuple[Example, ...]:
         Example("Mensaje del sistema", template),
         Example(
             "Mensaje del usuario",
-            build_growth_prompt(_TOPIC, " ".join(_SENTENCES), "3 *hábitos* que arruinan tu sueño", "", "entre 30 y 45 segundos"),
+            build_growth_prompt(_TOPIC, " ".join(_SENTENCES), "3 *hábitos* que arruinan tu sueño", "", "entre 45 y 60 segundos"),
         ),
     )
 
@@ -184,7 +184,7 @@ PROMPTS: tuple[PromptSpec, ...] = (
             Variable("kind", "Qué se escribe: «Reels y Shorts» o «cortometrajes»."),
             Variable("words_min", "Mínimo de palabras, según la duración elegida."),
             Variable("words_max", "Máximo de palabras, según la duración elegida."),
-            Variable("duration", "La duración que producen: «entre 30 y 45 segundos»."),
+            Variable("duration", "La duración que producen: «entre 45 y 60 segundos»."),
             Variable("structure", "La forma del guion (gancho, nudo, cierre…) según la duración."),
             Variable("dialogue_rule", "Las reglas del diálogo. Vacío si el guion no es un diálogo."),
             Variable("closing", "Cómo debe devolver el texto (cambia con el diálogo)."),

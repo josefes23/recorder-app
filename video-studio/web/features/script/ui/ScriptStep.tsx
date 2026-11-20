@@ -27,9 +27,9 @@ type Advice = { short: string; long: string; measure: string };
 
 const ADVICE: Record<"reel" | "corto", Advice> = {
   reel: {
-    short: "Se queda corto para un Reel. Alarga hasta unos treinta segundos.",
-    long: "Se pasa de largo. Recorta hasta unos cuarenta y cinco segundos.",
-    measure: "30–45 s es la medida",
+    short: "Se queda corto para un Reel. Alarga hasta unos cuarenta y cinco segundos.",
+    long: "Se pasa de largo. Recorta hasta un minuto.",
+    measure: "45–60 s es la medida",
   },
   corto: {
     short: "Se queda corto para un cortometraje: apunta a dos minutos o más.",

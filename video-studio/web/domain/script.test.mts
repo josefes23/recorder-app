@@ -9,9 +9,9 @@ test("cuenta palabras ignorando espacios de más", () => {
 });
 
 test("estima segundos al ritmo de las voces en español", () => {
-  // 108 palabras a 2,7 por segundo = 40 s, dentro de la horquilla del Reel
-  const script = Array.from({ length: 108 }, () => "palabra").join(" ");
-  assert.equal(estimateSeconds(script), 40);
+  // 135 palabras a 2,7 por segundo = 50 s, dentro de la horquilla del Reel
+  const script = Array.from({ length: 135 }, () => "palabra").join(" ");
+  assert.equal(estimateSeconds(script), 50);
   assert.equal(durationVerdict(script), "ok");
 });
 

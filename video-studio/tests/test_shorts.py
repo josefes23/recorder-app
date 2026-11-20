@@ -62,8 +62,8 @@ class WriterForShortsTests(unittest.TestCase):
         from app.domain.production import SHORT_FILM
         from app.domain.writer import DIALOGUE_RULE, SYSTEM_PROMPT, system_prompt
 
-        self.assertIn("Entre 85 y 120 palabras", SYSTEM_PROMPT)
-        self.assertIn("entre 30 y 45 segundos", SYSTEM_PROMPT)
+        self.assertIn("Entre 120 y 160 palabras", SYSTEM_PROMPT)
+        self.assertIn("entre 45 y 60 segundos", SYSTEM_PROMPT)
         self.assertNotIn("MAYÚSCULAS", SYSTEM_PROMPT)
 
         short = system_prompt(SHORT_FILM, dialogue=True)
@@ -453,11 +453,11 @@ class PromptBookTests(unittest.TestCase):
         from app.domain.writer import system_prompt
 
         text = system_prompt(REEL, False, template="Escribe {words_min}-{words_max} palabras.\n{dialogue_rule}")
-        self.assertEqual(text, "Escribe 85-120 palabras.")
+        self.assertEqual(text, "Escribe 120-160 palabras.")
 
     def test_el_prompt_editado_es_el_que_llega_al_modelo(self):
         studio, fakes = make_studio(credentials=DictCredentials(NVIDIA_API_KEY="k"))
         fakes.composer.text = " ".join(["palabra"] * 120)
         studio.scripts._prompts.save("script", "Eres un guionista pirata. {words_min} palabras como mínimo.")
         studio.scripts.write("gatos", "", "reel")
-        self.assertEqual(fakes.composer.calls[-1][3], "Eres un guionista pirata. 85 palabras como mínimo.")
+        self.assertEqual(fakes.composer.calls[-1][3], "Eres un guionista pirata. 120 palabras como mínimo.")

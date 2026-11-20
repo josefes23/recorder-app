@@ -161,7 +161,7 @@ def validate_script(raw: str | None, min_words: int = MIN_WORDS, keep_lines: boo
     if not text:
         raise WriterError("La respuesta llegó vacía. Vuelve a intentarlo.")
 
-    # El sistema pide entre 85 y 120 palabras. Muy por debajo de eso no es un
+    # El sistema pide entre 120 y 160 palabras. Muy por debajo de eso no es un
     # guion corto: es uno roto. Visto con Gemini, que a veces devuelve el texto
     # cortado a mitad de palabra declarando que terminó bien, así que mirar el
     # `finish_reason` no basta.

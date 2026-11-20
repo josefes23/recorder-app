@@ -123,7 +123,7 @@ class ScriptTests(unittest.TestCase):
 
         (provider, model, key, system, prompt), = f.composer.calls
         self.assertEqual((provider, model, key, prompt), ("deepseek", "deepseek-v4-pro", "d-key", "Tema: gatos"))
-        self.assertIn("85 y 120 palabras", system)
+        self.assertIn("120 y 160 palabras", system)
         outcome = studio.scripts.outcome(event.key)
         self.assertEqual(outcome["status"], "completed")
         self.assertEqual(outcome["script"], LONG_SCRIPT)

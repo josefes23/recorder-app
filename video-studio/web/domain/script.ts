@@ -2,8 +2,8 @@
 export const WORDS_PER_SECOND = 2.7;
 
 /** Fuera de esta horquilla el Reel se hace corto o se hace pesado. */
-export const MIN_SECONDS = 28;
-export const MAX_SECONDS = 48;
+export const MIN_SECONDS = 43;
+export const MAX_SECONDS = 63;
 
 export type DurationVerdict = "empty" | "short" | "ok" | "long";
 

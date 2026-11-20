@@ -8,8 +8,8 @@ from dataclasses import dataclass
 # 2,7 palabras/s medido con las voces es-* a --rate +8%.
 WORDS_PER_SECOND = 2.7
 
-# Un Reel de 30–45 s de voz, con un poco de holgura a cada lado.
-TARGET_SECONDS = (28.0, 48.0)
+# Un Reel de 45–60 s de voz, con un poco de holgura a cada lado.
+TARGET_SECONDS = (43.0, 63.0)
 
 _MARKUP = re.compile(r"[*_#`\[\]]")
 _SPACES = re.compile(r"\s+")

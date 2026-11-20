@@ -39,7 +39,7 @@ export const FORMATS: { id: FormatId; label: string; hint: string }[] = [
 ];
 
 export const LENGTHS: { id: LengthId; label: string; seconds: [number, number] }[] = [
-  { id: "reel", label: "Reel · 30–45 s", seconds: [28, 48] },
+  { id: "reel", label: "Reel · 45–60 s", seconds: [43, 63] },
   { id: "corto", label: "Cortometraje · 2–5 min", seconds: [110, 300] },
 ];
 

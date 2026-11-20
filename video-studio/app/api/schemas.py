@@ -10,7 +10,7 @@ from app.domain.voice import DEFAULT_PITCH, DEFAULT_RATE, DEFAULT_VOICE
 class ScriptRequest(BaseModel):
     topic: str
     notes: str = ""
-    #: «reel» (30–45 s) o «corto» (2–5 min): cuánto se escribe.
+    #: «reel» (45–60 s) o «corto» (2–5 min): cuánto se escribe.
     length: str = "reel"
     #: Escribirlo como diálogo, con «NOMBRE:» al principio de cada intervención.
     dialogue: bool = False

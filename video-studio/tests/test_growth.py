@@ -141,3 +141,15 @@ class ApplyTests(unittest.TestCase):
                 {k: outcome["result"][k] for k in ("script", "title", "description")},
                 {"script": None, "title": None, "description": None},
             )
+
+
+class ReelsMethodTests(unittest.TestCase):
+    def test_the_eight_piece_method_guides_writing_and_scoring(self):
+        from app.domain.growth import APPLY_PROMPT, RETENTION_PROMPT, SCORE_PROMPT
+        from app.domain.writer import system_prompt
+
+        for prompt in (RETENTION_PROMPT, SCORE_PROMPT, APPLY_PROMPT):
+            self.assertIn("bucle abierto", prompt)
+            self.assertIn("llamada a la acción", prompt)
+        self.assertIn("estructura", SCORE_PROMPT)
+        self.assertIn("Bucle abierto", system_prompt())

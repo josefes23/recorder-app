@@ -33,9 +33,9 @@ class ScriptTests(unittest.TestCase):
     def test_estimate_uses_words_per_second(self):
         text = " ".join(["palabra"] * 27)
         self.assertAlmostEqual(script.estimate_seconds(text), 10.0)
-        result = script.estimate(" ".join(["palabra"] * 100))
-        self.assertEqual(result.words, 100)
-        self.assertEqual(result.seconds, 37.0)
+        result = script.estimate(" ".join(["palabra"] * 135))
+        self.assertEqual(result.words, 135)
+        self.assertEqual(result.seconds, 50.0)
         self.assertTrue(result.in_range)
         self.assertFalse(script.estimate("corto").in_range)
 

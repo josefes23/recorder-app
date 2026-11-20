@@ -116,13 +116,23 @@ class Length:
 
 REEL = Length(
     id="reel",
-    name="Reel (30–45 s)",
-    words=(85, 120),
-    seconds=(30, 45),
+    name="Reel (45–60 s)",
+    words=(120, 160),
+    seconds=(45, 60),
     max_scenes=8,
     structure=(
-        "gancho en los tres primeros segundos, luego dos o tres ideas concretas, "
-        "y cierre con una llamada a la acción."
+        "ocho piezas, en este orden, que retienen hasta el final.\n"
+        "  1. Gancho: en los tres primeros segundos le habla por su situación o su dolor a una\n"
+        "     persona concreta (sin saludo, sin «hola, soy…») y rompe con lo que venía viendo.\n"
+        "  2. Introducción: promete algo concreto si se queda («las tres causas», «en un minuto»).\n"
+        "  3. Cuerpo uno: algo útil que no sabía, valioso por sí solo.\n"
+        "  4. Bucle abierto: una frase que deja una pregunta en el aire («pero esa es la fácil»).\n"
+        "  5. Cuerpo dos: cierra ese bucle y entrega otro valor.\n"
+        "  6. Bucle abierto: repite el mecanismo y sube la apuesta.\n"
+        "  7. Cuerpo tres: cierra el último bucle con lo más fuerte del video, no con lo más flojo.\n"
+        "  8. Llamada a la acción: un solo paso, concreto y fácil, y solo aquí, al final.\n"
+        "  Cada bucle se paga en el cuerpo siguiente: un bucle que no se cierra es clickbait.\n"
+        "  Si solo hay material para dos cuerpos, usa un único bucle."
     ),
     kind="Reels y Shorts",
     reel_like=True,

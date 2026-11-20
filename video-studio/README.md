@@ -59,7 +59,7 @@ tocar una línea del generador.
 
 | Paso | En la interfaz |
 |---|---|
-| Guion | Campo de tema → «Escribir con …» o «Plantilla» → **lo editas tú** antes de seguir. Contador de palabras y segundos, con aviso si te sales de 30–45 s. Panel plegable para elegir proveedor, clave y modelo |
+| Guion | Campo de tema → «Escribir con …» o «Plantilla» → **lo editas tú** antes de seguir. Contador de palabras y segundos, con aviso si te sales de 45–60 s. Panel plegable para elegir proveedor, clave y modelo |
 | Voz | Doce voces en español con velocidad y tono |
 | Subtítulos | Tamaño, borde, altura, texto por bloque y líneas máximas |
 | Escenas | Un guion visual (estilo, personajes y qué se ve en cada tramo) y una imagen generada por tramo, o el fondo que elijas de Pexels o la galería; marcas en qué segundo entra cada uno |
@@ -490,7 +490,7 @@ se acomoda solo.
 
 | | Reel | Cortometraje |
 |---|---|---|
-| Guion | 85–120 palabras (30–45 s) | 330–780 palabras (2–5 min), con planteamiento, nudo y desenlace |
+| Guion | 120–160 palabras (45–60 s), con las 8 piezas del guion de retención | 330–780 palabras (2–5 min), con planteamiento, nudo y desenlace |
 | Escenas del guion visual | hasta 8 | hasta 30 |
 
 | | Vertical 9:16 | Horizontal 16:9 |
