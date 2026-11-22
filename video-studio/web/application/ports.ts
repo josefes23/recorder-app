@@ -77,7 +77,7 @@ export type StoryboardRequest = {
   style: string;
   /** El reparto que ya está en el video: el guion visual lo incluye entero. */
   characters: Character[];
-  /** Reel (hasta 8 escenas) o cortometraje (hasta 30). */
+  /** Reel (sin tope de escenas) o cortometraje (hasta 30). */
   length: LengthId;
   /** Dónde caben las caras: vertical u horizontal. */
   format: FormatId;

@@ -15,7 +15,8 @@ También decide dónde cambia la imagen. Repartido solo por longitud
 principio de la siguiente —Josefo seguía en pantalla mientras la voz decía
 «Segundo, el bautismo y la crucifixión»— o duraba 2 s uno y 11 s el de al
 lado. El modelo recibe el guion en frases y corta donde cambia lo que debe
-verse, siempre entre frases y como mucho en `MAX_SCENES` escenas.
+verse, siempre entre frases. Un Reel no tiene tope de escenas; un corto, el
+de su duración (`production.Length.max_scenes`).
 
 La biblioteca de elementos guardados (`domain.saved_characters`) no se le
 ofrece: lo guardado solo entra en un video si el usuario lo mete a mano, y
@@ -42,7 +43,6 @@ from app.domain.illustration import (
     KINDS,
     LOOK_LIMIT,
     MAX_CHARACTERS,
-    MAX_SCENES,
     NAME_LIMIT,
     TRAITS_LIMIT,
     Character,
@@ -144,13 +144,13 @@ def _seconds(sentence: str) -> float:
     return len(sentence.split()) / WORDS_PER_SECOND
 
 
-def scene_range(sentences: Sequence[str], max_scenes: int = MAX_SCENES) -> tuple[int, int]:
+def scene_range(sentences: Sequence[str], max_scenes: int | None = None) -> tuple[int, int]:
     """
-    Cuántas escenas pedir: como mucho `MAX_SCENES` (cada imagen cuesta) y una
-    por frase; como poco, las que hacen falta para que ninguna pase, de media,
-    de `LONGEST_SCENE_SECONDS`.
+    Cuántas escenas pedir: como mucho una por frase, y no más que `max_scenes`
+    si la duración tiene tope (`None`, sin tope); como poco, las que hacen
+    falta para que ninguna pase, de media, de `LONGEST_SCENE_SECONDS`.
     """
-    high = min(max_scenes, len(sentences))
+    high = len(sentences) if max_scenes is None else min(max_scenes, len(sentences))
     low = math.ceil(sum(map(_seconds, sentences)) / LONGEST_SCENE_SECONDS)
     return min(high, max(1, low)), high
 
@@ -160,7 +160,7 @@ def build_prompt(
     style: str,
     sentences: Sequence[str],
     current: Sequence[Character] = (),
-    max_scenes: int = MAX_SCENES,
+    max_scenes: int | None = None,
 ) -> str:
     """
     El encargo del guion visual: el guion en frases numeradas, con lo que
@@ -247,7 +247,7 @@ def _cast(items: object, current: Sequence[Character]) -> list[Character]:
     return cast[:MAX_CHARACTERS]
 
 
-def _cuts(items: object, sentences: Sequence[str], max_scenes: int = MAX_SCENES) -> list[tuple[int, str, str]]:
+def _cuts(items: object, sentences: Sequence[str], max_scenes: int | None = None) -> list[tuple[int, str, str]]:
     """
     Dónde empieza cada escena (índice de su primera frase, desde 0), qué se ve
     y qué se mueve.
@@ -257,9 +257,10 @@ def _cuts(items: object, sentences: Sequence[str], max_scenes: int = MAX_SCENES)
     queda con la primera, lo que apunta fuera del guion se descarta y la
     primera escena abre el video aunque el modelo la empiece más tarde.
 
-    Si se pasa de `MAX_SCENES`, se queda con las que cubren el principio de
-    cada tramo del reparto por longitud (`plan_cuts`): siguen cortando donde
-    el modelo quiso, solo que menos veces, y cada imagen con su descripción.
+    Si la duración tiene tope y el modelo se pasa, se queda con las que cubren
+    el principio de cada tramo del reparto por longitud (`plan_cuts`): siguen
+    cortando donde el modelo quiso, solo que menos veces, y cada imagen con su
+    descripción. Sin tope (`None`) se quedan todas.
     """
     found: dict[int, tuple[str, str]] = {}
     for item in items if isinstance(items, list) else []:
@@ -274,7 +275,7 @@ def _cuts(items: object, sentences: Sequence[str], max_scenes: int = MAX_SCENES)
     if not cuts:
         return []
     cuts[0] = (0, *cuts[0][1:])
-    if len(cuts) <= max_scenes:
+    if max_scenes is None or len(cuts) <= max_scenes:
         return cuts
 
     kept: list[tuple[int, str, str]] = []
@@ -290,7 +291,7 @@ def parse_storyboard(
     sentences: Sequence[str],
     seed: int,
     current: Sequence[Character] = (),
-    max_scenes: int = MAX_SCENES,
+    max_scenes: int | None = None,
 ) -> Storyboard:
     """
     Lee la respuesta del modelo. Las escenas salen de sus cortes; el segundo

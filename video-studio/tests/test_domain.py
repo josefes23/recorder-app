@@ -227,9 +227,11 @@ class IllustrationTests(unittest.TestCase):
         self.assertEqual(beats[0].text, f"{self.SENTENCE} {self.SENTENCE}")
         self.assertEqual(beats[0].as_dict(), {"start": 0.0, "text": beats[0].text})
 
-    def test_plan_caps_scenes_and_handles_short_or_empty_scripts(self):
+    def test_plan_has_no_cap_unless_given_and_handles_short_or_empty_scripts(self):
+        # 40 frases de 9 palabras ≈ 133 s: sin tope, una escena cada ~6 s.
         long = " ".join(f"Frase número {i} con algo más de texto aquí." for i in range(40))
-        self.assertEqual(len(illustration.plan_beats(long)), illustration.MAX_SCENES)
+        self.assertEqual(len(illustration.plan_beats(long)), 22)
+        self.assertEqual(len(illustration.plan_beats(long, max_scenes=8)), 8)
         self.assertEqual(illustration.plan_beats("   "), [])
         self.assertEqual(illustration.plan_beats("**Hola.**"), [illustration.Beat(0.0, "Hola.")])
 
@@ -382,21 +384,28 @@ class StoryboardTests(unittest.TestCase):
         self.assertEqual([(s.start, s.description) for s in board.scenes], [(0.0, "Tácito duda"), (5.2, "Pablo escribe")])
         self.assertEqual(board.scenes[0].text, " ".join(self.STORY[:4]))
 
-    def test_parse_keeps_at_most_max_scenes_and_cuts_where_the_model_did(self):
-        # 16 frases de 9 palabras ≈ 53 s: el reparto por longitud da 8 tramos.
+    def test_parse_keeps_every_scene_without_a_cap(self):
         sentences = [f"Frase número {i} con algo más de texto aquí." for i in range(16)]
         scenes = [{"from": n, "description": f"plano {n}"} for n in range(1, 17)]
         board = storyboard.parse_storyboard(self.answer(scenes=scenes), sentences, seed=1)
+        self.assertEqual([s.description for s in board.scenes], [f"plano {n}" for n in range(1, 17)])
 
-        cuts = illustration.plan_cuts(sentences)
-        self.assertEqual(len(cuts), illustration.MAX_SCENES)
+    def test_parse_keeps_at_most_max_scenes_and_cuts_where_the_model_did(self):
+        # 16 frases de 9 palabras ≈ 53 s: con tope de 8, el reparto por longitud da 8 tramos.
+        sentences = [f"Frase número {i} con algo más de texto aquí." for i in range(16)]
+        scenes = [{"from": n, "description": f"plano {n}"} for n in range(1, 17)]
+        board = storyboard.parse_storyboard(self.answer(scenes=scenes), sentences, seed=1, max_scenes=8)
+
+        cuts = illustration.plan_cuts(sentences, max_scenes=8)
+        self.assertEqual(len(cuts), 8)
         self.assertEqual([s.description for s in board.scenes], [f"plano {c + 1}" for c in cuts])
         self.assertEqual(" ".join(s.text for s in board.scenes), " ".join(sentences))
 
-    def test_scene_range_keeps_images_under_nine_seconds_and_at_most_eight(self):
+    def test_scene_range_keeps_images_under_nine_seconds_and_one_per_sentence_at_most(self):
         self.assertEqual(storyboard.scene_range(self.SENTENCES), (1, 2))
         sentences = [f"Frase número {i} con algo más de texto aquí." for i in range(16)]
-        self.assertEqual(storyboard.scene_range(sentences), (6, 8))
+        self.assertEqual(storyboard.scene_range(sentences), (6, 16))
+        self.assertEqual(storyboard.scene_range(sentences, max_scenes=8), (6, 8))
 
     def test_parse_drops_broken_or_repeated_characters_and_caps_the_cast(self):
         cast = [{"name": "Ana", "traits": "a"}, {"name": "ana", "traits": "b"}, {"name": "Sin rasgos"}, "basura"]

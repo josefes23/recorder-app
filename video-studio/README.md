@@ -158,12 +158,14 @@ línea de tiempo. Cada escena tiene también su «Ver».
 «Generar escenas desde el guion» trocea el guion por sentido: el modelo del
 guion recibe las frases numeradas, con lo que tarda cada una, y decide en qué
 frase cambia la imagen —otra persona, otro lugar, otra idea, un «segundo» o
-«tercero»—, en escenas de 3 a 9 segundos y como mucho ocho. Antes se troceaba
+«tercero»—, en escenas de 3 a 9 segundos. En un Reel no hay tope: salen las
+escenas que pida el guion, como mucho una por frase. Antes se troceaba
 solo por longitud (tramos de unos seis segundos) y una imagen podía juntar el
 final de una idea con el principio de la siguiente: Josefo seguía en pantalla
 mientras la voz decía «Segundo, el bautismo y la crucifixión». Nunca se parte
-una frase. Si el modelo devuelve más de ocho escenas, se quedan las que caen al
-principio de cada tramo del reparto por longitud, con sus descripciones. Cada
+una frase. En un cortometraje el tope es de 30 escenas; si el modelo devuelve
+más, se quedan las que caen al principio de cada tramo del reparto por
+longitud, con sus descripciones. Cada
 escena entra en el segundo en que empieza su texto, estimado al mismo ritmo
 que la duración del guion.
 
@@ -503,8 +505,9 @@ se acomoda solo.
 **Duración a medida.** Además de Reel y Cortometraje, la duración puede ser
 «Personalizada…»: se escribe una cantidad en segundos o minutos (de 20 s a
 10 min). Viaja como `90s`, `300s`… por el mismo campo `length`; el redactor
-recibe ese objetivo con un ±15 % de holgura y el tope de escenas se ajusta
-(hasta 60 s se escribe como un reel, más largo como un corto).
+recibe ese objetivo con un ±15 % de holgura. Hasta 60 s se escribe como un
+reel, sin tope de escenas; más largo, como un corto, y el tope de escenas se
+ajusta a la duración.
 
 Una imagen vertical que se usa en un video horizontal se encuadra más arriba,
 donde las imágenes generadas ponen las caras.
@@ -685,7 +688,7 @@ por la que la cola de renders es un hilo y no Celery. Si algún día hace falta,
 se reescriben `publish()` y `read_after()` y nadie más se entera.
 
 **Las imágenes usan las mismas piezas, con consumidores que compiten.** Un
-guion entero pide hasta ocho imágenes y una a una se haría largo, así que hay
+guion entero pide muchas imágenes y una a una se haría largo, así que hay
 tres consumidores de `illustration.requested`, cada uno con su grupo: todos ven
 todos los encargos y la reserva decide quién pinta cada uno. Es la reserva que
 ya evitaba redactar dos veces el mismo guion, usada a propósito. El guion visual

@@ -28,10 +28,6 @@ PROVIDER_SETTING = "IMAGE_PROVIDER"
 #: motor ya no basta para que la pantalla no parezca parada.
 SECONDS_PER_SCENE = 6.0
 
-#: Tope de imágenes por guion: cada una cuesta tiempo y, según el generador,
-#: dinero o cupo diario.
-MAX_SCENES = 8
-
 DEFAULT_STYLE = "fotografía cinematográfica realista, luz natural, colores cálidos"
 
 
@@ -152,13 +148,16 @@ def split_sentences(text: str) -> list[str]:
 def plan_cuts(
     sentences: Sequence[str],
     seconds_per_scene: float = SECONDS_PER_SCENE,
-    max_scenes: int = MAX_SCENES,
+    max_scenes: int | None = None,
 ) -> list[int]:
     """
     Dónde empieza cada escena si se reparte solo por longitud: el índice de su
     primera frase. Escenas de unos `seconds_per_scene` segundos sin partir
     ninguna frase: cada frase cae en la escena donde queda su mitad. Así una
     frase larga no se corta en dos imágenes y las cortas se agrupan.
+
+    `max_scenes` es el tope de la duración (`production.Length`); `None`, sin
+    tope: salen las que pida la longitud del guion.
 
     No sabe de qué habla cada frase: puede juntar en una imagen el final de
     una idea y el principio de la siguiente. El guion visual corta por sentido
@@ -169,7 +168,9 @@ def plan_cuts(
     lengths = [len(s.split()) for s in sentences]
     total = sum(lengths)
     wanted = round(total / WORDS_PER_SECOND / seconds_per_scene)
-    count = max(1, min(max_scenes, wanted, len(sentences)))
+    if max_scenes is not None:
+        wanted = min(max_scenes, wanted)
+    count = max(1, min(wanted, len(sentences)))
     per_scene = total / count
 
     cuts: list[int] = []
@@ -201,7 +202,7 @@ def beats_from_cuts(sentences: Sequence[str], cuts: Sequence[int]) -> list[Beat]
 def plan_beats(
     script: str | None,
     seconds_per_scene: float = SECONDS_PER_SCENE,
-    max_scenes: int = MAX_SCENES,
+    max_scenes: int | None = None,
 ) -> list[Beat]:
     """El guion repartido en escenas solo por longitud (`plan_cuts`)."""
     sentences = split_sentences(clean_script(script))

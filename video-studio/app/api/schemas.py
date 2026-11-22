@@ -164,7 +164,7 @@ class StoryboardRequest(BaseModel):
     style: str = ""
     #: Lo que ya está en el video: el guion visual mantiene lo que encaje.
     characters: list[CharacterIn] = Field(default_factory=list)
-    #: «reel» (hasta 8 escenas) o «corto» (hasta 30).
+    #: «reel» (sin tope de escenas) o «corto» (hasta 30).
     length: str = "reel"
     #: «9:16» o «16:9»: dónde caben las caras.
     format: str = "9:16"

@@ -291,12 +291,13 @@ class HorizontalFormatTests(unittest.TestCase):
 
 
 class StoryboardForShortsTests(unittest.TestCase):
-    def test_a_short_film_allows_many_more_scenes(self):
-        from app.domain.production import SHORT_FILM
-        from app.domain.storyboard import MAX_SCENES, scene_range
+    def test_a_reel_has_no_cap_and_a_short_film_keeps_its_own(self):
+        from app.domain.production import REEL, SHORT_FILM
+        from app.domain.storyboard import scene_range
 
         sentences = [f"Frase número {i} que dura un rato largo de decir en voz alta." for i in range(40)]
-        self.assertEqual(scene_range(sentences)[1], MAX_SCENES)
+        self.assertIsNone(REEL.max_scenes)
+        self.assertEqual(scene_range(sentences, REEL.max_scenes)[1], 40)
         self.assertEqual(scene_range(sentences, SHORT_FILM.max_scenes)[1], 30)
 
     def test_the_prompt_tells_where_the_faces_go(self):
@@ -408,6 +409,7 @@ class CustomLengthTests(unittest.TestCase):
         short = length_by_id("45s")
         self.assertTrue(short.reel_like)
         self.assertEqual(short.seconds, (38, 52))
+        self.assertIsNone(short.max_scenes)
         long = length_by_id("300s")
         self.assertFalse(long.reel_like)
         self.assertEqual(long.max_scenes, 30)

@@ -104,8 +104,9 @@ class Length:
     #: Palabras que se le piden al redactor, y segundos de voz que salen.
     words: tuple[int, int]
     seconds: tuple[int, int]
-    #: Tope de escenas del guion visual.
-    max_scenes: int
+    #: Tope de escenas del guion visual; `None`, sin tope: salen las que pida el
+    #: guion, como mucho una por frase.
+    max_scenes: int | None
     #: Cómo se le cuenta al redactor la forma del guion.
     structure: str
     #: Qué escribe el redactor: «Reels y Shorts», «cortometrajes».
@@ -119,7 +120,9 @@ REEL = Length(
     name="Reel (45–60 s)",
     words=(120, 160),
     seconds=(45, 60),
-    max_scenes=8,
+    # Sin tope: las imágenes son las que pida el guion. En un minuto, con
+    # escenas de 3 a 9 s, la respuesta del guion visual sigue cabiendo.
+    max_scenes=None,
     structure=(
         "ocho piezas, en este orden, que retienen hasta el final.\n"
         "  1. Gancho: en los tres primeros segundos le habla por su situación o su dolor a una\n"
@@ -181,7 +184,7 @@ def custom_length(seconds: int) -> Length:
         name=f"{seconds} s",
         words=(round(low * WORDS_PER_SECOND), round(high * WORDS_PER_SECOND)),
         seconds=(low, high),
-        max_scenes=max(3, min(base.max_scenes, math.ceil(seconds / 6))),
+        max_scenes=None if base.max_scenes is None else max(3, min(base.max_scenes, math.ceil(seconds / 6))),
         structure=base.structure,
         kind=base.kind,
         reel_like=base.reel_like,
