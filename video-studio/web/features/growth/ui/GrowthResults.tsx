@@ -4,8 +4,8 @@ import { useState } from "react";
 
 import {
   REGENERATION_LABELS,
+  fixAllInstruction,
   scoreTone,
-  scriptFixInstruction,
   type GrowthKind,
   type GrowthResults,
 } from "@/domain/growth";
@@ -83,46 +83,6 @@ export function GrowthResult<K extends GrowthKind>({
         </ol>
       );
     }
-    case "retention": {
-      const r = result as GrowthResults["retention"];
-      return (
-        <div className="growth-body">
-          <p className="growth-head">
-            <ScoreBadge score={r.score} label="Retención" /> {r.summary}
-          </p>
-          <ul className="growth-list">
-            {r.issues.map((issue) => (
-              <li key={`${issue.at}-${issue.problem}`} className="growth-item">
-                {issue.at && <q className="growth-quote">{issue.at}</q>}
-                <p className="growth-main">{issue.problem}</p>
-                <p className="hint">
-                  <b>Qué hacer:</b> {issue.fix}
-                </p>
-              </li>
-            ))}
-          </ul>
-          {r.issues.length > 0 && (
-            <p className="growth-sub">
-              <ApplyRecommendation
-                text={scriptFixInstruction(
-                  r.issues.map(
-                    (i) =>
-                      `${i.at ? `«${i.at}»: ` : ""}${i.problem} Qué hacer: ${i.fix}`,
-                  ),
-                )}
-                label="Corregir guion con estas"
-                busy="Corrigiendo…"
-              />
-            </p>
-          )}
-          {r.keep.length > 0 && (
-            <p className="hint">
-              <b>Funciona, no lo toques:</b> {r.keep.join(" · ")}
-            </p>
-          )}
-        </div>
-      );
-    }
     case "titles": {
       const { titles } = result as GrowthResults["titles"];
       return (
@@ -193,51 +153,6 @@ export function GrowthResult<K extends GrowthKind>({
         </div>
       );
     }
-    case "score": {
-      const r = result as GrowthResults["score"];
-      return (
-        <div className="growth-body">
-          <p className="growth-head">
-            <ScoreBadge score={r.total} label="Total" /> el video entero
-          </p>
-          <ul className="growth-parts">
-            {r.parts.map((part) => (
-              <li key={part.name}>
-                <span className="growth-part-name">{part.name}</span>
-                <span
-                  className={`growth-bar is-${scoreTone(part.score)}`}
-                  aria-hidden="true"
-                >
-                  <span style={{ width: `${part.score}%` }} />
-                </span>
-                <b className="num">{part.score}</b>
-                {part.note && (
-                  <span className="hint growth-part-note">{part.note}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-          {r.actions.length > 0 && (
-            <>
-              <p className="growth-sub">Lo que más lo subiría</p>
-              <ol className="growth-tips">
-                {r.actions.map((action) => (
-                  <li key={action}>
-                    {action}
-                    <ApplyRecommendation text={action} />
-                  </li>
-                ))}
-              </ol>
-              <ApplyRecommendation
-                text={scriptFixInstruction(r.actions)}
-                label="Corregir guion con todas"
-                busy="Corrigiendo…"
-              />
-            </>
-          )}
-        </div>
-      );
-    }
     case "trends": {
       const r = result as GrowthResults["trends"];
       return (
@@ -295,6 +210,84 @@ export function GrowthResult<K extends GrowthKind>({
       );
     }
   }
+}
+
+/**
+ * La revisión del guion entero: el puntaje (gancho, ritmo, claridad, título y
+ * descripción) y dónde se va la gente, en una sola lista de qué cambiar y con
+ * un solo botón que lo aplica todo. Cualquiera de las dos partes puede faltar
+ * si su respuesta no llegó.
+ */
+export function ScriptReview({
+  score,
+  retention,
+}: {
+  score?: GrowthResults["score"];
+  retention?: GrowthResults["retention"];
+}) {
+  const issues = retention?.issues ?? [];
+  const actions = score?.actions ?? [];
+  const fixes = [
+    ...issues.map((i) => `${i.at ? `«${i.at}»: ` : ""}${i.problem} Qué hacer: ${i.fix}`),
+    ...actions,
+  ];
+  return (
+    <div className="growth-body">
+      {score && (
+        <>
+          <p className="growth-head">
+            <ScoreBadge score={score.total} label="Total" /> el video entero
+          </p>
+          <ul className="growth-parts">
+            {score.parts.map((part) => (
+              <li key={part.name}>
+                <span className="growth-part-name">{part.name}</span>
+                <span className={`growth-bar is-${scoreTone(part.score)}`} aria-hidden="true">
+                  <span style={{ width: `${part.score}%` }} />
+                </span>
+                <b className="num">{part.score}</b>
+                {part.note && <span className="hint growth-part-note">{part.note}</span>}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {retention && (
+        <p className="growth-head">
+          <ScoreBadge score={retention.score} label="Retención" /> {retention.summary}
+        </p>
+      )}
+      {fixes.length > 0 && (
+        <>
+          <p className="growth-sub">Qué cambiar</p>
+          <ul className="growth-list">
+            {issues.map((issue) => (
+              <li key={`${issue.at}-${issue.problem}`} className="growth-item">
+                {issue.at && <q className="growth-quote">{issue.at}</q>}
+                <p className="growth-main">{issue.problem}</p>
+                <p className="hint">
+                  <b>Qué hacer:</b> {issue.fix}
+                </p>
+              </li>
+            ))}
+            {actions.map((action) => (
+              <li key={action} className="growth-item">
+                <p className="growth-main">{action}</p>
+              </li>
+            ))}
+          </ul>
+          <p className="growth-sub">
+            <ApplyRecommendation text={fixAllInstruction(fixes)} label="Aplicar todo" busy="Aplicando…" />
+          </p>
+        </>
+      )}
+      {retention && retention.keep.length > 0 && (
+        <p className="hint">
+          <b>Funciona, no lo toques:</b> {retention.keep.join(" · ")}
+        </p>
+      )}
+    </div>
+  );
 }
 
 type ApplyState =

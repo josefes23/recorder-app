@@ -83,8 +83,6 @@ class RenderSpec:
     take: str = ""
     #: Dónde están las tomas: la carpeta del servidor que encarga el render.
     takes_dir: str = ""
-    #: El acabado (`domain.finish`): audio, color, ritmo y tarjetas. Vacío = sin retoques.
-    finish: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict) -> RenderSpec:
@@ -106,7 +104,6 @@ class RenderSpec:
             transition=data.get("transition") or {},
             take=data.get("take") or "",
             takes_dir=data.get("takes_dir") or "",
-            finish=data.get("finish") or {},
         )
 
     def as_dict(self) -> dict:

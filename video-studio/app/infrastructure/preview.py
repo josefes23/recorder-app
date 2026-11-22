@@ -7,10 +7,8 @@ import threading
 from pathlib import Path
 from types import ModuleType
 
-from app.domain.finish import ColorFinish
 from app.domain.production import VERTICAL, Format
 from app.domain.style import CaptionStyle
-from app.infrastructure.finish import make_grade
 from app.infrastructure.generator import apply_format, apply_style
 
 
@@ -26,18 +24,16 @@ class GeneratorPreviewer:
 
     def render(
         self, text: str, style: CaptionStyle, background: str | None, topic: str, fmt: Format = VERTICAL,
-        color: ColorFinish | None = None,
     ) -> bytes:
         with self._lock:
             try:
-                return self._compose(text, style, background, topic, fmt, color)
+                return self._compose(text, style, background, topic, fmt)
             finally:
                 # El motor queda en vertical, como lo carga el contenedor.
                 apply_format(self._gen, VERTICAL)
 
     def _compose(
         self, text: str, style: CaptionStyle, background: str | None, topic: str, fmt: Format,
-        color: ColorFinish | None = None,
     ) -> bytes:
         import numpy as np
         from PIL import Image
@@ -53,10 +49,6 @@ class GeneratorPreviewer:
 
         clip = gen.build_background(bg_path, topic, 3.0)
         pixels = np.asarray(clip.get_frame(1.0))
-        # Igual que en el render: el color toca el fondo y los subtítulos se pintan después, sin teñir.
-        grade = make_grade(color) if color is not None else None
-        if grade is not None:
-            pixels = grade(pixels)
         frame = Image.fromarray(pixels).convert("RGBA")
         try:
             clip.close()

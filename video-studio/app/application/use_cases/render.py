@@ -65,7 +65,6 @@ class RenderUseCases:
                 topic=topic, script=text, voice=voice, rate=rate, pitch=pitch, style=style, scenes=scene_dicts,
                 format=prod.format, voices=prod.voices, music=prod.music, music_volume=prod.music_volume,
                 ambient=prod.ambient, transition=prod.transition.as_dict(), take=prod.take,
-                finish=prod.finish.as_dict(),
             ),
         )
         return video_id, round(estimate_seconds(text), 1)

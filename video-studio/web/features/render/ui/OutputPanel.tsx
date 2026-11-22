@@ -3,7 +3,6 @@
 import { useState } from "react";
 
 import { coverFilename } from "@/domain/cover";
-import { cardsSeconds, finishDetails } from "@/domain/finish";
 import { canRender } from "@/domain/script";
 import { voiceLabel } from "@/domain/voice";
 import { useCover } from "@/features/cover/model/use-cover";
@@ -40,10 +39,8 @@ export function OutputPanel() {
   const scenes = useScenes();
   const voice = useVoice();
   const catalog = useVoiceCatalog();
-  const { format, finish } = useProduction();
+  const { format } = useProduction();
   const next = nextStep(useStepStates());
-  const finishing = finishDetails(finish);
-  const extra = cardsSeconds(finish.cards);
   /* El cuadro toma la forma del video: vertical o apaisado. */
   const shape = format === "16:9" ? " frame--wide" : "";
   const { busy } = useStatus();
@@ -118,20 +115,8 @@ export function OutputPanel() {
         <div className="readout-row">
           <dt>Duración</dt>
           <dd className={script.verdict === "short" || script.verdict === "long" ? "hint warn" : ""}>
-            <b className="num">{(script.seconds + extra).toFixed(0)}</b> s
-            {script.seconds > 0 && (extra > 0 || finish.pace.tighten) && (
-              <span className="hint">
-                {" "}
-                {finish.pace.tighten ? "menos, sin pausas" : ""}
-                {finish.pace.tighten && extra > 0 ? " · " : ""}
-                {extra > 0 ? `con ${extra.toFixed(1).replace(".", ",")} s de tarjetas` : ""}
-              </span>
-            )}
+            <b className="num">{script.seconds.toFixed(0)}</b> s
           </dd>
-        </div>
-        <div className="readout-row">
-          <dt>Acabado</dt>
-          <dd>{finishing.length ? finishing.join(" · ") : "sin retoques"}</dd>
         </div>
         <div className="readout-row">
           <dt>Voz</dt>

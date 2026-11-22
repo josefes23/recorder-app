@@ -158,7 +158,7 @@ export function ScenesStep({ settings }: Props) {
     <Step
       n={STEP.scenes}
       title="Escenas"
-      lead="Las imágenes de cada tramo. Píntalas al final, cuando el guion y la voz ya están decididos."
+      lead="Las imágenes que acompañan cada tramo del guion."
       note={scenes.items.length ? `${scenes.items.length} sobre ${voice.toFixed(0)} s` : "fondo generado"}
     >
       <div className="ai-panel">

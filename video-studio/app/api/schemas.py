@@ -68,8 +68,6 @@ class PreviewRequest(BaseModel):
     style: dict = Field(default_factory=dict)
     #: «9:16» o «16:9».
     format: str = "9:16"
-    #: El color del acabado (`domain.finish`): look y ajustes; vacío = sin tocar.
-    color: dict = Field(default_factory=dict)
 
 
 class CoverIn(BaseModel):

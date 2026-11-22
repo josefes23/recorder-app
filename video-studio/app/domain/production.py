@@ -16,7 +16,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import PurePath
 
 from app.domain.errors import ValidationError
-from app.domain.finish import Finish, validate_finish
 from app.domain.script import WORDS_PER_SECOND
 from app.domain.transition import Transition, validate_transition
 
@@ -249,8 +248,6 @@ class Production:
     #: el usuario: la pone el render, para que «Reutilizar» recupere los
     #: tiempos reales de cada palabra.
     take: str = ""
-    #: Lo que se le hace al video una vez armado (`domain.finish`): audio, color, ritmo y tarjetas.
-    finish: Finish = field(default_factory=Finish)
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -273,5 +270,4 @@ def validate_production(data: Mapping | None) -> Production:
         music_volume=validate_volume(data.get("music_volume", DEFAULT_VOLUME)),
         ambient=bool(data.get("ambient")),
         transition=validate_transition(data.get("transition")),
-        finish=validate_finish(data.get("finish")),
     )

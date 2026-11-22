@@ -1,9 +1,9 @@
 "use client";
 
 import { STEP } from "@/domain/steps";
-import { GROWTH_KINDS, GROWTH_LABELS, growthBlocker, scriptTimingNote, type GrowthKind } from "@/domain/growth";
+import { growthBlocker, scriptTimingNote } from "@/domain/growth";
 import { useGrowth } from "@/features/growth/model/use-growth";
-import { GrowthResult } from "@/features/growth/ui/GrowthResults";
+import { ScriptReview } from "@/features/growth/ui/GrowthResults";
 import { useScript } from "@/features/script/model/use-script";
 import { useStudio } from "@/features/studio/model/studio-context";
 import { useStudioActions } from "@/features/studio/model/use-studio-actions";
@@ -11,18 +11,10 @@ import { ActionError } from "@/features/studio/ui/ActionError";
 import { useWriter } from "@/features/writer/model/use-writer";
 import { Step } from "@/shared/ui/Step";
 
-const WHAT: Record<GrowthKind, string> = {
-  hooks: "Cinco primeras frases para los tres segundos que deciden si se quedan.",
-  retention: "Dónde se va la gente en tu guion y qué cambiar.",
-  titles: "Seis títulos con nota, comparados con el que ya tienes.",
-  seo: "Evalúa la descripción y propone una mejor, con etiquetas.",
-  score: "Una nota por gancho, ritmo, claridad, título y descripción.",
-  trends: "Ideas de videos nuevas en tu nicho y qué formatos funcionan.",
-};
-
 /**
- * El asistente de crecimiento: lo que haría un vidIQ, con el modelo del guion y
- * sobre el video que hay abierto. Son criterios del modelo, no datos en vivo.
+ * La revisión del guion entero, antes de pintar: el puntaje y dónde se va la
+ * gente, pedidos a la vez y leídos juntos. Los demás consejos viven donde se
+ * aplican: ganchos e ideas en Guion, título y SEO en Descripción.
  */
 export function GrowthStep() {
   const growth = useGrowth();
@@ -36,45 +28,35 @@ export function GrowthStep() {
     voiceTake: take.take !== null,
   });
 
+  const pending = growth.pending.has("score") || growth.pending.has("retention");
+  const blocker = !label ? "Añade una clave de API en «Modelo del guion»" : growthBlocker("score", script.topic, script.text);
+  const score = growth.results.score;
+  const retention = growth.results.retention;
+  const review = () => {
+    void actions.advise("score");
+    void actions.advise("retention");
+  };
+
   return (
-    <Step n={STEP.growth} title="Optimizar" lead="Revisa y mejora el video antes de pintar las imágenes: si algo cambia el guion, aún no hay nada que rehacer." note="ganchos, retención, títulos, SEO y puntaje">
+    <Step
+      n={STEP.growth}
+      title="Optimizar"
+      lead="Una revisión del guion entero: qué nota saca, dónde se va la gente y cómo subirla."
+      note="puntaje y retención"
+    >
       <p className={`hint${timing.late ? " warn" : ""}`}>{timing.text}</p>
-      <p className="hint">
-        Consejos del modelo del guion sobre este video. No consulta datos en vivo de YouTube, TikTok ni
-        Instagram: son criterio de un editor que conoce cómo funcionan, no estadísticas.
-      </p>
-      <div className="growth-grid">
-        {GROWTH_KINDS.map((kind) => {
-          const pending = growth.pending.has(kind);
-          const blocker = !label ? "Añade una clave de API en «Modelo del guion»" : growthBlocker(kind, script.topic, script.text);
-          const result = growth.results[kind];
-          return (
-            <section key={kind} className="growth-card" id={`growth-${kind}`} aria-labelledby={`growth-${kind}-t`}>
-              <header className="growth-card-head">
-                <h3 id={`growth-${kind}-t`}>{GROWTH_LABELS[kind]}</h3>
-                <button
-                  className="btn btn--sm"
-                  disabled={pending || blocker !== null}
-                  title={blocker ?? ""}
-                  onClick={() => void actions.advise(kind)}
-                >
-                  {pending ? "Pensando…" : result ? "Pedir otra vez" : "Pedir"}
-                </button>
-              </header>
-              <p className="hint">{WHAT[kind]}</p>
-              {result && (
-                <GrowthResult
-                  kind={kind}
-                  result={result}
-                  appliedHook={growth.appliedHook}
-                  actions={{ ...actions, useTopic: script.setTopic }}
-                />
-              )}
-              <ActionError place="growth" only={`growth-${kind}`} />
-            </section>
-          );
-        })}
-      </div>
+      <section className="growth-card" id="growth-review" aria-labelledby="growth-review-t">
+        <header className="growth-card-head">
+          <h3 id="growth-review-t">Revisión del guion</h3>
+          <button className="btn btn--sm" disabled={pending || blocker !== null} title={blocker ?? ""} onClick={review}>
+            {pending ? "Pensando…" : score || retention ? "Revisar otra vez" : "Revisar"}
+          </button>
+        </header>
+        <p className="hint">Es el criterio del modelo del guion, no datos en vivo de las plataformas.</p>
+        {(score || retention) && <ScriptReview score={score} retention={retention} />}
+        <ActionError place="growth" only="growth-score" />
+        <ActionError place="growth" only="growth-retention" />
+      </section>
     </Step>
   );
 }

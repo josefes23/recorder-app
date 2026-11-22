@@ -545,36 +545,33 @@ en la tabla `prompt_overrides` de `studio.db` y vale para los videos nuevos;
 «Restaurar» vuelve al original. El tema y las frases numeradas viajan aparte
 como mensaje del usuario y no se editan.
 
-## Acabado: audio, color, ritmo y tarjetas
+## Volumen de la mezcla
 
-El paso 8 reúne retoques opcionales, todos apagados por defecto: sin tocar
-nada el video sale como siempre. Se hacen dentro del mismo render, así que el
-video se codifica **una sola vez**. Las reglas puras están en
-`app/domain/finish.py` y el trabajo con ffmpeg, numpy y Pillow en
-`app/infrastructure/finish.py`; los ajustes viajan con la producción y se
-guardan en el estilo del video, de donde «Reutilizar» los recupera.
+Todo render lleva la **mezcla final** (voz y música) a −14 LUFS, el nivel de
+YouTube, Instagram y TikTok, con techo de pico −1,5 dB: dos pasadas de
+`loudnorm`, se mide y se corrige en lineal, sin «respirar». No hay opción en
+pantalla: un video más flojo que el resto suena más bajo en la plataforma. Está
+en `app/infrastructure/loudness.py` y usa el ffmpeg de `imageio-ffmpeg` (el
+mismo que codifica el video), así que anda igual en Mac y en Windows.
 
-| Retoque | Qué hace |
-|---|---|
-| Voz con presencia | Quita graves que ensucian, iguala el volumen de la voz (compresor suave) y le da brillo. Va sobre la voz sola, antes de mezclarla con la música. |
-| Volumen parejo | Lleva la **mezcla final** a −14 LUFS (techo de pico −1,5 dB) en dos pasadas de `loudnorm`: se mide y se corrige en lineal, sin «respirar». |
-| Color | Un look (natural, cálido, frío, cine, vivo, blanco y negro) más exposición, contraste y saturación de −100 a 100. Solo toca el fondo: los subtítulos no se tiñen. El botón «Fotograma» enseña el resultado. |
-| Recortar pausas | Una pausa de más de 0,45 s entre palabras queda en 0,25 s; el silencio final se acorta. Las marcas de cada palabra se corren lo que se quitó, así que subtítulos y escenas se calculan ya sobre la voz recortada. |
-| Tarjetas | Una de entrada (1,6 s) y una de cierre (2,6 s) con el texto que escribas; lo que va entre *asteriscos* sale resaltado. Van fuera del video armado: no mueven ni un tiempo de la voz. |
+Antes había un paso «Acabado» con voz realzada, color, recorte de pausas y
+tarjetas de entrada y cierre. Se quitó; los videos guardados con esos ajustes
+se siguen abriendo y los ajustes se ignoran.
 
-La toma de voz guardada no se toca: el recorte y la limpieza se hacen sobre
-una copia en cada render. Se usa el ffmpeg de `imageio-ffmpeg` (el mismo que
-codifica el video), así que anda igual en Mac y en Windows.
+## Consejos del modelo: cada uno donde se aplica
 
-## Optimizar: ganchos, retención y puntaje
+Lo que haría un vidIQ, con el modelo del guion y sobre el video abierto. Cada
+consejo se pide y se lee en el paso donde se usa:
 
-El paso 6 reúne lo que haría un vidIQ, con el modelo del guion y sobre el
-video abierto: **ganchos** para los tres primeros segundos, **retención**
-(dónde se cae el guion y cómo arreglarlo), **títulos** con nota, **SEO** de la
-descripción (puntaje, versión mejorada y etiquetas), **puntaje** del video
-entero y **tendencias e ideas** de videos nuevos. Hay atajos: «Ganchos» junto
-al guion y «Puntuar SEO» junto a la descripción. Un gancho puede ponerse como
-primera frase del guion (el siguiente lo sustituye, no se apilan).
+- **Guion**: **ganchos** para los tres primeros segundos (uno puede ponerse
+  como primera frase; el siguiente lo sustituye, no se apilan) y **tendencias
+  e ideas** de videos nuevos, con «Usar como tema».
+- **Descripción**: **título para publicar** con nota (no es el texto de la
+  portada, que se sugiere en la pestaña Portada) y **SEO** de la descripción:
+  puntaje, versión mejorada y etiquetas.
+- **Optimizar** (paso 6): una **revisión del guion** que pide a la vez el
+  puntaje del video entero y la retención (dónde se cae el guion), los junta
+  en una lista de qué cambiar y lo aplica todo con un botón.
 
 Ojo: el modelo **no consulta datos en vivo** de YouTube, TikTok ni Instagram.
 Los puntajes y las «tendencias» son criterio, no estadísticas. Van por el flujo

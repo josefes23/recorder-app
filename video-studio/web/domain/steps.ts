@@ -26,8 +26,6 @@ export type StudioProgress = {
   description: boolean;
   /** El puntaje del video, si ya se pidió. */
   score: number | null;
-  /** Qué retoques hay puestos en el acabado («audio», «color»…); vacío si ninguno. */
-  finish: string[];
 };
 
 /**
@@ -36,9 +34,9 @@ export type StudioProgress = {
  * de Optimizar ya están decididos. Si un consejo cambia el guion después de
  * pintar, hay que rehacer las imágenes.
  */
-export const STEP = { script: 1, voice: 2, sound: 3, captions: 4, description: 5, growth: 6, scenes: 7, finish: 8 } as const;
+export const STEP = { script: 1, voice: 2, sound: 3, captions: 4, description: 5, growth: 6, scenes: 7 } as const;
 
-export const STEP_TITLES = ["Guion", "Voz", "Música", "Subtítulos", "Descripción", "Optimizar", "Escenas", "Acabado"] as const;
+export const STEP_TITLES = ["Guion", "Voz", "Música", "Subtítulos", "Descripción", "Optimizar", "Escenas"] as const;
 
 function scenesStep(scenes: Scene[], timelineIssues: boolean): [StepState, string] {
   if (scenes.length === 0) return ["optional", "fondo generado"];
@@ -64,14 +62,14 @@ export function stepStates(progress: StudioProgress): StepInfo[] {
     progress.music ? ["done", "con música"] : ["optional", "solo la voz"],
     ["done", ""],
     progress.description ? ["done", "escrita"] : ["optional", "sin escribir"],
-    progress.score === null ? ["optional", "ganchos, títulos y puntaje"] : ["done", `puntaje ${progress.score}`],
+    progress.score === null ? ["optional", "sin revisar"] : ["done", `puntaje ${progress.score}`],
     scenesStep(progress.scenes, progress.timelineIssues),
-    progress.finish.length ? ["done", progress.finish.join(" · ")] : ["optional", "sin retoques"],
   ];
   return states.map(([state, note], i) => ({ n: i + 1, title: STEP_TITLES[i], state, note }));
 }
 
 export type NextStep = {
+  /** El paso al que lleva; 0 cuando ya no queda ninguno y toca renderizar. */
   n: number;
   title: string;
   /** fix: algo falta o está por revisar; wait: llega solo; suggest: opcional pero conviene; render: no queda nada. */
@@ -96,7 +94,7 @@ export function nextStep(steps: StepInfo[]): NextStep {
       n: growth.n,
       title: growth.title,
       kind: "suggest",
-      message: "Sugerido: puntúa y corrige el guion en Optimizar antes de pintar escenas.",
+      message: "Sugerido: revisa el guion en Optimizar antes de pintar escenas.",
     };
   }
   const pending = steps.find((step) => step.state === "todo" || step.state === "warn");
@@ -105,7 +103,7 @@ export function nextStep(steps: StepInfo[]): NextStep {
   }
   const busy = steps.find((step) => step.state === "busy");
   if (busy) return { n: busy.n, title: busy.title, kind: "wait", message: `Esperando: ${busy.title} (${busy.note}).` };
-  return { n: STEP.finish, title: steps[STEP.finish - 1].title, kind: "render", message: "Todo listo: puedes renderizar." };
+  return { n: 0, title: "Renderizar", kind: "render", message: "Todo listo: puedes renderizar." };
 }
 
 /** Los que se pueden plegar sin esconder nada pendiente. */

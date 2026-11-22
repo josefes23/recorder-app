@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { growthBlocker, readGrowth, scoreTone, scriptFixInstruction, withHook } from "./growth.ts";
+import { growthBlocker, readGrowth, scoreTone, fixAllInstruction, withHook } from "./growth.ts";
 
 test("cada consejo dice qué le falta para pedirse", () => {
   assert.match(growthBlocker("retention", "tema", " ") ?? "", /guion/);
@@ -28,8 +28,8 @@ test("el gancho pasa a ser la primera frase y no se apila con el anterior", () =
   assert.equal(withHook("", "Solo."), "Solo.");
 });
 
-test("scriptFixInstruction numera las recomendaciones y limita el cambio al guion", () => {
-  const text = scriptFixInstruction(["Abre con una pregunta", "  ", "Cierra con una llamada a la acción"]);
-  assert.match(text, /Cambia solo el guion/);
+test("fixAllInstruction numera las recomendaciones y deja igual lo que no mencionan", () => {
+  const text = fixAllInstruction(["Abre con una pregunta", "  ", "Cierra con una llamada a la acción"]);
+  assert.match(text, /Lo que ninguna menciona queda igual/);
   assert.match(text, /\n1\. Abre con una pregunta\n2\. Cierra con una llamada a la acción$/);
 });

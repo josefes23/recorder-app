@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 
-import { finishSummary } from "@/domain/finish";
 import { stepStates, type StepInfo } from "@/domain/steps";
 import { useTimeline } from "@/features/scenes/model/use-scenes";
 
@@ -22,8 +21,7 @@ export function useStepStates(): StepInfo[] {
         timelineIssues,
         description: description.text.trim() !== "",
         score: growth.results.score?.total ?? null,
-        finish: finishSummary(production.finish),
       }),
-    [script.verdict, production.music, scenes.items, timelineIssues, description.text, growth.results.score, production.finish],
+    [script.verdict, production.music, scenes.items, timelineIssues, description.text, growth.results.score],
   );
 }

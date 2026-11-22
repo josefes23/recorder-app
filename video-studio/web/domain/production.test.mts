@@ -25,7 +25,6 @@ test("un video guardado se separa en estilo y producción", () => {
   assert.deepEqual(production, {
     format: "16:9", length: "corto", dialogue: true, voices: { ANA: "elena" },
     music: "calma.mp3", musicVolume: 0.4, ambient: true, transition: { kind: "negro", seconds: 0.8 },
-    finish: DEFAULT_PRODUCTION.finish, // este video es de antes del acabado: sin retoques
   });
 });
 

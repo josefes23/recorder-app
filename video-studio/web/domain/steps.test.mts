@@ -3,11 +3,11 @@ import { test } from "node:test";
 
 import { foldable, nextStep, STEP, stepStates, type StudioProgress } from "./steps.ts";
 
-const base: StudioProgress = { verdict: "ok", music: false, scenes: [], timelineIssues: false, description: false, score: null, finish: [] };
+const base: StudioProgress = { verdict: "ok", music: false, scenes: [], timelineIssues: false, description: false, score: null };
 
 test("un estudio recién abierto pide el guion y lo opcional no molesta", () => {
   const steps = stepStates({ ...base, verdict: "empty" });
-  assert.deepEqual(steps.map((s) => s.state), ["todo", "done", "optional", "done", "optional", "optional", "optional", "optional"]);
+  assert.deepEqual(steps.map((s) => s.state), ["todo", "done", "optional", "done", "optional", "optional", "optional"]);
   assert.equal(steps[0].note, "falta el guion");
 });
 
@@ -33,12 +33,10 @@ test("Optimizar va antes de Escenas: las imágenes se pintan cuando el guion ya 
   assert.ok(STEP.growth < STEP.scenes);
 });
 
-test("el acabado es el último paso y cuenta qué retoques tiene", () => {
-  assert.equal(stepStates(base)[STEP.finish - 1].title, "Acabado");
-  assert.equal(stepStates(base)[STEP.finish - 1].state, "optional");
-  const done = stepStates({ ...base, finish: ["audio", "color"] })[STEP.finish - 1];
-  assert.deepEqual([done.state, done.note], ["done", "audio · color"]);
-  assert.ok(STEP.scenes < STEP.finish);
+test("Escenas es el último paso: ya no hay acabado", () => {
+  const steps = stepStates(base);
+  assert.equal(steps.length, STEP.scenes);
+  assert.equal(steps.at(-1)?.title, "Escenas");
 });
 
 test("qué sigue: primero el guion, luego Optimizar, luego lo que falte, al final renderizar", () => {
@@ -50,7 +48,7 @@ test("qué sigue: primero el guion, luego Optimizar, luego lo que falte, al fina
   assert.deepEqual([suggest.n, suggest.kind], [STEP.growth, "suggest"]);
 
   const scored = { ...base, score: 80 };
-  assert.equal(nextStep(stepStates(scored)).kind, "render");
+  assert.deepEqual([nextStep(stepStates(scored)).n, nextStep(stepStates(scored)).kind], [0, "render"]);
   const broken = [{ background: "a.jpg", start: 0 }, { background: "b.jpg", start: 5, clipError: "x" }];
   const warn = nextStep(stepStates({ ...scored, scenes: broken }));
   assert.deepEqual([warn.n, warn.kind], [STEP.scenes, "fix"]);

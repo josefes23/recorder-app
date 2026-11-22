@@ -7,8 +7,7 @@ import {
   platformWarning,
   visiblePart,
 } from "@/domain/description";
-import { useAdvice } from "@/features/growth/model/use-advice";
-import { useGrowth } from "@/features/growth/model/use-growth";
+import { GrowthCard } from "@/features/growth/ui/GrowthCard";
 import { useDescription } from "@/features/description/model/use-description";
 import { useScript } from "@/features/script/model/use-script";
 import { useStudioActions } from "@/features/studio/model/use-studio-actions";
@@ -27,8 +26,6 @@ export function DescriptionStep() {
   const script = useScript();
   const actions = useStudioActions();
   const { label } = useWriter();
-  const growth = useGrowth();
-  const advise = useAdvice();
 
   const length = descriptionLength(description.text);
   const warning = platformWarning(description.text);
@@ -92,20 +89,17 @@ export function DescriptionStep() {
               ? "Reescribir con IA"
               : "Escribir con IA"}
         </button>
-        <button
-          className="btn"
-          disabled={!label || growth.pending.has("seo") || !description.text.trim() || !script.text.trim()}
-          onClick={() => void advise("seo")}
-          title={!description.text.trim() ? "Escribe o genera primero la descripción" : "Puntúa la descripción y propone una mejor"}
-        >
-          {growth.pending.has("seo") ? "Evaluando…" : "Puntuar SEO"}
-        </button>
         <CopyButton text={description.text} label="Copiar" className="btn" />
         {description.writing && (
           <span className="hint">La escribe el modelo del guion con el guion y el título de la portada.</span>
         )}
       </div>
       <ActionError place="description" />
+
+      <div className="growth-grid">
+        <GrowthCard kind="titles" />
+        <GrowthCard kind="seo" needs={description.text.trim() ? null : "Escribe o genera primero la descripción."} />
+      </div>
     </Step>
   );
 }

@@ -394,11 +394,9 @@ class FakePreviewer:
     def __init__(self) -> None:
         self.calls: list[tuple[str, CaptionStyle, str | None, str]] = []
         self.formats: list[str] = []
-        self.colors: list = []
 
-    def render(self, text: str, style: CaptionStyle, background: str | None, topic: str, fmt=None, color=None) -> bytes:
+    def render(self, text: str, style: CaptionStyle, background: str | None, topic: str, fmt=None) -> bytes:
         self.calls.append((text, style, background, topic))
-        self.colors.append(color)
         self.formats.append(fmt.id if fmt else "9:16")
         return b"\x89PNG" + text.encode()
 

@@ -8,8 +8,6 @@
 
 export type GrowthKind = "hooks" | "retention" | "titles" | "seo" | "score" | "trends";
 
-export const GROWTH_KINDS: GrowthKind[] = ["hooks", "retention", "titles", "seo", "score", "trends"];
-
 export type Hook = { text: string; type: string; why: string };
 export type RetentionIssue = { at: string; problem: string; fix: string };
 export type TitleIdea = { text: string; score: number; why: string };
@@ -39,7 +37,7 @@ export const NEEDS_SCRIPT: Record<GrowthKind, boolean> = {
 export const GROWTH_LABELS: Record<GrowthKind, string> = {
   hooks: "Ganchos",
   retention: "Retención",
-  titles: "Títulos",
+  titles: "Título para publicar",
   seo: "SEO de la descripción",
   score: "Puntaje del video",
   trends: "Tendencias e ideas",
@@ -54,14 +52,15 @@ export function growthBlocker(kind: GrowthKind, topic: string, script: string): 
 
 /** Cómo se pinta un puntaje: de 0 a 100, por tramos. */
 /**
- * El encargo para corregir el guion con varias recomendaciones a la vez. Se
- * manda por el mismo camino que «Aplicar» una sola: el modelo devuelve el
- * guion entero reescrito y se pregunta antes de rehacer lo que quede desfasado.
+ * El encargo para aplicar de una vez todo lo que dijo la revisión del guion.
+ * Va por el camino de «Aplicar»: el modelo cambia el guion, el título o la
+ * descripción según pida cada punto, y se pregunta antes de rehacer lo que
+ * quede desfasado.
  */
-export function scriptFixInstruction(items: string[]): string {
+export function fixAllInstruction(items: string[]): string {
   const list = items.map((item) => item.trim()).filter(Boolean);
   return [
-    "Corrige el guion aplicando TODAS estas recomendaciones a la vez. Cambia solo el guion; título y descripción quedan igual.",
+    "Aplica TODAS estas recomendaciones a la vez, cada una donde corresponda: el guion, el título o la descripción. Lo que ninguna menciona queda igual.",
     ...list.map((item, i) => `${i + 1}. ${item}`),
   ].join("\n");
 }
