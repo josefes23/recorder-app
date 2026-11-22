@@ -21,6 +21,7 @@ import requests
 
 from app.domain.errors import IllustratorError
 from app.domain.illustration import GeneratedImage
+from app.infrastructure.google_quota import KEYS_PAGE, read_quota
 from app.infrastructure.imaging import compact, shrink, sniff_extension
 
 URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -31,8 +32,9 @@ IMAGE_SIZE = {"gemini-3.1-flash-lite-image": "1K"}
 DEFAULT_SIZE = "2K"
 
 FREE_TIER = (
-    "Tu clave de Gemini está en el nivel gratuito y ahí los modelos de imagen tienen "
-    "cupo cero. Activa la facturación en ai.dev/rate-limit, o usa Cloudflare, que es gratis."
+    "Google trata tu clave de Gemini como del nivel gratuito, y ahí «{model}» tiene cupo "
+    "cero{detail}. Si tienes créditos o facturación, la clave tiene que ser de ese proyecto: "
+    f"mira el plan de cada clave en {KEYS_PAGE}. O usa Cloudflare, que es gratis."
 )
 
 
@@ -88,9 +90,24 @@ def raise_for_status(response: requests.Response, model: str) -> None:
     if response.status_code == 404:
         raise IllustratorError(f"Google no sirve el modelo «{model}». Elige otro en «Generador de imágenes».")
     if response.status_code == 429:
-        if "free tier" in lowered or "limit: 0" in lowered or "billing" in lowered:
-            raise IllustratorError(FREE_TIER)
-        raise IllustratorError("Límite de peticiones de Gemini alcanzado. Prueba en un momento.")
+        quota = read_quota(response)
+        detail = quota.detail()
+        if quota.free_tier and quota.zero:
+            raise IllustratorError(FREE_TIER.format(model=model, detail=detail))
+        if quota.free_tier:
+            raise IllustratorError(
+                f"Se acabó el cupo gratuito de Gemini{detail}. Espera o activa la facturación "
+                f"de la clave ({KEYS_PAGE})."
+            )
+        if quota.zero:
+            raise IllustratorError(
+                f"Tu plan de Google no tiene cupo para «{model}»{detail}. "
+                "Elige otro modelo en «Generador de imágenes»."
+            )
+        raise IllustratorError(
+            f"Google frenó la petición: límite por minuto o saturación de su lado{detail}. "
+            "Prueba en un momento."
+        )
     raise IllustratorError(f"La API de Google devolvió {response.status_code}: {body[:200]}")
 
 

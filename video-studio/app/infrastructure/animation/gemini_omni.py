@@ -28,6 +28,7 @@ import requests
 from app.domain.animation import ASPECT_RATIO, GeneratedClip
 from app.domain.errors import AnimatorError
 from app.domain.illustration import GeneratedImage
+from app.infrastructure.google_quota import KEYS_PAGE, read_quota
 from app.infrastructure.imaging import compact, shrink
 
 BASE = "https://generativelanguage.googleapis.com/v1beta"
@@ -46,8 +47,9 @@ POLL_LIMIT = 600
 DOWNLOAD_TIMEOUT = 120
 
 NO_FREE_TIER = (
-    "Gemini Omni no tiene nivel gratuito: activa la facturación de tu clave de Google "
-    "en ai.dev/rate-limit para poder animar escenas."
+    "Google trata tu clave como del nivel gratuito{detail}, y Gemini Omni no tiene nivel "
+    "gratuito. Si tienes créditos o facturación, la clave tiene que ser de ese proyecto: "
+    f"mira el plan de cada clave en {KEYS_PAGE}."
 )
 
 
@@ -116,9 +118,16 @@ def raise_for_status(response: requests.Response, model: str) -> None:
     if response.status_code == 404:
         raise AnimatorError(f"Google no sirve el modelo de video «{model}». Revisa GEMINI_VIDEO_MODEL en el .env.")
     if response.status_code == 429:
-        if "free tier" in lowered or "limit: 0" in lowered or "billing" in lowered:
-            raise AnimatorError(NO_FREE_TIER)
-        raise AnimatorError("Límite de peticiones de Gemini alcanzado. Prueba en un momento.")
+        quota = read_quota(response)
+        detail = quota.detail()
+        if quota.free_tier:
+            raise AnimatorError(NO_FREE_TIER.format(detail=detail))
+        if quota.zero:
+            raise AnimatorError(f"Tu plan de Google no tiene cupo para «{model}»{detail}. Revisa GEMINI_VIDEO_MODEL en el .env.")
+        raise AnimatorError(
+            f"Google frenó la petición: límite por minuto o saturación de su lado{detail}. "
+            "Prueba en un momento."
+        )
     if response.status_code == 400 and ("safety" in lowered or "blocked" in lowered or "policy" in lowered):
         raise AnimatorError("Google rechazó la imagen o la descripción por sus filtros. Prueba con otra.")
     raise AnimatorError(f"La API de Google devolvió {response.status_code}: {body[:200]}")

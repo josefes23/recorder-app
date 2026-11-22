@@ -391,13 +391,53 @@ class ImagingTests(unittest.TestCase):
         free = fake_response(429, {"error": {"message": "Rate limit exceeded for model x (limit: 0 input tokens per minute on Free Tier)."}})
         with self.assertRaisesRegex(IllustratorError, "nivel gratuito"):
             gemini.raise_for_status(free, "x")
-        with self.assertRaisesRegex(IllustratorError, "Límite de peticiones"):
+        with self.assertRaisesRegex(IllustratorError, "frenó la petición.*slow down"):
             gemini.raise_for_status(fake_response(429, {"error": {"message": "slow down"}}), "x")
         with self.assertRaisesRegex(IllustratorError, "no es válida"):
             gemini.raise_for_status(fake_response(400, {"error": {"message": "API key not valid."}}), "x")
         with self.assertRaisesRegex(IllustratorError, "no sirve el modelo «x»"):
             gemini.raise_for_status(fake_response(404, {}), "x")
         gemini.raise_for_status(fake_response(200, {}), "x")
+
+    def test_gemini_reads_the_quota_google_names_not_its_billing_boilerplate(self):
+        # Google dice «check your plan and billing details» en todo 429, también
+        # a una clave de pago: lo que manda es la cuota de `details`.
+        def exhausted(quota_id: str, metric: str, value: str) -> requests.Response:
+            return fake_response(429, {"error": {
+                "code": 429,
+                "message": "You exceeded your current quota, please check your plan and billing details.",
+                "status": "RESOURCE_EXHAUSTED",
+                "details": [
+                    {"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [
+                        {"quotaMetric": metric, "quotaId": quota_id, "quotaValue": value},
+                    ]},
+                    {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "26s"},
+                ],
+            }})
+
+        paid = exhausted(
+            "GenerateRequestsPerMinutePerProjectPerModel",
+            "generativelanguage.googleapis.com/generate_content_requests", "100",
+        )
+        with self.assertRaises(IllustratorError) as caught:
+            gemini.raise_for_status(paid, "gemini-nano-banana-2.1")
+        self.assertNotIn("gratuito", str(caught.exception))
+        self.assertIn("GenerateRequestsPerMinutePerProjectPerModel", str(caught.exception))
+        self.assertIn("26s", str(caught.exception))
+
+        free = exhausted(
+            "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+            "generativelanguage.googleapis.com/generate_content_free_tier_requests", "0",
+        )
+        with self.assertRaisesRegex(IllustratorError, "nivel gratuito.*«gemini-nano-banana-2.1» tiene cupo cero"):
+            gemini.raise_for_status(free, "gemini-nano-banana-2.1")
+
+        spent = exhausted(
+            "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+            "generativelanguage.googleapis.com/generate_content_free_tier_requests", "20",
+        )
+        with self.assertRaisesRegex(IllustratorError, "Se acabó el cupo gratuito"):
+            gemini.raise_for_status(spent, "m")
 
     def test_cloudflare_reads_the_envelope_and_raw_images(self):
         envelope = fake_response(200, {"result": {"image": b64(b"\xff\xd8ok")}, "success": True})
